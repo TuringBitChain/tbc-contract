@@ -1,0 +1,11 @@
+{
+    "compilerOptions": {
+      "module": "CommonJS",             
+      "moduleResolution": "Node",      
+      "target": "ESNext",               
+      "esModuleInterop": true,         
+      "allowSyntheticDefaultImports": true, 
+      "skipLibCheck": true             
+    }
+  }
+  

@@ -1,6 +1,6 @@
 import * as tbc from 'tbc-lib-js'
-export class API {
-    /**
+class API {
+    /**sda
      * Get the FT balance for a specified contract transaction ID and address or hash.
      *
      * @param {string} contractTxid - The contract transaction ID.
@@ -123,12 +123,12 @@ export class API {
                 }
             }
             const tx = new tbc.Transaction()
-            .from(utxo)
-            .to(address, sumAmount - 500)
-            .fee(500)
-            .change(address)
-            .sign(privateKey)
-            .seal();
+                .from(utxo)
+                .to(address, sumAmount - 500)
+                .fee(500)
+                .change(address)
+                .sign(privateKey)
+                .seal();
             const txraw = tx.uncheckedSerialize();
             await API.broadcastTXraw(txraw, network);
             await new Promise(resolve => setTimeout(resolve, 3000));
@@ -205,5 +205,4 @@ export class API {
         }
     }
 }
-export default API;
-module.exports = API;
+module.exports = API

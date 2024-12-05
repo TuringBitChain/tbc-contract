@@ -1,7 +1,8 @@
-import * as tbc from 'tbc-lib-js'
-import { API } from '../api/api';
-import { FT } from './ft';
-import * as partial_sha256 from 'tbc-lib-js/lib/util/partial-sha256'
+import * as tbc from "tbc-lib-js"
+const API = require('../api/api');
+const FT = require('./ft');
+const partial_sha256 = require('tbc-lib-js/lib/util/partial-sha256');
+
 const version = 10;
 const vliolength = '10';
 const amountlength = '08';
@@ -26,7 +27,7 @@ interface poolNFTDifference {
     tbc_amount_difference: bigint;
 }
 
-export class poolNFT {
+class poolNFT {
     ft_lp_amount: bigint;
     ft_a_amount: bigint;
     tbc_amount: bigint;
@@ -39,7 +40,7 @@ export class poolNFT {
     //private precision = BigInt(1);
     network: "testnet" | "mainnet"
 
-    constructor(config?: { txidOrParams?: string | {ftContractTxid: string, tbc_amount: number, ft_a: number}, network?: "testnet" | "mainnet" }) {
+    constructor(config?: { txidOrParams?: string | { ftContractTxid: string, tbc_amount: number, ft_a: number }, network?: "testnet" | "mainnet" }) {
         this.ft_lp_amount = BigInt(0);
         this.ft_a_amount = BigInt(0);
         this.tbc_amount = BigInt(0);
@@ -66,7 +67,7 @@ export class poolNFT {
 
     async initCreate(ftContractTxid?: string) {
         if (!ftContractTxid && this.ft_a_contractTxid != '') {
-            const FTA = new FT({txidOrParams: this.ft_a_contractTxid, network: this.network});
+            const FTA = new FT({ txidOrParams: this.ft_a_contractTxid, network: this.network });
             await FTA.initialize();
             this.ft_a_amount = BigInt(this.ft_a_number * Math.pow(10, FTA.decimal));
         } else if (ftContractTxid) {
@@ -89,13 +90,13 @@ export class poolNFT {
 
     async createPoolNFT(privateKey_from: tbc.PrivateKey): Promise<string> {
         const privateKey = privateKey_from;
-        const FTA = new FT({txidOrParams: this.ft_a_contractTxid, network: this.network});
+        const FTA = new FT({ txidOrParams: this.ft_a_contractTxid, network: this.network });
         await FTA.initialize();
         const utxo = await API.fetchUTXO(privateKey, 0.1, this.network);
         this.poolnft_code = this.getPoolNftCode(utxo.txId, utxo.outputIndex).toBuffer().toString('hex');
-        const ftlpCode = this.getFTLPcode(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code,'hex')).toString('hex'), privateKey.toAddress().toString(), FTA.tapeScript.length / 2);
+        const ftlpCode = this.getFTLPcode(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex')).toString('hex'), privateKey.toAddress().toString(), FTA.tapeScript.length / 2);
         this.ft_lp_partialhash = partial_sha256.calculate_partial_hash(ftlpCode.toBuffer().subarray(0, 1536));
-        this.ft_a_partialhash = partial_sha256.calculate_partial_hash(Buffer.from(FTA.codeScript,'hex').subarray(0, 1536));
+        this.ft_a_partialhash = partial_sha256.calculate_partial_hash(Buffer.from(FTA.codeScript, 'hex').subarray(0, 1536));
         // if (!amount_lp && this.ft_lp_amount != BigInt(0)) {
         //     this.ft_lp_amount = this.ft_lp_amount;
         // } else if (amount_lp) {
@@ -111,16 +112,16 @@ export class poolNFT {
         const poolnftTapeScript = tbc.Script.fromASM(`OP_FALSE OP_RETURN ${this.ft_lp_partialhash + this.ft_a_partialhash} ${amountData} ${this.ft_a_contractTxid} 4e54617065`)
 
         const tx = new tbc.Transaction()
-        .from(utxo)
-        //poolNft
-        .addOutput(new tbc.Transaction.Output({
-            script: tbc.Script.fromHex(this.poolnft_code),
-            satoshis: 2000,
-        }))
-        .addOutput(new tbc.Transaction.Output({
-            script: poolnftTapeScript,
-            satoshis: 0,
-        }))
+            .from(utxo)
+            //poolNft
+            .addOutput(new tbc.Transaction.Output({
+                script: tbc.Script.fromHex(this.poolnft_code),
+                satoshis: 2000,
+            }))
+            .addOutput(new tbc.Transaction.Output({
+                script: poolnftTapeScript,
+                satoshis: 0,
+            }))
         tx.feePerKb(100);
         tx.change(privateKey.toAddress());
         tx.sign(privateKey);
@@ -131,7 +132,7 @@ export class poolNFT {
 
     async initPoolNFT(privateKey_from: tbc.PrivateKey, address_to: string, tbc_amount?: number, ft_a?: number): Promise<string> {
         const privateKey = privateKey_from;
-        const FTA = new FT({txidOrParams: this.ft_a_contractTxid, network: this.network});
+        const FTA = new FT({ txidOrParams: this.ft_a_contractTxid, network: this.network });
         await FTA.initialize();
         let amount_lpbn = BigInt(0);
         if (tbc_amount && ft_a) {
@@ -148,10 +149,10 @@ export class poolNFT {
         } else {
             throw new Error('Invalid Input');
         }
-        
+
         const tapeAmountSetIn: bigint[] = [];
         const utxo = await API.fetchUTXO(privateKey, 0.1, this.network);
-        if (utxo.satoshis < this.tbc_amount) { 
+        if (utxo.satoshis < this.tbc_amount) {
             throw new Error('Insufficient TBC amount, please merge UTXOs');
         }
         const poolnft_codehash = tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex'));
@@ -169,7 +170,7 @@ export class poolNFT {
         for (let i = 0; i < tapeAmountSetIn.length; i++) {
             tapeAmountSum += BigInt(tapeAmountSetIn[i]);
         }
-        const { amountHex, changeHex } = FT.buildTapeAmount(this.ft_a_amount, tapeAmountSetIn,1);
+        const { amountHex, changeHex } = FT.buildTapeAmount(this.ft_a_amount, tapeAmountSetIn, 1);
         const writer = new tbc.encoding.BufferWriter();
         writer.writeUInt64LEBN(new tbc.crypto.BN(this.ft_lp_amount));
         writer.writeUInt64LEBN(new tbc.crypto.BN(this.ft_a_amount));
@@ -197,10 +198,10 @@ export class poolNFT {
             script: ftCodeScript,
             satoshis: Number(this.tbc_amount),
         }))
-        .addOutput(new tbc.Transaction.Output({
-            script: ftTapeScript,
-            satoshis: 0
-        }))
+            .addOutput(new tbc.Transaction.Output({
+                script: ftTapeScript,
+                satoshis: 0
+            }))
         //FTLP
         const nameHex = Buffer.from(FTA.name, 'utf8').toString('hex');
         const symbolHex = Buffer.from(FTA.symbol, 'utf8').toString('hex');
@@ -258,7 +259,7 @@ export class poolNFT {
 
     async increaseLP(privateKey_from: tbc.PrivateKey, address_to: string, amount_tbc: number): Promise<string> {
         const privateKey = privateKey_from;
-        const FTA = new FT({txidOrParams: this.ft_a_contractTxid, network: this.network});
+        const FTA = new FT({ txidOrParams: this.ft_a_contractTxid, network: this.network });
         await FTA.initialize();
         const amount_tbcbn = BigInt(amount_tbc * Math.pow(10, 6));
         const changeDate = this.updatePoolNFT(amount_tbc, FTA.decimal, 2);
@@ -280,7 +281,7 @@ export class poolNFT {
         // Build the amount and change hex strings for the tape
         let { amountHex, changeHex } = FT.buildTapeAmount(changeDate.ft_a_difference, tapeAmountSetIn, 1);
         const utxo = await API.fetchUTXO(privateKey, 0.1, this.network);
-        if (utxo.satoshis < amount_tbcbn) { 
+        if (utxo.satoshis < amount_tbcbn) {
             throw new Error('Insufficient TBC amount, please merge UTXOs');
         }
         const poolnft = await this.fetchPoolNftUTXO(this.contractTxid);
@@ -372,17 +373,17 @@ export class poolNFT {
 
     async consumLP(privateKey_from: tbc.PrivateKey, address_to: string, amount_lp: number): Promise<string> {
         const privateKey = privateKey_from;
-        const FTA = new FT({txidOrParams: this.ft_a_contractTxid, network: this.network});
+        const FTA = new FT({ txidOrParams: this.ft_a_contractTxid, network: this.network });
         await FTA.initialize();
         const amount_lpbn = BigInt(amount_lp * Math.pow(10, 6));
         if (this.ft_lp_amount < amount_lpbn) {
             throw new Error('Invalid FT-LP amount input');
         }
         const changeDate = this.updatePoolNFT(amount_lp, FTA.decimal, 1);
-        const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code,'hex'))).toString('hex');
+        const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex'))).toString('hex');
         const tapeAmountSetIn: bigint[] = [];
         const lpTapeAmountSetIn: bigint[] = [];
-        const ftlpCode = this.getFTLPcode(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code,'hex')).toString('hex'), privateKey.toAddress().toString(), FTA.tapeScript.length / 2);
+        const ftlpCode = this.getFTLPcode(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex')).toString('hex'), privateKey.toAddress().toString(), FTA.tapeScript.length / 2);
         const fttxo_lp = await this.fetchFtlpUTXO(ftlpCode.toBuffer().toString('hex'), amount_lpbn);
         if (fttxo_lp.ftBalance === undefined) {
             throw new Error('ftBalance is undefined');
@@ -524,13 +525,13 @@ export class poolNFT {
 
     async swaptoToken(privateKey_from: tbc.PrivateKey, address_to: string, amount_token: number): Promise<string> {
         const privateKey = privateKey_from;
-        const FTA = new FT({txidOrParams: this.ft_a_contractTxid, network: this.network});
+        const FTA = new FT({ txidOrParams: this.ft_a_contractTxid, network: this.network });
         await FTA.initialize();
         const amount_ftbn = BigInt(amount_token * Math.pow(10, FTA.decimal));
         if (this.ft_a_amount < amount_ftbn) {
             throw new Error('Invalid FT-A amount input');
         }
-        const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code,'hex'))).toString('hex');
+        const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex'))).toString('hex');
         const poolMul = this.ft_a_amount * this.tbc_amount;
         const tbc_amount = this.tbc_amount;
         this.ft_a_amount = BigInt(this.ft_a_amount) - BigInt(amount_ftbn);
@@ -620,13 +621,13 @@ export class poolNFT {
 
     async swaptoTBC(privateKey_from: tbc.PrivateKey, address_to: string, amount_tbc: number): Promise<string> {
         const privateKey = privateKey_from;
-        const FTA = new FT({txidOrParams: this.ft_a_contractTxid, network: this.network});
+        const FTA = new FT({ txidOrParams: this.ft_a_contractTxid, network: this.network });
         await FTA.initialize();
         const amount_tbcbn = BigInt(amount_tbc * Math.pow(10, 6));
         if (this.tbc_amount < amount_tbcbn) {
             throw new Error('Invalid tbc amount input');
         }
-        const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code,'hex'))).toString('hex');
+        const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex'))).toString('hex');
         const poolMul = this.ft_a_amount * this.tbc_amount;
         const ft_a_amount = this.ft_a_amount;
         this.tbc_amount = BigInt(this.tbc_amount) - BigInt(amount_tbcbn);
@@ -641,8 +642,8 @@ export class poolNFT {
         tapeAmountSetIn.push(fttxo_a.ftBalance!);
         const fttxo_c = await FTA.fetchFtTXO(this.ft_a_contractTxid, poolnft_codehash160, amount_tbcbn);
         tapeAmountSetIn.push(fttxo_c.ftBalance!);
-         // Check if the balance is sufficient
-         if (amount_tbcbn > BigInt(fttxo_c.satoshis)) {
+        // Check if the balance is sufficient
+        if (amount_tbcbn > BigInt(fttxo_c.satoshis)) {
             throw new Error('Insufficient PoolTbc, please merge FT UTXOs');
         }
         // Build the amount and change hex strings for the tape
@@ -801,11 +802,11 @@ export class poolNFT {
     }
 
     async mergeFTLP(privateKey_from: tbc.PrivateKey): Promise<boolean> {
-        const FTA = new FT({txidOrParams: this.ft_a_contractTxid, network: this.network});
+        const FTA = new FT({ txidOrParams: this.ft_a_contractTxid, network: this.network });
         await FTA.initialize();
         const privateKey = privateKey_from;
         const address = privateKey.toAddress().toString();
-        const ftlpCodeScript = this.getFTLPcode(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code,'hex')).toString('hex'), address, FTA.tapeScript.length / 2);
+        const ftlpCodeScript = this.getFTLPcode(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex')).toString('hex'), address, FTA.tapeScript.length / 2);
         const ftlpCodeHash = tbc.crypto.Hash.sha256(ftlpCodeScript.toBuffer());
         const url_testnet = `http://tbcdev.org:5000/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpCodeHash}`;
         const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpCodeHash}`;
@@ -856,7 +857,7 @@ export class poolNFT {
                 satoshis: 0
             }));
             tx.feePerKb(100)
-            .change(privateKey.toAddress());
+                .change(privateKey.toAddress());
             for (let i = 0; i < fttxo.length; i++) {
                 await tx.setInputScriptAsync({
                     inputIndex: i,
@@ -880,11 +881,11 @@ export class poolNFT {
     }
 
     async mergeFTinPool(privateKey_from: tbc.PrivateKey): Promise<boolean> {
-        const FTA = new FT({txidOrParams: this.ft_a_contractTxid, network: this.network});
+        const FTA = new FT({ txidOrParams: this.ft_a_contractTxid, network: this.network });
         await FTA.initialize();
         const privateKey = privateKey_from;
         const address = privateKey.toAddress().toString();
-        const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code,'hex'))).toString('hex');
+        const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex'))).toString('hex');
         const hash = poolnft_codehash160 + '01';
         const contractTxid = this.ft_a_contractTxid;
         const url_testnet = `http://tbcdev.org:5000/v1/tbc/main/ft/utxo/combine/script/${hash}/contract/${contractTxid}`;
@@ -913,7 +914,7 @@ export class poolNFT {
             }
             const tapeAmountSetIn: bigint[] = [];
             let tapeAmountSum = BigInt(0);
-            let tbcAmountSum  = 0;
+            let tbcAmountSum = 0;
             for (let i = 0; i < fttxo.length; i++) {
                 tapeAmountSetIn.push(fttxo[i].ftBalance!);
                 tapeAmountSum += BigInt(fttxo[i].ftBalance!);
@@ -1004,11 +1005,11 @@ export class poolNFT {
                     txHex: txraw
                 })
             });
-    
+
             if (!response.ok) {
                 throw new Error(`Failed to broadcast TXraw: ${response.statusText}`);
             }
-    
+
             const data = await response.json();
             console.log('txid:', data.result);
             if (data.error) {
@@ -1037,8 +1038,8 @@ export class poolNFT {
             }
         }
         currentinputstxdata = '51' + currentinputstxdata;
-        
-        const currenttxoutputsdata = getCurrentTxOutputsdata(currentTX,option,swapOption);
+
+        const currenttxoutputsdata = getCurrentTxOutputsdata(currentTX, option, swapOption);
         const sig = (currentTX.getSignature(currentUnlockIndex, privateKey).length / 2).toString(16).padStart(2, '0') + currentTX.getSignature(currentUnlockIndex, privateKey);
         const publicKey = (privateKey.toPublicKey().toString().length / 2).toString(16).padStart(2, '0') + privateKey.toPublicKey().toString();
         let unlockingScript = new tbc.Script('');
@@ -1081,7 +1082,7 @@ export class poolNFT {
         const ftlpcode = new tbc.Script(`OP_9 OP_PICK OP_TOALTSTACK OP_1 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_5 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_4 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_3 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_2 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_1 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_0 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_FROMALTSTACK OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_TOALTSTACK OP_SHA256 OP_FROMALTSTACK OP_CAT OP_CAT OP_HASH256 OP_6 OP_PUSH_META 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_DUP OP_HASH160 OP_FROMALTSTACK OP_EQUALVERIFY OP_CHECKSIGVERIFY OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_ELSE OP_TOALTSTACK OP_PARTIAL_HASH OP_DUP 0x20 0x${codeHash} OP_EQUALVERIFY OP_ENDIF OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_7 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_0 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_SHA256 OP_7 OP_PUSH_META OP_EQUAL OP_NIP OP_PUSHDATA1 0x82 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff OP_DROP OP_RETURN 0x15 0x${hash} 0x05 0x02436f6465`)
         return ftlpcode;
     }
-    
+
     updatePoolNFT(increment: number, ft_a_decimal: number, option: 1 | 2 | 3): poolNFTDifference {
         const ft_a_old = this.ft_a_amount;
         const ft_lp_old = this.ft_lp_amount;
@@ -1181,7 +1182,7 @@ function getInputsTxdata(tx: tbc.Transaction, vout: number): string {
     writer.write(Buffer.from(outputs1, 'hex'));
 
     const lockingscript = tx.outputs[vout].script.toBuffer()
-    if(lockingscript.length == 1564){
+    if (lockingscript.length == 1564) {
         const size = getSize(lockingscript.length)//size小端序
         const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, 1536))
         const suffixdata = lockingscript.subarray(1536)
@@ -1195,7 +1196,7 @@ function getInputsTxdata(tx: tbc.Transaction, vout: number): string {
         writer.write(getLengthHex(size.length));
         writer.write(size);
     }
-    else{
+    else {
         const size = getSize(lockingscript.length)//size小端序
         const partialhash = '00'
         const suffixdata = lockingscript
@@ -1212,7 +1213,7 @@ function getInputsTxdata(tx: tbc.Transaction, vout: number): string {
     writer.write(Buffer.from(outputs2length, 'hex'));
     writer.write(Buffer.from(outputs2, 'hex'));
     writer.write(Buffer.from('52', 'hex'));
-    
+
     const inputstxdata = writer.toBuffer().toString('hex');
 
     return `${inputstxdata}`;
@@ -1240,8 +1241,8 @@ function getInputsTxdataSwap(tx: tbc.Transaction, vout: number): string {
     writer.write(tbc.crypto.Hash.sha256(inputWriter2.toBuffer()));
 
     const lockingscript = tx.outputs[vout].script.toBuffer()
-    if(lockingscript.length == 1564){
-        const { outputs1, outputs1length, outputs2, outputs2length } = getInputsTxOutputsData(tx, vout,true);
+    if (lockingscript.length == 1564) {
+        const { outputs1, outputs1length, outputs2, outputs2length } = getInputsTxOutputsData(tx, vout, true);
         writer.write(Buffer.from(outputs1length, 'hex'));
         writer.write(Buffer.from(outputs1, 'hex'));
 
@@ -1264,7 +1265,7 @@ function getInputsTxdataSwap(tx: tbc.Transaction, vout: number): string {
         writer.write(Buffer.from(outputs2length, 'hex'));
         writer.write(Buffer.from(outputs2, 'hex'));
     }
-    else{
+    else {
         const { outputs1, outputs1length, outputs2, outputs2length } = getInputsTxOutputsData(tx, vout);
         writer.write(Buffer.from(outputs1length, 'hex'));
         writer.write(Buffer.from(outputs1, 'hex'));
@@ -1284,7 +1285,7 @@ function getInputsTxdataSwap(tx: tbc.Transaction, vout: number): string {
         writer.write(Buffer.from(outputs2, 'hex'));
     }
     writer.write(Buffer.from('52', 'hex'));
-    
+
     const inputstxdata = writer.toBuffer().toString('hex');
 
     return `${inputstxdata}`;
@@ -1461,7 +1462,7 @@ function getCurrentTxOutputsdata(tx: tbc.Transaction, option: number, swapOption
                     const size = getSize(lockingscript.length); // size小端序
                     const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, 1536));
                     const suffixdata = lockingscript.subarray(1536);
-    
+
                     writer.write(Buffer.from(amountlength, 'hex'));
                     writer.writeUInt64LEBN(tx.outputs[i].satoshisBN);
                     writer.write(getLengthHex(suffixdata.length)); // suffixdata
@@ -1470,7 +1471,7 @@ function getCurrentTxOutputsdata(tx: tbc.Transaction, option: number, swapOption
                     writer.write(Buffer.from(partialhash, 'hex'));
                     writer.write(getLengthHex(size.length));
                     writer.write(size);
-    
+
                     writer.write(Buffer.from(amountlength, 'hex'));
                     writer.writeUInt64LEBN(tx.outputs[i + 1].satoshisBN);
                     writer.write(getLengthHex(tx.outputs[i + 1].script.toBuffer().length));
@@ -1480,7 +1481,7 @@ function getCurrentTxOutputsdata(tx: tbc.Transaction, option: number, swapOption
                     const size = getSize(lockingscript.length); // size小端序
                     const partialhash = '00';
                     const suffixdata = lockingscript;
-    
+
                     writer.write(Buffer.from(amountlength, 'hex'));
                     writer.writeUInt64LEBN(tx.outputs[i].satoshisBN);
                     writer.write(getLengthHex(suffixdata.length)); // suffixdata为完整锁定脚本
@@ -1517,7 +1518,7 @@ function getCurrentTxOutputsdata(tx: tbc.Transaction, option: number, swapOption
                 //可能的FT-PL或FTAbyC找零
                 case 9:
                     lockingscript = tx.outputs[7].script.toBuffer();
-                    if(lockingscript.subarray(1404, 1409).toString('hex') === 'ffffffffff') {
+                    if (lockingscript.subarray(1404, 1409).toString('hex') === 'ffffffffff') {
                         const size = getSize(lockingscript.length); // size小端序
                         const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, 1536));
                         const suffixdata = lockingscript.subarray(1536);
@@ -1559,7 +1560,7 @@ function getCurrentTxOutputsdata(tx: tbc.Transaction, option: number, swapOption
                 //可能的FT-PL或FTAbyC找零 + 普通找零
                 case 10:
                     lockingscript = tx.outputs[7].script.toBuffer();
-                    if(lockingscript.subarray(1404, 1409).toString('hex') === 'ffffffffff') {
+                    if (lockingscript.subarray(1404, 1409).toString('hex') === 'ffffffffff') {
                         size = getSize(lockingscript.length); // size小端序
                         partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, 1536));
                         suffixdata = lockingscript.subarray(1536);
@@ -1618,42 +1619,42 @@ function getCurrentTxOutputsdata(tx: tbc.Transaction, option: number, swapOption
                         writer.write(size);
                     }
                     break;
-                    //只有FT-PL、FTAbyC找零
-                    case 11:
-                        for (let i = 7; i < tx.outputs.length; i++) {
-                            const lockingscript = tx.outputs[i].script.toBuffer();
-                            if (lockingscript.length == 1564) {
-                                const size = getSize(lockingscript.length); // size小端序
-                                const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, 1536));
-                                const suffixdata = lockingscript.subarray(1536);
-                                writer.write(Buffer.from(amountlength, 'hex'));
-                                writer.writeUInt64LEBN(tx.outputs[i].satoshisBN);
-                                writer.write(getLengthHex(suffixdata.length)); // suffixdata
-                                writer.write(suffixdata);
-                                writer.write(Buffer.from(hashlength, 'hex')); // partialhash
-                                writer.write(Buffer.from(partialhash, 'hex'));
-                                writer.write(getLengthHex(size.length));
-                                writer.write(size);
-                                writer.write(Buffer.from(amountlength, 'hex'));
-                                writer.writeUInt64LEBN(tx.outputs[i + 1].satoshisBN);
-                                writer.write(getLengthHex(tx.outputs[i + 1].script.toBuffer().length));
-                                writer.write(tx.outputs[i + 1].script.toBuffer());
-                                i++;
-                            } else {
-                                const size = getSize(lockingscript.length); // size小端序
-                                const partialhash = '00';
-                                const suffixdata = lockingscript;
-                                writer.write(Buffer.from(amountlength, 'hex'));
-                                writer.writeUInt64LEBN(tx.outputs[i].satoshisBN);
-                                writer.write(getLengthHex(suffixdata.length)); // suffixdata为完整锁定脚本
-                                writer.write(suffixdata);
-                                writer.write(Buffer.from(partialhash, 'hex')); // partialhash为空
-                                writer.write(getLengthHex(size.length));
-                                writer.write(size);
-                            }
+                //只有FT-PL、FTAbyC找零
+                case 11:
+                    for (let i = 7; i < tx.outputs.length; i++) {
+                        const lockingscript = tx.outputs[i].script.toBuffer();
+                        if (lockingscript.length == 1564) {
+                            const size = getSize(lockingscript.length); // size小端序
+                            const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, 1536));
+                            const suffixdata = lockingscript.subarray(1536);
+                            writer.write(Buffer.from(amountlength, 'hex'));
+                            writer.writeUInt64LEBN(tx.outputs[i].satoshisBN);
+                            writer.write(getLengthHex(suffixdata.length)); // suffixdata
+                            writer.write(suffixdata);
+                            writer.write(Buffer.from(hashlength, 'hex')); // partialhash
+                            writer.write(Buffer.from(partialhash, 'hex'));
+                            writer.write(getLengthHex(size.length));
+                            writer.write(size);
+                            writer.write(Buffer.from(amountlength, 'hex'));
+                            writer.writeUInt64LEBN(tx.outputs[i + 1].satoshisBN);
+                            writer.write(getLengthHex(tx.outputs[i + 1].script.toBuffer().length));
+                            writer.write(tx.outputs[i + 1].script.toBuffer());
+                            i++;
+                        } else {
+                            const size = getSize(lockingscript.length); // size小端序
+                            const partialhash = '00';
+                            const suffixdata = lockingscript;
+                            writer.write(Buffer.from(amountlength, 'hex'));
+                            writer.writeUInt64LEBN(tx.outputs[i].satoshisBN);
+                            writer.write(getLengthHex(suffixdata.length)); // suffixdata为完整锁定脚本
+                            writer.write(suffixdata);
+                            writer.write(Buffer.from(partialhash, 'hex')); // partialhash为空
+                            writer.write(getLengthHex(size.length));
+                            writer.write(size);
                         }
-                        writer.write(Buffer.from('00', 'hex'));
-                        break;
+                    }
+                    writer.write(Buffer.from('00', 'hex'));
+                    break;
                 //完整输出
                 case 12:
                     for (let i = 7; i < tx.outputs.length; i++) {
@@ -1917,7 +1918,7 @@ function getPoolNFTPreTxdata(tx: tbc.Transaction): string {
     writer.writeUInt32LE(tx.nLockTime);
     writer.writeInt32LE(tx.inputs.length);
     writer.writeInt32LE(tx.outputs.length);
-   
+
     const inputWriter = new tbc.encoding.BufferWriter();
     const inputWriter2 = new tbc.encoding.BufferWriter();
     for (const input of tx.inputs) {
@@ -1938,7 +1939,7 @@ function getPoolNFTPreTxdata(tx: tbc.Transaction): string {
     writer.writeUInt64LEBN(tx.outputs[1].satoshisBN);
     writer.write(getLengthHex(tx.outputs[1].script.toBuffer().length));
     writer.write(tx.outputs[1].script.toBuffer());
-    writer.write(Buffer.from(getOutputsData(tx,2), 'hex'));
+    writer.write(Buffer.from(getOutputsData(tx, 2), 'hex'));
     return writer.toBuffer().toString('hex');
 }
 
@@ -1949,7 +1950,7 @@ function getPoolNFTPrePreTxdata(tx: tbc.Transaction): string {
     writer.writeUInt32LE(tx.nLockTime);
     writer.writeInt32LE(tx.inputs.length);
     writer.writeInt32LE(tx.outputs.length);
-   
+
     const inputWriter = new tbc.encoding.BufferWriter();
     const inputWriter2 = new tbc.encoding.BufferWriter();
     for (const input of tx.inputs) {
@@ -1966,7 +1967,7 @@ function getPoolNFTPrePreTxdata(tx: tbc.Transaction): string {
     writer.writeUInt64LEBN(tx.outputs[0].satoshisBN);
     writer.write(Buffer.from(hashlength, 'hex'));
     writer.write(tbc.crypto.Hash.sha256(tx.outputs[0].script.toBuffer()));
-    writer.write(Buffer.from(getOutputsData(tx,1), 'hex'));
+    writer.write(Buffer.from(getOutputsData(tx, 1), 'hex'));
     return writer.toBuffer().toString('hex');
 }
 
@@ -1980,7 +1981,7 @@ function getOutputsData(tx: tbc.Transaction, index: number) {
         outputWriter.writeUInt64LEBN(tx.outputs[i].satoshisBN);
         outputWriter.write(tbc.crypto.Hash.sha256(tx.outputs[i].script.toBuffer()));
     }
-    outputs = outputWriter.toBuffer().toString('hex'); 
+    outputs = outputWriter.toBuffer().toString('hex');
 
     if (outputs === '') {
         outputs = '00';
@@ -2039,20 +2040,20 @@ function getLengthHex(length: number): Buffer {
     if (length < 76) {
         return Buffer.from(length.toString(16).padStart(2, '0'), 'hex');
     } else if (length > 75 && length < 256) {
-        return Buffer.concat([Buffer.from('4c', 'hex') , Buffer.from(length.toString(16), 'hex')]);
+        return Buffer.concat([Buffer.from('4c', 'hex'), Buffer.from(length.toString(16), 'hex')]);
     } else {
-        return Buffer.concat([Buffer.from('4d', 'hex') , Buffer.from(length.toString(16).padStart(4, '0'), 'hex').reverse()]);
+        return Buffer.concat([Buffer.from('4d', 'hex'), Buffer.from(length.toString(16).padStart(4, '0'), 'hex').reverse()]);
     }
 }
 
 function getSize(length: number): Buffer {
     if (length < 256) {
         return Buffer.from(length.toString(16).padStart(2, '0'), 'hex');
-    } 
+    }
     else {
         return Buffer.from(length.toString(16).padStart(4, '0'), 'hex').reverse();
     }
 }
 
-export default poolNFT;
 module.exports = poolNFT;
+
