@@ -1,7 +1,7 @@
 import * as tbc from 'tbc-lib-js'
 import { API } from '../api/api';
-import * as partial_sha256 from 'tbc-lib-js/lib/util/partial-sha256'
 import { FT } from './ft';
+import * as partial_sha256 from 'tbc-lib-js/lib/util/partial-sha256'
 const version = 10;
 const vliolength = '10';
 const amountlength = '08';
@@ -2055,3 +2055,4 @@ function getSize(length: number): Buffer {
 }
 
 export default poolNFT;
+module.exports = poolNFT;

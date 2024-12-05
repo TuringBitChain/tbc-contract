@@ -18,3 +18,4 @@ globalThis.contract = contract.version
 
 contract.FT = require('./lib/contract/ft')
 contract.poolNFT = require('./lib/contract/poolNFT')
+contract.API = require('./lib/api/api')

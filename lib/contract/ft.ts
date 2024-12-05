@@ -959,3 +959,4 @@ function getSize(length: number): Buffer {
     }
 }
 export default FT;
+module.exports = FT;
