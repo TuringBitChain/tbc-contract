@@ -1,6 +1,6 @@
 import * as tbc from 'tbc-lib-js';
-import { API } from '../api/api';
-import * as partial_sha256 from 'tbc-lib-js/lib/util/partial-sha256';
+const { API } = require("../api/api")
+const partial_sha256 = require('tbc-lib-js/lib/util/partial-sha256');
 const version = 10;
 const vliolength = '10'; // Version + nLockTime + inputCount + outputCount (16 bytes)
 const amountlength = '08'; // Length of the amount field (8 bytes)
@@ -18,7 +18,7 @@ interface FtInfo {
 /**
  * Class representing a Fungible Token (FT) with methods for minting and transferring.
  */
-export class FT {
+class FT {
     name: string;
     symbol: string;
     decimal: number;
@@ -117,7 +117,7 @@ export class FT {
         const tapeSize = tapeScript.toBuffer().length;
 
         // Fetch UTXO for the private key's address
-        const utxo = await API.fetchUTXO(privateKey, 0.001 , this.network);
+        const utxo = await API.fetchUTXO(privateKey, 0.001, this.network);
 
         // Build the code script for minting
         const codeScript = this.getFTmintCode(utxo.txId, utxo.outputIndex, address_to, tapeSize);
@@ -185,7 +185,7 @@ export class FT {
         // Build the amount and change hex strings for the tape
         const { amountHex, changeHex } = FT.buildTapeAmount(amountbn, tapeAmountSetIn);
         // Fetch UTXO for the sender's address
-        const utxo = await API.fetchUTXO(privateKey, 0.1 , this.network);
+        const utxo = await API.fetchUTXO(privateKey, 0.1, this.network);
         // Construct the transaction
         const tx = new tbc.Transaction()
             .from(fttxo_a)
@@ -374,7 +374,7 @@ export class FT {
             if (changeHex != '000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000') {
                 throw new Error('Change amount is not zero');
             }
-            const utxo = await API.fetchUTXO(privateKey, 0.1 , this.network);
+            const utxo = await API.fetchUTXO(privateKey, 0.1, this.network);
             const tx = new tbc.Transaction()
                 .from(fttxo)
                 .from(utxo);
@@ -958,5 +958,5 @@ function getSize(length: number): Buffer {
         return Buffer.from(length.toString(16).padStart(4, '0'), 'hex').reverse();
     }
 }
-export default FT;
+
 module.exports = FT;
