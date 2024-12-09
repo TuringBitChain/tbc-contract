@@ -44,10 +44,13 @@ declare module 'tbc-contract' {
     export class NFT {
         constructor(contract_id: string);
         initialize(nftInfo: NFTInfo);
-        static createCollection(address: string, privateKey: tbc.PrivateKey, data: CollectionData, utxos: tbc.Transaction.IUnspentOutput[]): string;
-        static createNFT(collection_id: string, address: string, privateKey: tbc.PrivateKey, data: NFTData, utxos: tbc.Transaction.IUnspentOutput[], nfttxo: tbc.Transaction.IUnspentOutput): string
-        transferNFT(address_from: string, address_to: string, privateKey: tbc.PrivateKey, utxos: tbc.Transaction.IUnspentOutput[], pre_tx: tbc.Transaction, pre_pre_tx: tbc.Transaction): string
+        static createCollection(address: string, privateKey: PrivateKey, data: CollectionData, utxos: Transaction.IUnspentOutput[]): string;
+        static createNFT(collection_id: string, address: string, privateKey: PrivateKey, data: NFTData, utxos: Transaction.IUnspentOutput[], nfttxo: Transaction.IUnspentOutput): string;
+        transferNFT(address_from: string, address_to: string, privateKey: PrivateKey, utxos: Transaction.IUnspentOutput[], pre_tx: Transaction, pre_pre_tx: Transaction): string;
         static encodeByBase64(filePath: string): Promise<string>;
+        static buildCodeScript(tx_hash: string, outputIndex: number): Script;
+        static buildHoldScript(address: string): Script;
+        static buildTapeScript(data: CollectionData | NFTData): Script;
     }
 
     interface FtInfo {
