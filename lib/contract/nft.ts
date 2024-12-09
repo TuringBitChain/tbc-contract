@@ -52,10 +52,11 @@ class NFT {
             nftTransferTimeCount,
             nftIcon } = await API.fetchNFTInfo(this.contract_id, network);
         let file: string = "";
-        if (nftIcon === collectionId + "00000000") {
+        const writer = new tbc.encoding.BufferWriter();
+        if (nftIcon === collectionId + writer.writeUInt32LE(collectionIndex).toBuffer().toString("hex")) {
             file = nftIcon;
         } else {
-            file = this.contract_id + "02000000";
+            file = this.contract_id + "00000000";
         }
         this.nftData = {
             nftName,
@@ -101,7 +102,8 @@ class NFT {
         const hold = NFT.buildHoldScript(address);
         const nfttxo = await API.fetchNFTTXO({ script: hold.toBuffer().toString("hex"), tx_hash: collection_id, network });
         if (!data.file) {
-            data.file = "uctxo.txId" + "00000000";
+            const writer = new tbc.encoding.BufferWriter();
+            data.file = collection_id + writer.writeUInt32LE(nfttxo.outputIndex).toBuffer().toString("hex");
         }
         const tx = new tbc.Transaction();
         tx.from(nfttxo);
