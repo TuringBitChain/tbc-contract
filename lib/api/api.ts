@@ -14,6 +14,16 @@ interface NFTInfo {
     nftIcon: string
 }
 
+interface FtInfo {
+    contractTxid?: string;
+    codeScript: string;
+    tapeScript: string;
+    totalSupply: number;
+    decimal: number;
+    name: string;
+    symbol: string;
+}
+
 class API {
     /**sda
      * Get the FT balance for a specified contract transaction ID and address or hash.
@@ -56,6 +66,110 @@ class API {
             return ftBalance;
         } catch (error) {
             throw new Error("Failed to get ftBalance.");
+        }
+    }
+
+    /**
+     * Fetches an FT UTXO that satisfies the required amount.
+     * @param contractTxid - The contract transaction ID.
+     * @param addressOrHash - The recipient's address or hash.
+     * @param amount - The required amount.
+     * @returns The FT UTXO that meets the amount requirement.
+     */
+    static async fetchFtTXO(contractTxid: string, addressOrHash: string, amount: bigint, codeScript: string, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput> {
+        let base_url = "";
+        if (network) {
+            base_url = API.getBaseURL(network)
+        } else {
+            base_url = API.getBaseURL("mainnet")
+        }
+        let hash = '';
+        if (tbc.Address.isValid(addressOrHash)) {
+            // If the recipient is an address
+            const publicKeyHash = tbc.Address.fromString(addressOrHash).hashBuffer.toString('hex');
+            hash = publicKeyHash + '00';
+        } else {
+            // If the recipient is a hash
+            if (addressOrHash.length !== 40) {
+                throw new Error('Invalid address or hash');
+            }
+            hash = addressOrHash + '01';
+        }
+        const url = base_url + `ft/utxo/combine/script/${hash}/contract/${contractTxid}`;
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+            if (!response.ok) {
+                throw new Error(`Failed to fetch from URL: ${url}, status: ${response.status}`);
+            }
+            const responseData = await response.json();
+            let data = responseData.ftUtxoList[0];
+            for (let i = 0; i < responseData.ftUtxoList.length; i++) {
+                if (responseData.ftUtxoList[i].ftBalance >= amount) {
+                    data = responseData.ftUtxoList[i];
+                    break;
+                }
+            }
+            if (data.ftBalance < amount) {
+                const totalBalance = await API.getFTbalance(contractTxid, addressOrHash, network);
+                if (totalBalance >= amount) {
+                    throw new Error('Insufficient FTbalance, please merge FT UTXOs');
+                }
+            }
+            const fttxo: tbc.Transaction.IUnspentOutput = {
+                txId: data.utxoId,
+                outputIndex: data.utxoVout,
+                script: codeScript,
+                satoshis: data.utxoBalance,
+                ftBalance: data.ftBalance
+            }
+            return fttxo;
+        } catch (error) {
+            throw new Error("Failed to fetch FTTXO.");
+        }
+    }
+
+    /**
+     * Fetches the FT information for a given contract transaction ID.
+     *
+     * @param {string} contractTxid - The contract transaction ID.
+     * @returns {Promise<FtInfo>} Returns a Promise that resolves to an FtInfo object containing the FT information.
+     * @throws {Error} Throws an error if the request to fetch FT information fails.
+     */
+    static async fetchFtInfo(contractTxid: string, network?: "testnet" | "mainnet"): Promise<FtInfo> {
+        let base_url = "";
+        if (network) {
+            base_url = API.getBaseURL(network)
+        } else {
+            base_url = API.getBaseURL("mainnet")
+        }
+        const url = base_url + `ft/info/contract/id/${contractTxid}`;
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+            if (!response.ok) {
+                throw new Error(`Failed to fetch from URL: ${url}, status: ${response.status}`);
+            }
+            const data = await response.json();
+            const ftInfo: FtInfo = {
+                codeScript: data.ftCodeScript,
+                tapeScript: data.ftTapeScript,
+                totalSupply: data.ftSupply,
+                decimal: data.ftDecimal,
+                name: data.ftName,
+                symbol: data.ftSymbol
+            }
+            return ftInfo;
+        } catch (error) {
+            throw new Error("Failed to fetch FtInfo.");
         }
     }
 
