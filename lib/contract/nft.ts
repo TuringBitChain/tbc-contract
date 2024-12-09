@@ -141,9 +141,8 @@ class NFT {
     async transferNFT(address_from: string, address_to: string, privateKey: tbc.PrivateKey, utxos: tbc.Transaction.IUnspentOutput[], network?: "testnet" | "mainnet"): Promise<string> {
         const code = NFT.buildCodeScript(this.collection_id, this.collection_index);
         const nfttxo = await API.fetchNFTTXO({ script: code.toBuffer().toString("hex"), network });
-        const pre_tx = new tbc.Transaction(await API.fetchTXraw(nfttxo.txId, network));
-
-        const pre_pre_tx = new tbc.Transaction(await API.fetchTXraw(pre_tx.toObject().inputs[0].prevTxId, network));
+        const pre_tx = await API.fetchTXraw(nfttxo.txId, network);
+        const pre_pre_tx = await API.fetchTXraw(pre_tx.toObject().inputs[0].prevTxId, network);
 
         const tx = new tbc.Transaction()
             .addInputFromPrevTx(pre_tx, 0)
