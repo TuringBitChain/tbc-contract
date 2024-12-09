@@ -192,7 +192,7 @@ class NFT {
         return tx.uncheckedSerialize();
     }
 
-    private static buildCodeScript(tx_hash: string, outputIndex: number): tbc.Script {
+    static buildCodeScript(tx_hash: string, outputIndex: number): tbc.Script {
         const tx_id = Buffer.from(tx_hash, "hex").reverse().toString("hex");
         const writer = new tbc.encoding.BufferWriter();
         const vout = writer.writeUInt32LE(outputIndex).toBuffer().toString("hex");
@@ -201,13 +201,13 @@ class NFT {
         return code;
     };
 
-    private static buildHoldScript(address: string): tbc.Script {
+    static buildHoldScript(address: string): tbc.Script {
         const pubKeyHash = tbc.Address.fromString(address).hashBuffer.toString("hex");
         const hold = new tbc.Script('OP_DUP OP_HASH160' + ' 0x14 0x' + pubKeyHash + ' OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x0d 0x5631204d696e74204e486f6c64');
         return hold;
     }
 
-    private static buildTapeScript(data: CollectionData | NFTData): tbc.Script {
+    static buildTapeScript(data: CollectionData | NFTData): tbc.Script {
         const dataHex = Buffer.from(JSON.stringify(data)).toString("hex");
         const tape = tbc.Script.fromASM(`OP_FALSE OP_RETURN ${dataHex} 4e54617065`);
         return tape;
