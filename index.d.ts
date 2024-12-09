@@ -20,9 +20,9 @@ declare module 'tbc-contract' {
         static mergeUTXO(privateKey: PrivateKey, network?: "testnet" | "mainnet"): Promise<boolean>;
         static fetchTXraw(txid: string, network?: "testnet" | "mainnet"): Promise<Transaction>;
         static broadcastTXraw(txraw: string, network?: "testnet" | "mainnet"): Promise<string>;
-        static fetchUTXOs(address: string, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput[]>;
-        static selectUTXOs(address: string, amount_tbc: number, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput[]>;
-        static fetchNFTTXO(params: { script: string, tx_hash?: string, network?: "testnet" | "mainnet" }): Promise<tbc.Transaction.IUnspentOutput>;
+        static fetchUTXOs(address: string, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput[]>;
+        static selectUTXOs(address: string, amount_tbc: number, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput[]>;
+        static fetchNFTTXO(params: { script: string, tx_hash?: string, network?: "testnet" | "mainnet" }): Promise<Transaction.IUnspentOutput>;
         static fetchNFTInfo(contract_id: string, network?: "testnet" | "mainnet"): Promise<NFTInfo>;
     }
 
@@ -44,9 +44,9 @@ declare module 'tbc-contract' {
     export class NFT {
         constructor(contract_id: string);
         initialize(network?: "testnet" | "mainnet"): Promise<void>;
-        static createCollection(address: string, privateKey: tbc.PrivateKey, data: CollectionData, utxos: tbc.Transaction.IUnspentOutput[], network?: "testnet" | "mainnet"): Promise<string>;
-        static createNFT(collection_id: string, address: string, privateKey: tbc.PrivateKey, data: NFTData, utxos: tbc.Transaction.IUnspentOutput[], network?: "testnet" | "mainnet"): Promise<string>;
-        transferNFT(address_from: string, address_to: string, privateKey: tbc.PrivateKey, utxos: tbc.Transaction.IUnspentOutput[], network?: "testnet" | "mainnet"): Promise<string>;
+        static createCollection(address: string, privateKey: PrivateKey, data: CollectionData, utxos: Transaction.IUnspentOutput[], network?: "testnet" | "mainnet"): Promise<string>;
+        static createNFT(collection_id: string, address: string, privateKey: PrivateKey, data: NFTData, utxos: Transaction.IUnspentOutput[], network?: "testnet" | "mainnet"): Promise<string>;
+        transferNFT(address_from: string, address_to: string, privateKey: PrivateKey, utxos: Transaction.IUnspentOutput[], network?: "testnet" | "mainnet"): Promise<string>;
         static encodeByBase64(filePath: string): Promise<string>;
     }
 
