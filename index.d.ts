@@ -1,11 +1,53 @@
 import { PrivateKey, Transaction, Script } from "tbc-lib-js";
 declare module 'tbc-contract' {
+    interface NFTInfo {
+        collectionId: string;
+        collectionIndex: number;
+        collectionName: string;
+        nftCodeBalance: number;
+        nftP2pkhBalance: number;
+        nftName: string;
+        nftSymbol: string;
+        nft_attributes: string;
+        nftDescription: string;
+        nftTransferTimeCount: number;
+        nftIcon: string
+    }
+
     export class API {
         static getFTbalance(contractTxid: string, addressOrHash: string, network?: "testnet" | "mainnet"): Promise<bigint>;
         static fetchUTXO(privateKey: PrivateKey, amount: number, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput>;
         static mergeUTXO(privateKey: PrivateKey, network?: "testnet" | "mainnet"): Promise<boolean>;
         static fetchTXraw(txid: string, network?: "testnet" | "mainnet"): Promise<Transaction>;
         static broadcastTXraw(txraw: string, network?: "testnet" | "mainnet"): Promise<string>;
+        static fetchUTXOs(address: string, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput[]>;
+        static selectUTXOs(address: string, amount_tbc: number, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput[]>;
+        static fetchNFTTXO(params: { script: string, tx_hash?: string, network?: "testnet" | "mainnet" }): Promise<tbc.Transaction.IUnspentOutput>;
+        static fetchNFTInfo(contract_id: string, network?: "testnet" | "mainnet"): Promise<NFTInfo>;
+    }
+
+    interface CollectionData {
+        collectionName: string;
+        description: string;
+        supply: number;
+        file: string;
+    };
+
+    interface NFTData {
+        nftName: string;
+        symbol: string;
+        discription: string;
+        attributes: string;
+        file?: string;
+    }
+
+    export class NFT {
+        constructor(contract_id: string);
+        initialize(network?: "testnet" | "mainnet"): Promise<void>;
+        static createCollection(address: string, privateKey: tbc.PrivateKey, data: CollectionData, utxos: tbc.Transaction.IUnspentOutput[], network?: "testnet" | "mainnet"): Promise<string>;
+        static createNFT(collection_id: string, address: string, privateKey: tbc.PrivateKey, data: NFTData, utxos: tbc.Transaction.IUnspentOutput[], network?: "testnet" | "mainnet"): Promise<string>;
+        transferNFT(address_from: string, address_to: string, privateKey: tbc.PrivateKey, utxos: tbc.Transaction.IUnspentOutput[], network?: "testnet" | "mainnet"): Promise<string>;
+        static encodeByBase64(filePath: string): Promise<string>;
     }
 
     interface FtInfo {
@@ -17,7 +59,7 @@ declare module 'tbc-contract' {
         name: string;
         symbol: string;
     }
-    
+
     export class FT {
         name: string;
         symbol: string;
@@ -27,7 +69,7 @@ declare module 'tbc-contract' {
         tapeScript: string;
         contractTxid: string;
         network: "testnet" | "mainnet"
-        constructor(config?: {txidOrParams: string | { name: string, symbol: string, amount: number, decimal: number }, network?: "testnet" | "mainnet"});
+        constructor(config?: { txidOrParams: string | { name: string, symbol: string, amount: number, decimal: number }, network?: "testnet" | "mainnet" });
         initialize(): Promise<void>;
         MintFT(privateKey_from: PrivateKey, address_to: string): Promise<string>;
         transfer(privateKey_from: PrivateKey, address_to: string, amount: number): Promise<string>;
@@ -59,7 +101,7 @@ declare module 'tbc-contract' {
         currentContractVout: number;
         currentContractSatoshi: number;
     }
-    
+
     interface poolNFTDifference {
         ft_lp_difference: bigint;
         ft_a_difference: bigint;
@@ -78,7 +120,7 @@ declare module 'tbc-contract' {
         private ft_a_number: number;
         network: "testnet" | "mainnet"
 
-        constructor(config?: {txidOrParams?: string | {ftContractTxid: string, tbc_amount: number, ft_a: number}, network?: "testnet" | "mainnet"});
+        constructor(config?: { txidOrParams?: string | { ftContractTxid: string, tbc_amount: number, ft_a: number }, network?: "testnet" | "mainnet" });
         initCreate(ftContractTxid?: string): Promise<void>;
         initfromContractId(): Promise<void>;
         createPoolNFT(privateKey_from: PrivateKey): Promise<string>;

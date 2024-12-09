@@ -1,5 +1,5 @@
 import * as tbc from 'tbc-lib-js';
-const { API } = require("../api/api")
+const API = require('../api/api');
 const partial_sha256 = require('tbc-lib-js/lib/util/partial-sha256');
 const version = 10;
 const vliolength = '10'; // Version + nLockTime + inputCount + outputCount (16 bytes)
@@ -960,3 +960,4 @@ function getSize(length: number): Buffer {
 }
 
 module.exports = FT;
+
