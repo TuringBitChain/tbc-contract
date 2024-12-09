@@ -1,6 +1,6 @@
 import * as tbc from 'tbc-lib-js'
 
-interface NFTInfo {
+export interface NFTInfo {
     collectionId: string;
     collectionIndex: number;
     collectionName: string;
@@ -11,7 +11,7 @@ interface NFTInfo {
     nft_attributes: string;
     nftDescription: string;
     nftTransferTimeCount: number;
-    nftIcon: string
+    nftIcon: string;
 }
 
 class API {
