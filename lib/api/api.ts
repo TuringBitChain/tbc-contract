@@ -23,7 +23,7 @@ class API {
      * @returns {Promise<bigint>} Returns a Promise that resolves to the FT balance.
      * @throws {Error} Throws an error if the address or hash is invalid, or if the request fails.
      */
-    static getBaseURL(network: "testnet" | "mainnet"): string {
+    private static getBaseURL(network: "testnet" | "mainnet"): string {
         const url_testnet = `http://tbcdev.org:5000/v1/tbc/main/`;
         const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/`;
         const base_url = network == "testnet" ? url_testnet : url_mainnet;
