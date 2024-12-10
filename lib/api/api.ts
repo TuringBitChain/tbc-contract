@@ -1,6 +1,7 @@
 import * as tbc from 'tbc-lib-js'
 import { getPrePreTxdata } from '../contract/ft'
-interface NFTInfo {
+
+export interface NFTInfo {
     collectionId: string;
     collectionIndex: number;
     collectionName: string;
@@ -11,7 +12,7 @@ interface NFTInfo {
     nft_attributes: string;
     nftDescription: string;
     nftTransferTimeCount: number;
-    nftIcon: string
+    nftIcon: string;
 }
 
 interface FtInfo {
