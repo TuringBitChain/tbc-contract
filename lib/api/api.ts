@@ -1,5 +1,5 @@
 import * as tbc from 'tbc-lib-js'
-
+import { getPrePreTxdata } from '../contract/ft'
 interface NFTInfo {
     collectionId: string;
     collectionIndex: number;
@@ -171,6 +171,21 @@ class API {
         } catch (error) {
             throw new Error("Failed to fetch FtInfo.");
         }
+    }
+
+    static async fetchFtPrePreTxData(preTX: tbc.Transaction, preTxVout: number, network?: "testnet" | "mainnet"): Promise<string> {
+        const preTXtape = preTX.outputs[preTxVout + 1].script.toBuffer().subarray(3, 51).toString('hex');
+        let prepretxdata = '';
+        for (let i = preTXtape.length - 16; i >= 0; i -= 16) {
+            const chunk = preTXtape.substring(i, i + 16);
+            if (chunk != '0000000000000000') {
+                const inputIndex = i / 16;
+                const prepreTX = await API.fetchTXraw(preTX.inputs[inputIndex].prevTxId.toString('hex'), network);
+                prepretxdata = prepretxdata + getPrePreTxdata(prepreTX[i], preTX.inputs[inputIndex].outputIndex);
+            }
+        }
+        prepretxdata = '57' + prepretxdata;
+        return prepretxdata;
     }
 
     static async fetchUTXO(privateKey: tbc.PrivateKey, amount: number, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput> {

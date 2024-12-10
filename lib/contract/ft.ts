@@ -73,8 +73,7 @@ class FT {
     /**
      * Initializes the FT instance by fetching the FTINFO.
      */
-    async initialize() {
-        const ftInfo = await this.fetchFtInfo(this.contractTxid);
+    async initialize(ftInfo: FtInfo): Promise<void> {
         this.name = ftInfo.name;
         this.symbol = ftInfo.symbol;
         this.decimal = ftInfo.decimal;
@@ -89,7 +88,7 @@ class FT {
      * @param address_to - The recipient's address.
      * @returns The raw transaction hex string.
      */
-    private async MintFT(privateKey_from: tbc.PrivateKey, address_to: string): Promise<string> {
+    private async MintFT(privateKey_from: tbc.PrivateKey, address_to: string, utxo:tbc.Transaction.IUnspentOutput): Promise<string> {
         const privateKey = privateKey_from;
         const address_from = privateKey.toAddress().toString();
         const name = this.name;
@@ -115,9 +114,6 @@ class FT {
         const tapeScript = tbc.Script.fromASM(`OP_FALSE OP_RETURN ${tapeAmount} ${decimalHex} ${nameHex} ${symbolHex} 4654617065`);
         //console.log('tape:', tape.toBuffer().toString('hex'));
         const tapeSize = tapeScript.toBuffer().length;
-
-        // Fetch UTXO for the private key's address
-        const utxo = await API.fetchUTXO(privateKey, 0.001, this.network);
 
         // Build the code script for minting
         const codeScript = this.getFTmintCode(utxo.txId, utxo.outputIndex, address_to, tapeSize);
@@ -151,7 +147,7 @@ class FT {
      * @param amount - The amount to transfer.
      * @returns The raw transaction hex string.
      */
-    async transfer(privateKey_from: tbc.PrivateKey, address_to: string, amount: number): Promise<string> {
+    transfer(privateKey_from: tbc.PrivateKey, address_to: string, amount: number, ftutxo_a:tbc.Transaction.IUnspentOutput, utxo:tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction, prepreTxData: string): string {
         const privateKey = privateKey_from;
         const address_from = privateKey.toAddress().toString();
         const code = this.codeScript;
@@ -163,8 +159,8 @@ class FT {
         }
         const amountbn = BigInt(amount * Math.pow(10, decimal));
         // Fetch FT UTXO for the transfer
-        const fttxo_a = await this.fetchFtTXO(this.contractTxid, address_from, amountbn);
-        tapeAmountSetIn.push(fttxo_a.ftBalance!);
+        //const ftutxo_a = await this.fetchFtTXO(this.contractTxid, address_from, amountbn);
+        tapeAmountSetIn.push(ftutxo_a.ftBalance!);
         // Calculate the total available balance
         let tapeAmountSum = BigInt(0);
         for (let i = 0; i < tapeAmountSetIn.length; i++) {
@@ -185,10 +181,10 @@ class FT {
         // Build the amount and change hex strings for the tape
         const { amountHex, changeHex } = FT.buildTapeAmount(amountbn, tapeAmountSetIn);
         // Fetch UTXO for the sender's address
-        const utxo = await API.fetchUTXO(privateKey, 0.1, this.network);
+        //const utxo = await API.fetchUTXO(privateKey, 0.1, this.network);
         // Construct the transaction
         const tx = new tbc.Transaction()
-            .from(fttxo_a)
+            .from(ftutxo_a)
             .from(utxo);
 
         // Build the code script for the recipient
@@ -220,113 +216,16 @@ class FT {
         tx.feePerKb(100)
         tx.change(address_from);
         // Set the input script asynchronously for the FT UTXO
-        await tx.setInputScriptAsync({
+        tx.setInputScript({
             inputIndex: 0,
-        }, async (tx) => {
-            const unlockingScript = await this.getFTunlock(privateKey, tx, 0, fttxo_a.txId, fttxo_a.outputIndex);
+        }, (tx) => {
+            const unlockingScript = this.getFTunlock(privateKey, tx, preTX, prepreTxData , 0, ftutxo_a.outputIndex);
             return unlockingScript;
         });
         tx.sign(privateKey);
-        await tx.sealAsync();
+        tx.seal();
         const txraw = tx.uncheckedSerialize();
         return txraw;
-    }
-
-    /**
-     * Fetches an FT UTXO that satisfies the required amount.
-     * @param contractTxid - The contract transaction ID.
-     * @param addressOrHash - The recipient's address or hash.
-     * @param amount - The required amount.
-     * @returns The FT UTXO that meets the amount requirement.
-     */
-    async fetchFtTXO(contractTxid: string, addressOrHash: string, amount: bigint): Promise<tbc.Transaction.IUnspentOutput> {
-        let hash = '';
-        if (tbc.Address.isValid(addressOrHash)) {
-            // If the recipient is an address
-            const publicKeyHash = tbc.Address.fromString(addressOrHash).hashBuffer.toString('hex');
-            hash = publicKeyHash + '00';
-        } else {
-            // If the recipient is a hash
-            if (addressOrHash.length !== 40) {
-                throw new Error('Invalid address or hash');
-            }
-            hash = addressOrHash + '01';
-        }
-        const url_testnet = `http://tbcdev.org:5000/v1/tbc/main/ft/utxo/combine/script/${hash}/contract/${contractTxid}`;
-        const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/utxo/combine/script/${hash}/contract/${contractTxid}`;
-        let url = this.network == "testnet" ? url_testnet : url_mainnet;
-        try {
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-            });
-            if (!response.ok) {
-                throw new Error(`Failed to fetch from URL: ${url}, status: ${response.status}`);
-            }
-            const responseData = await response.json();
-            let data = responseData.ftUtxoList[0];
-            for (let i = 0; i < responseData.ftUtxoList.length; i++) {
-                if (responseData.ftUtxoList[i].ftBalance >= amount) {
-                    data = responseData.ftUtxoList[i];
-                    break;
-                }
-            }
-            if (data.ftBalance < amount) {
-                const totalBalance = await API.getFTbalance(contractTxid, addressOrHash, this.network);
-                if (totalBalance >= amount) {
-                    throw new Error('Insufficient FTbalance, please merge FT UTXOs');
-                }
-            }
-            const fttxo_codeScript = FT.buildFTtransferCode(this.codeScript, addressOrHash).toBuffer().toString('hex');
-            const fttxo: tbc.Transaction.IUnspentOutput = {
-                txId: data.utxoId,
-                outputIndex: data.utxoVout,
-                script: fttxo_codeScript,
-                satoshis: data.utxoBalance,
-                ftBalance: data.ftBalance
-            }
-            return fttxo;
-        } catch (error) {
-            throw new Error("Failed to fetch FTTXO.");
-        }
-    }
-
-    /**
-     * Fetches the FT information for a given contract transaction ID.
-     *
-     * @param {string} contractTxid - The contract transaction ID.
-     * @returns {Promise<FtInfo>} Returns a Promise that resolves to an FtInfo object containing the FT information.
-     * @throws {Error} Throws an error if the request to fetch FT information fails.
-     */
-    async fetchFtInfo(contractTxid: string): Promise<FtInfo> {
-        const url_testnet = `http://tbcdev.org:5000/v1/tbc/main/ft/info/contract/id/${contractTxid}`;
-        const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/info/contract/id/${contractTxid}`;
-        let url = this.network == "testnet" ? url_testnet : url_mainnet;
-        try {
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-            });
-            if (!response.ok) {
-                throw new Error(`Failed to fetch from URL: ${url}, status: ${response.status}`);
-            }
-            const data = await response.json();
-            const ftInfo: FtInfo = {
-                codeScript: data.ftCodeScript,
-                tapeScript: data.ftTapeScript,
-                totalSupply: data.ftSupply,
-                decimal: data.ftDecimal,
-                name: data.ftName,
-                symbol: data.ftSymbol
-            }
-            return ftInfo;
-        } catch (error) {
-            throw new Error("Failed to fetch FtInfo.");
-        }
     }
 
     /**
@@ -336,80 +235,65 @@ class FT {
      * @returns {Promise<boolean>} Returns a Promise that resolves to a boolean indicating whether the merge was successful.
      * @throws {Error} Throws an error if the merge fails.
      */
-    async mergeFT(privateKey_from: tbc.PrivateKey): Promise<boolean> {
+    mergeFT(privateKey_from: tbc.PrivateKey, ftutxo:tbc.Transaction.IUnspentOutput[], utxo:tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[]): string | true {
         const privateKey = privateKey_from;
         const address = privateKey.toAddress().toString();
-        const contractTxid = this.contractTxid;
-        const url_testnet = `http://tbcdev.org:5000/v1/tbc/main/ft/utxo/address/${address}/contract/${contractTxid}`;
-        const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/utxo/address/${address}/contract/${contractTxid}`;
-        let url = this.network == "testnet" ? url_testnet : url_mainnet;
         const fttxo_codeScript = FT.buildFTtransferCode(this.codeScript, address).toBuffer().toString('hex');
-        try {
-            const response = await (await fetch(url)).json();
-            let fttxo: tbc.Transaction.IUnspentOutput[] = [];
-            if (response.ftUtxoList.length === 0) {
-                throw new Error('No FT UTXO available');
-            }
-            if (response.ftUtxoList.length === 1) {
-                console.log('Merge Success!');
-                return true;
-            } else {
-                for (let i = 0; i < response.ftUtxoList.length && i < 5; i++) {
-                    fttxo.push({
-                        txId: response.ftUtxoList[i].utxoId,
-                        outputIndex: response.ftUtxoList[i].utxoVout,
-                        script: fttxo_codeScript,
-                        satoshis: response.ftUtxoList[i].utxoBalance,
-                        ftBalance: response.ftUtxoList[i].ftBalance
-                    });
-                }
-            }
-            const tapeAmountSetIn: bigint[] = [];
-            let tapeAmountSum = BigInt(0);
-            for (let i = 0; i < fttxo.length; i++) {
-                tapeAmountSetIn.push(fttxo[i].ftBalance!);
-                tapeAmountSum += BigInt(fttxo[i].ftBalance!);
-            }
-            const { amountHex, changeHex } = FT.buildTapeAmount(tapeAmountSum, tapeAmountSetIn);
-            if (changeHex != '000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000') {
-                throw new Error('Change amount is not zero');
-            }
-            const utxo = await API.fetchUTXO(privateKey, 0.1, this.network);
-            const tx = new tbc.Transaction()
-                .from(fttxo)
-                .from(utxo);
-            const codeScript = FT.buildFTtransferCode(this.codeScript, address);
-            tx.addOutput(new tbc.Transaction.Output({
-                script: codeScript,
-                satoshis: 2000
-            }));
-            const tapeScript = FT.buildFTtransferTape(this.tapeScript, amountHex);
-            tx.addOutput(new tbc.Transaction.Output({
-                script: tapeScript,
-                satoshis: 0
-            }));
-            tx.feePerKb(100)
-            tx.change(privateKey.toAddress());
-            for (let i = 0; i < fttxo.length; i++) {
-                await tx.setInputScriptAsync({
-                    inputIndex: i,
-                }, async (tx) => {
-                    const unlockingScript = await this.getFTunlock(privateKey, tx, i, fttxo[i].txId, fttxo[i].outputIndex);
-                    return unlockingScript;
+        let fttxo: tbc.Transaction.IUnspentOutput[] = [];
+        if (ftutxo.length === 0) {
+            throw new Error('No FT UTXO available');
+        }
+        if (ftutxo.length === 1) {
+            console.log('Merge Success!');
+            return true;
+        } else {
+            for (let i = 0; i < ftutxo.length && i < 5; i++) {
+                fttxo.push({
+                    txId: ftutxo[i].txId,
+                    outputIndex: ftutxo[i].outputIndex,
+                    script: fttxo_codeScript,
+                    satoshis: ftutxo[i].satoshis,
+                    ftBalance: ftutxo[i].ftBalance
                 });
             }
-            tx.sign(privateKey);
-            await tx.sealAsync();
-            const txraw = tx.uncheckedSerialize();
-            console.log('Merge FTUTXO:');
-            await API.broadcastTXraw(txraw, this.network);
-            // wait 5 seconds
-            await new Promise(resolve => setTimeout(resolve, 5000));
-            await this.mergeFT(privateKey);
-            return true;
-        } catch (error) {
-            throw new Error("Merge Faild!.");
         }
+        const tapeAmountSetIn: bigint[] = [];
+        let tapeAmountSum = BigInt(0);
+        for (let i = 0; i < fttxo.length; i++) {
+            tapeAmountSetIn.push(fttxo[i].ftBalance!);
+            tapeAmountSum += BigInt(fttxo[i].ftBalance!);
+        }
+        const { amountHex, changeHex } = FT.buildTapeAmount(tapeAmountSum, tapeAmountSetIn);
+        if (changeHex != '000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000') {
+            throw new Error('Change amount is not zero');
+        }
+        const tx = new tbc.Transaction()
+            .from(fttxo)
+            .from(utxo);
+        const codeScript = FT.buildFTtransferCode(this.codeScript, address);
+        tx.addOutput(new tbc.Transaction.Output({
+            script: codeScript,
+            satoshis: 2000
+        }));
+        const tapeScript = FT.buildFTtransferTape(this.tapeScript, amountHex);
+        tx.addOutput(new tbc.Transaction.Output({
+            script: tapeScript,
+            satoshis: 0
+        }));
+        tx.feePerKb(100)
+        tx.change(privateKey.toAddress());
+        for (let i = 0; i < fttxo.length; i++) {
+            tx.setInputScript({
+                inputIndex: i,
+            }, (tx) => {
+                const unlockingScript = this.getFTunlock(privateKey, tx, preTX[i], prepreTxData[i], i, fttxo[i].outputIndex);
+                return unlockingScript;
+            });
+        }
+        tx.sign(privateKey);
+        tx.seal();
+        const txraw = tx.uncheckedSerialize();
+        return txraw;
     }
 
     /**
@@ -421,24 +305,11 @@ class FT {
      * @param preVout - The output index in the previous transaction.
      * @returns The unlocking script as a tbc.Script object.
      */
-    async getFTunlock(privateKey_from: tbc.PrivateKey, currentTX: tbc.Transaction, currentUnlockIndex: number, preTxId: string, preVout: number): Promise<tbc.Script> {
+    getFTunlock(privateKey_from: tbc.PrivateKey, currentTX: tbc.Transaction, preTX: tbc.Transaction, prepreTxData: string, currentUnlockIndex: number, preTxVout: number): tbc.Script {
         const privateKey = privateKey_from;
-        const preTX = await API.fetchTXraw(preTxId, this.network);
-        const pretxdata = getPreTxdata(preTX, preVout);
-
-        // Retrieve and process the tape data from the previous transaction
-        const preTXtape = preTX.outputs[preVout + 1].script.toBuffer().subarray(3, 51).toString('hex');
-        let prepretxdata = '';
-        for (let i = preTXtape.length - 16; i >= 0; i -= 16) {
-            const chunk = preTXtape.substring(i, i + 16);
-            if (chunk != '0000000000000000') {
-                const inputIndex = i / 16;
-                const prepreTX = await API.fetchTXraw(preTX.inputs[inputIndex].prevTxId.toString('hex'), this.network);
-                prepretxdata = prepretxdata + getPrePreTxdata(prepreTX, preTX.inputs[inputIndex].outputIndex);
-            }
-        }
-        prepretxdata = '57' + prepretxdata;
-
+        const prepretxdata = prepreTxData;
+        //const preTX = await API.fetchTXraw(preTxId, this.network);
+        const pretxdata = getPreTxdata(preTX, preTxVout);
         const currenttxdata = getCurrentTxdata(currentTX, currentUnlockIndex);
         const sig = (currentTX.getSignature(currentUnlockIndex, privateKey).length / 2).toString(16).padStart(2, '0') + currentTX.getSignature(currentUnlockIndex, privateKey);
         const publicKey = (privateKey.toPublicKey().toString().length / 2).toString(16).padStart(2, '0') + privateKey.toPublicKey().toString();
@@ -455,25 +326,13 @@ class FT {
      * @param preVout - The output index in the previous transaction.
      * @returns The unlocking script as a tbc.Script object.
      */
-    async getFTunlockSwap(privateKey_from: tbc.PrivateKey, currentTX: tbc.Transaction, currentUnlockIndex: number, preTxId: string, preVout: number): Promise<tbc.Script> {
+    getFTunlockSwap(privateKey_from: tbc.PrivateKey, currentTX: tbc.Transaction, preTX: tbc.Transaction, prepreTxData: string, contractTX:tbc.Transaction, currentUnlockIndex: number, preTxId: string, preVout: number): tbc.Script {
         const privateKey = privateKey_from;
-        const contractTX = await API.fetchTXraw(currentTX.inputs[0].prevTxId.toString('hex'), this.network);
+        const prepretxdata = prepreTxData;
+        //const contractTX = await API.fetchTXraw(currentTX.inputs[0].prevTxId.toString('hex'), this.network);
         const contracttxdata = getContractTxdata(contractTX, currentTX.inputs[0].outputIndex);
-        const preTX = await API.fetchTXraw(preTxId, this.network);
+        //const preTX = await API.fetchTXraw(preTxId, this.network);
         const pretxdata = getPreTxdata(preTX, preVout);
-
-        const preTXtape = preTX.outputs[preVout + 1].script.toBuffer().subarray(3, 51).toString('hex');
-        var prepretxdata = '';
-        for (let i = preTXtape.length - 16; i >= 0; i -= 16) {
-            const chunk = preTXtape.substring(i, i + 16);
-            if (chunk != '0000000000000000') {
-                const inputIndex = i / 16;
-                const prepreTX = await API.fetchTXraw(preTX.inputs[inputIndex].prevTxId.toString('hex'), this.network);
-                prepretxdata = prepretxdata + getPrePreTxdata(prepreTX, preTX.inputs[inputIndex].outputIndex);
-            }
-        }
-        prepretxdata = '57' + prepretxdata;
-
         const currentinputsdata = getCurrentInputsdata(currentTX);
         const currenttxdata = getCurrentTxdata(currentTX, currentUnlockIndex);
         const sig = (currentTX.getSignature(currentUnlockIndex, privateKey).length / 2).toString(16).padStart(2, '0') + currentTX.getSignature(currentUnlockIndex, privateKey);
@@ -786,7 +645,7 @@ function getPreTxdata(tx: tbc.Transaction, vout: number): string {
  * @param vout - The output index in the grandparent transaction.
  * @returns The transaction data as a hex string with a suffix '52'.
  */
-function getPrePreTxdata(tx: tbc.Transaction, vout: number): string {
+export function getPrePreTxdata(tx: tbc.Transaction, vout: number): string {
     const writer = new tbc.encoding.BufferWriter();
     writer.write(Buffer.from(vliolength, 'hex'));
     writer.writeUInt32LE(version);
