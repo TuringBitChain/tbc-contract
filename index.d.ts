@@ -43,11 +43,14 @@ declare module 'tbc-contract' {
 
     export class NFT {
         constructor(contract_id: string);
-        initialize(network?: "testnet" | "mainnet"): Promise<void>;
-        static createCollection(address: string, privateKey: PrivateKey, data: CollectionData, utxos: Transaction.IUnspentOutput[], network?: "testnet" | "mainnet"): Promise<string>;
-        static createNFT(collection_id: string, address: string, privateKey: PrivateKey, data: NFTData, utxos: Transaction.IUnspentOutput[], network?: "testnet" | "mainnet"): Promise<string>;
-        transferNFT(address_from: string, address_to: string, privateKey: PrivateKey, utxos: Transaction.IUnspentOutput[], network?: "testnet" | "mainnet"): Promise<string>;
+        initialize(nftInfo: NFTInfo);
+        static createCollection(address: string, privateKey: PrivateKey, data: CollectionData, utxos: Transaction.IUnspentOutput[]): string;
+        static createNFT(collection_id: string, address: string, privateKey: PrivateKey, data: NFTData, utxos: Transaction.IUnspentOutput[], nfttxo: Transaction.IUnspentOutput): string;
+        transferNFT(address_from: string, address_to: string, privateKey: PrivateKey, utxos: Transaction.IUnspentOutput[], pre_tx: Transaction, pre_pre_tx: Transaction): string;
         static encodeByBase64(filePath: string): Promise<string>;
+        static buildCodeScript(tx_hash: string, outputIndex: number): Script;
+        static buildHoldScript(address: string): Script;
+        static buildTapeScript(data: CollectionData | NFTData): Script;
     }
 
     interface FtInfo {

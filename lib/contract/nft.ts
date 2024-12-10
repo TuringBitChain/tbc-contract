@@ -1,5 +1,5 @@
 import * as tbc from "tbc-lib-js"
-const API = require("../api/api");
+import { NFTInfo } from "../api/api";
 const fs = require('fs').promises;
 const path = require('path');
 
@@ -38,7 +38,7 @@ class NFT {
         this.contract_id = contract_id;
     }
 
-    async initialize(network?: "testnet" | "mainnet") {
+    initialize(nftInfo: NFTInfo) {
         const {
             collectionId,
             collectionIndex,
@@ -50,7 +50,7 @@ class NFT {
             nft_attributes,
             nftDescription,
             nftTransferTimeCount,
-            nftIcon } = await API.fetchNFTInfo(this.contract_id, network);
+            nftIcon } = nftInfo;
         let file: string = "";
         const writer = new tbc.encoding.BufferWriter();
         if (nftIcon === collectionId + writer.writeUInt32LE(collectionIndex).toBuffer().toString("hex")) {
@@ -73,7 +73,7 @@ class NFT {
         this.transfer_count = nftTransferTimeCount;
     }
 
-    static async createCollection(address: string, privateKey: tbc.PrivateKey, data: CollectionData, utxos: tbc.Transaction.IUnspentOutput[], network?: "testnet" | "mainnet"): Promise<string> {
+    static createCollection(address: string, privateKey: tbc.PrivateKey, data: CollectionData, utxos: tbc.Transaction.IUnspentOutput[]): string {
         const tx = new tbc.Transaction();
         for (let i = 0; i < utxos.length; i++) {
             tx.from(utxos[i]);
@@ -94,13 +94,11 @@ class NFT {
             .change(address)
             .sign(privateKey);
 
-        return await API.broadcastTXraw(tx.uncheckedSerialize(), network);
-
+        return tx.uncheckedSerialize();
     }
 
-    static async createNFT(collection_id: string, address: string, privateKey: tbc.PrivateKey, data: NFTData, utxos: tbc.Transaction.IUnspentOutput[], network?: "testnet" | "mainnet"): Promise<string> {
+    static createNFT(collection_id: string, address: string, privateKey: tbc.PrivateKey, data: NFTData, utxos: tbc.Transaction.IUnspentOutput[], nfttxo: tbc.Transaction.IUnspentOutput): string {
         const hold = NFT.buildHoldScript(address);
-        const nfttxo = await API.fetchNFTTXO({ script: hold.toBuffer().toString("hex"), tx_hash: collection_id, network });
         if (!data.file) {
             const writer = new tbc.encoding.BufferWriter();
             data.file = collection_id + writer.writeUInt32LE(nfttxo.outputIndex).toBuffer().toString("hex");
@@ -137,14 +135,11 @@ class NFT {
             })
             .sign(privateKey)
             .seal()
-        return await API.broadcastTXraw(tx.uncheckedSerialize(), network);
+        return tx.uncheckedSerialize();;
     }
 
-    async transferNFT(address_from: string, address_to: string, privateKey: tbc.PrivateKey, utxos: tbc.Transaction.IUnspentOutput[], network?: "testnet" | "mainnet"): Promise<string> {
+    transferNFT(address_from: string, address_to: string, privateKey: tbc.PrivateKey, utxos: tbc.Transaction.IUnspentOutput[], pre_tx: tbc.Transaction, pre_pre_tx: tbc.Transaction): string {
         const code = NFT.buildCodeScript(this.collection_id, this.collection_index);
-        const nfttxo = await API.fetchNFTTXO({ script: code.toBuffer().toString("hex"), network });
-        const pre_tx = await API.fetchTXraw(nfttxo.txId, network);
-        const pre_pre_tx = await API.fetchTXraw(pre_tx.toObject().inputs[0].prevTxId, network);
 
         const tx = new tbc.Transaction()
             .addInputFromPrevTx(pre_tx, 0)
@@ -194,10 +189,10 @@ class NFT {
             .sign(privateKey)
             .seal()
 
-        return await API.broadcastTXraw(tx.uncheckedSerialize());
+        return tx.uncheckedSerialize();
     }
 
-    private static buildCodeScript(tx_hash: string, outputIndex: number): tbc.Script {
+    static buildCodeScript(tx_hash: string, outputIndex: number): tbc.Script {
         const tx_id = Buffer.from(tx_hash, "hex").reverse().toString("hex");
         const writer = new tbc.encoding.BufferWriter();
         const vout = writer.writeUInt32LE(outputIndex).toBuffer().toString("hex");
@@ -206,13 +201,13 @@ class NFT {
         return code;
     };
 
-    private static buildHoldScript(address: string): tbc.Script {
+    static buildHoldScript(address: string): tbc.Script {
         const pubKeyHash = tbc.Address.fromString(address).hashBuffer.toString("hex");
         const hold = new tbc.Script('OP_DUP OP_HASH160' + ' 0x14 0x' + pubKeyHash + ' OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x0d 0x5631204d696e74204e486f6c64');
         return hold;
     }
 
-    private static buildTapeScript(data: CollectionData | NFTData): tbc.Script {
+    static buildTapeScript(data: CollectionData | NFTData): tbc.Script {
         const dataHex = Buffer.from(JSON.stringify(data)).toString("hex");
         const tape = tbc.Script.fromASM(`OP_FALSE OP_RETURN ${dataHex} 4e54617065`);
         return tape;
