@@ -203,7 +203,7 @@ class NFT {
 
     static buildHoldScript(address: string): tbc.Script {
         const pubKeyHash = tbc.Address.fromString(address).hashBuffer.toString("hex");
-        const hold = new tbc.Script('OP_DUP OP_HASH160' + ' 0x14 0x' + pubKeyHash + ' OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x0d 0x5631204d696e74204e486f6c64');
+        const hold = new tbc.Script('OP_DUP OP_HASH160' + ' 0x14 0x' + pubKeyHash + ' OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x0d 0x56302043757272204e486f6c64');
         return hold;
     }
 
