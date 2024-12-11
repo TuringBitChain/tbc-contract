@@ -1,7 +1,19 @@
 import * as tbc from "tbc-lib-js"
-import { NFTInfo } from "../api/api";
 const fs = require('fs').promises;
 const path = require('path');
+interface NFTInfo {
+    collectionId: string;
+    collectionIndex: number;
+    collectionName: string;
+    nftCodeBalance: number;
+    nftP2pkhBalance: number;
+    nftName: string;
+    nftSymbol: string;
+    nft_attributes: string;
+    nftDescription: string;
+    nftTransferTimeCount: number;
+    nftIcon: string;
+}
 
 interface CollectionData {
     collectionName: string;
