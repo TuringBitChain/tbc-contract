@@ -35,7 +35,7 @@ declare module 'tbc-contract' {
         nftTransferTimeCount: number;
         nftIcon: string
     }
-    
+
     interface NFTData {
         nftName: string;
         symbol: string;
@@ -53,6 +53,7 @@ declare module 'tbc-contract' {
         static encodeByBase64(filePath: string): Promise<string>;
         static buildCodeScript(tx_hash: string, outputIndex: number): Script;
         static buildHoldScript(address: string): Script;
+        static buildMintScript(address: string): Script;
         static buildTapeScript(data: CollectionData | NFTData): Script;
     }
 
@@ -77,11 +78,11 @@ declare module 'tbc-contract' {
         network: "testnet" | "mainnet"
         constructor(config?: { txidOrParams: string | { name: string, symbol: string, amount: number, decimal: number }, network?: "testnet" | "mainnet" });
         initialize(ftInfo: FtInfo): void;
-        MintFT(privateKey_from: PrivateKey, address_to: string, utxo:Transaction.IUnspentOutput): string;
-        transfer(privateKey_from: PrivateKey, address_to: string, amount: number, ftutxo_a:Transaction.IUnspentOutput, utxo:Transaction.IUnspentOutput, preTX: Transaction, prepreTxData: string): string;
-        mergeFT(privateKey_from: PrivateKey, ftutxo:Transaction.IUnspentOutput[], utxo:Transaction.IUnspentOutput, preTX: Transaction[], prepreTxData: string[]): string | true;
+        MintFT(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput): string;
+        transfer(privateKey_from: PrivateKey, address_to: string, amount: number, ftutxo_a: Transaction.IUnspentOutput, utxo: Transaction.IUnspentOutput, preTX: Transaction, prepreTxData: string): string;
+        mergeFT(privateKey_from: PrivateKey, ftutxo: Transaction.IUnspentOutput[], utxo: Transaction.IUnspentOutput, preTX: Transaction[], prepreTxData: string[]): string | true;
         getFTunlock(privateKey_from: PrivateKey, currentTX: Transaction, preTX: Transaction, prepreTxData: string, currentUnlockIndex: number, preTxVout: number): Script;
-        getFTunlockSwap(privateKey_from: PrivateKey, currentTX: Transaction, preTX: Transaction, prepreTxData: string, contractTX:Transaction, currentUnlockIndex: number, preTxId: string, preVout: number): Script;
+        getFTunlockSwap(privateKey_from: PrivateKey, currentTX: Transaction, preTX: Transaction, prepreTxData: string, contractTX: Transaction, currentUnlockIndex: number, preTxId: string, preVout: number): Script;
         getFTmintCode(txid: string, vout: number, address: string, tapeSize: number): Script;
         static buildFTtransferCode(code: string, addressOrHash: string): Script;
         static buildFTtransferTape(tape: string, amountHex: string): Script;
