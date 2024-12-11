@@ -1,7 +1,6 @@
-import * as tbc from 'tbc-lib-js'
-import { getPrePreTxdata } from '../contract/ft'
-
-export interface NFTInfo {
+import * as tbc from 'tbc-lib-js';
+const { getPrePreTxdata } = require('../contract/ft');
+interface NFTInfo {
     collectionId: string;
     collectionIndex: number;
     collectionName: string;
@@ -26,13 +25,11 @@ interface FtInfo {
 }
 
 class API {
-    /**sda
-     * Get the FT balance for a specified contract transaction ID and address or hash.
+    /**
+     * Get the base URL for the specified network.
      *
-     * @param {string} contractTxid - The contract transaction ID.
-     * @param {string} addressOrHash - The address or hash.
-     * @returns {Promise<bigint>} Returns a Promise that resolves to the FT balance.
-     * @throws {Error} Throws an error if the address or hash is invalid, or if the request fails.
+     * @param {("testnet" | "mainnet")} network - The network type.
+     * @returns {string} The base URL for the specified network.
      */
     private static getBaseURL(network: "testnet" | "mainnet"): string {
         const url_testnet = `http://tbcdev.org:5000/v1/tbc/main/`;
@@ -41,6 +38,15 @@ class API {
         return base_url;
     }
 
+    /**
+     * Get the FT balance for a specified contract transaction ID and address or hash.
+     *
+     * @param {string} contractTxid - The contract transaction ID.
+     * @param {string} addressOrHash - The address or hash.
+     * @param {("testnet" | "mainnet")} [network] - The network type.
+     * @returns {Promise<bigint>} Returns a Promise that resolves to the FT balance.
+     * @throws {Error} Throws an error if the address or hash is invalid, or if the request fails.
+     */
     static async getFTbalance(contractTxid: string, addressOrHash: string, network?: "testnet" | "mainnet"): Promise<bigint> {
         let base_url = "";
         if (network) {
@@ -72,12 +78,16 @@ class API {
 
     /**
      * Fetches an FT UTXO that satisfies the required amount.
-     * @param contractTxid - The contract transaction ID.
-     * @param addressOrHash - The recipient's address or hash.
-     * @param amount - The required amount.
-     * @returns The FT UTXO that meets the amount requirement.
+     *
+     * @param {string} contractTxid - The contract transaction ID.
+     * @param {string} addressOrHash - The recipient's address or hash.
+     * @param {bigint} amount - The required amount.
+     * @param {string} codeScript - The code script.
+     * @param {("testnet" | "mainnet")} [network] - The network type.
+     * @returns {Promise<tbc.Transaction.IUnspentOutput>} Returns a Promise that resolves to the FT UTXO.
+     * @throws {Error} Throws an error if the request fails or if the FT balance is insufficient.
      */
-    static async fetchFtTXO(contractTxid: string, addressOrHash: string, amount: bigint, codeScript: string, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput> {
+    static async fetchFtUTXO(contractTxid: string, addressOrHash: string, amount: bigint, codeScript: string, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput> {
         let base_url = "";
         if (network) {
             base_url = API.getBaseURL(network)
@@ -138,6 +148,7 @@ class API {
      * Fetches the FT information for a given contract transaction ID.
      *
      * @param {string} contractTxid - The contract transaction ID.
+     * @param {("testnet" | "mainnet")} [network] - The network type.
      * @returns {Promise<FtInfo>} Returns a Promise that resolves to an FtInfo object containing the FT information.
      * @throws {Error} Throws an error if the request to fetch FT information fails.
      */
@@ -174,6 +185,15 @@ class API {
         }
     }
 
+    /**
+     * Fetches the pre-pre transaction data for a given transaction.
+     *
+     * @param {tbc.Transaction} preTX - The previous transaction.
+     * @param {number} preTxVout - The output index of the previous transaction.
+     * @param {("testnet" | "mainnet")} [network] - The network type.
+     * @returns {Promise<string>} Returns a Promise that resolves to the pre-pre transaction data.
+     * @throws {Error} Throws an error if the request fails.
+     */
     static async fetchFtPrePreTxData(preTX: tbc.Transaction, preTxVout: number, network?: "testnet" | "mainnet"): Promise<string> {
         const preTXtape = preTX.outputs[preTxVout + 1].script.toBuffer().subarray(3, 51).toString('hex');
         let prepretxdata = '';
@@ -182,13 +202,22 @@ class API {
             if (chunk != '0000000000000000') {
                 const inputIndex = i / 16;
                 const prepreTX = await API.fetchTXraw(preTX.inputs[inputIndex].prevTxId.toString('hex'), network);
-                prepretxdata = prepretxdata + getPrePreTxdata(prepreTX[i], preTX.inputs[inputIndex].outputIndex);
+                prepretxdata = prepretxdata + getPrePreTxdata(prepreTX, preTX.inputs[inputIndex].outputIndex);
             }
         }
         prepretxdata = '57' + prepretxdata;
         return prepretxdata;
     }
 
+    /**
+     * Fetches a UTXO that satisfies the required amount.
+     *
+     * @param {tbc.PrivateKey} privateKey - The private key object.
+     * @param {number} amount - The required amount.
+     * @param {("testnet" | "mainnet")} [network] - The network type.
+     * @returns {Promise<tbc.Transaction.IUnspentOutput>} Returns a Promise that resolves to the UTXO.
+     * @throws {Error} Throws an error if the request fails or if the balance is insufficient.
+     */
     static async fetchUTXO(privateKey: tbc.PrivateKey, amount: number, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput> {
         let base_url = "";
         if (network) {
@@ -240,6 +269,14 @@ class API {
         }
     }
 
+    /**
+     * Merges UTXOs for a given private key.
+     *
+     * @param {tbc.PrivateKey} privateKey - The private key object.
+     * @param {("testnet" | "mainnet")} [network] - The network type.
+     * @returns {Promise<boolean>} Returns a Promise that resolves to a boolean indicating whether the merge was successful.
+     * @throws {Error} Throws an error if the merge fails.
+     */
     static async mergeUTXO(privateKey: tbc.PrivateKey, network?: "testnet" | "mainnet"): Promise<boolean> {
         let base_url = "";
         if (network) {
@@ -290,8 +327,11 @@ class API {
 
     /**
      * Fetches the raw transaction data for a given transaction ID.
-     * @param txid - The transaction ID to fetch.
-     * @returns The transaction object.
+     *
+     * @param {string} txid - The transaction ID to fetch.
+     * @param {("testnet" | "mainnet")} [network] - The network type.
+     * @returns {Promise<tbc.Transaction>} Returns a Promise that resolves to the transaction object.
+     * @throws {Error} Throws an error if the request fails.
      */
     static async fetchTXraw(txid: string, network?: "testnet" | "mainnet"): Promise<tbc.Transaction> {
         let base_url = "";
@@ -317,8 +357,11 @@ class API {
 
     /**
      * Broadcasts the raw transaction to the network.
-     * @param txraw - The raw transaction hex.
-     * @returns The response from the broadcast API.
+     *
+     * @param {string} txraw - The raw transaction hex.
+     * @param {("testnet" | "mainnet")} [network] - The network type.
+     * @returns {Promise<string>} Returns a Promise that resolves to the response from the broadcast API.
+     * @throws {Error} Throws an error if the request fails.
      */
     static async broadcastTXraw(txraw: string, network?: "testnet" | "mainnet"): Promise<string> {
         let base_url = "";
@@ -352,6 +395,14 @@ class API {
         }
     }
 
+    /**
+     * Fetches the UTXOs for a given address.
+     *
+     * @param {string} address - The address to fetch UTXOs for.
+     * @param {("testnet" | "mainnet")} [network] - The network type.
+     * @returns {Promise<tbc.Transaction.IUnspentOutput[]>} Returns a Promise that resolves to an array of UTXOs.
+     * @throws {Error} Throws an error if the request fails.
+     */
     static async fetchUTXOs(address: string, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput[]> {
         let base_url = "";
         if (network) {
@@ -380,6 +431,15 @@ class API {
         }
     }
 
+    /**
+     * Selects UTXOs for a given address and amount.
+     *
+     * @param {string} address - The address to fetch UTXOs for.
+     * @param {number} amount_tbc - The required amount in TBC.
+     * @param {("testnet" | "mainnet")} [network] - The network type.
+     * @returns {Promise<tbc.Transaction.IUnspentOutput[]>} Returns a Promise that resolves to an array of selected UTXOs.
+     * @throws {Error} Throws an error if the balance is insufficient.
+     */
     static async selectUTXOs(address: string, amount_tbc: number, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput[]> {
         let utxos: tbc.Transaction.IUnspentOutput[] = [];
         if (network) {
@@ -413,6 +473,16 @@ class API {
         return selectedUTXOs;
     }
 
+    /**
+     * Fetches an NFT UTXO based on the provided script and optional transaction hash.
+     *
+     * @param {Object} params - The parameters for fetching the NFT UTXO.
+     * @param {string} params.script - The script to fetch the UTXO for.
+     * @param {string} [params.tx_hash] - The optional transaction hash to filter the UTXOs.
+     * @param {("testnet" | "mainnet")} [params.network] - The network type.
+     * @returns {Promise<tbc.Transaction.IUnspentOutput>} Returns a Promise that resolves to the NFT UTXO.
+     * @throws {Error} Throws an error if the request fails or no matching UTXO is found.
+     */
     static async fetchNFTTXO(params: { script: string, tx_hash?: string, network?: "testnet" | "mainnet" }): Promise<tbc.Transaction.IUnspentOutput> {
         const { script, tx_hash, network } = params;
         let base_url = "";
@@ -460,6 +530,14 @@ class API {
         }
     }
 
+    /**
+     * Fetches the NFT information for a given contract ID.
+     *
+     * @param {string} contract_id - The contract ID to fetch NFT information for.
+     * @param {("testnet" | "mainnet")} [network] - The network type.
+     * @returns {Promise<NFTInfo>} Returns a Promise that resolves to an NFTInfo object containing the NFT information.
+     * @throws {Error} Throws an error if the request to fetch NFT information fails.
+     */
     static async fetchNFTInfo(contract_id: string, network?: "testnet" | "mainnet"): Promise<NFTInfo> {
         let base_url = "";
         if (network) {

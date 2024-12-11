@@ -1,5 +1,4 @@
 import * as tbc from 'tbc-lib-js';
-const API = require('../api/api');
 const partial_sha256 = require('tbc-lib-js/lib/util/partial-sha256');
 const version = 10;
 const vliolength = '10'; // Version + nLockTime + inputCount + outputCount (16 bytes)
@@ -73,7 +72,7 @@ class FT {
     /**
      * Initializes the FT instance by fetching the FTINFO.
      */
-    async initialize(ftInfo: FtInfo): Promise<void> {
+    initialize(ftInfo: FtInfo): void {
         this.name = ftInfo.name;
         this.symbol = ftInfo.symbol;
         this.decimal = ftInfo.decimal;
@@ -88,7 +87,7 @@ class FT {
      * @param address_to - The recipient's address.
      * @returns The raw transaction hex string.
      */
-    private async MintFT(privateKey_from: tbc.PrivateKey, address_to: string, utxo:tbc.Transaction.IUnspentOutput): Promise<string> {
+    MintFT(privateKey_from: tbc.PrivateKey, address_to: string, utxo:tbc.Transaction.IUnspentOutput): string {
         const privateKey = privateKey_from;
         const address_from = privateKey.toAddress().toString();
         const name = this.name;
@@ -413,12 +412,11 @@ class FT {
      * @param ftInputIndex - (Optional) The index of the FT input.
      * @returns An object containing amountHex and changeHex.
      */
-    static buildTapeAmount(amountBN: bigint, tapeAmountSet: bigint[], ftInputIndex?: number): { amountHex: string, changeHex: string } {
+    static buildTapeAmount(amountBN: bigint, tapeAmountSet: bigint[], ftInputIndex?: number) {
         let i = 0;
         let j = 0;
         const amountwriter = new tbc.encoding.BufferWriter();
         const changewriter = new tbc.encoding.BufferWriter();
-
         // Initialize with zeros if ftInputIndex is provided
         if (ftInputIndex) {
             for (j = 0; j < ftInputIndex; j++) {
@@ -426,13 +424,11 @@ class FT {
                 changewriter.writeUInt64LEBN(new tbc.crypto.BN(0));
             }
         }
-
         // Build the amount and change for each tape slot
         for (i = 0; i < 6; i++) {
             if (amountBN <= BigInt(0)) {
                 break;
             }
-
             if (tapeAmountSet[i] < amountBN) {
                 amountwriter.writeUInt64LEBN(new tbc.crypto.BN(tapeAmountSet[i].toString()));
                 changewriter.writeUInt64LEBN(new tbc.crypto.BN(0));
@@ -443,9 +439,8 @@ class FT {
                 amountBN = BigInt(0);
             }
         }
-
         // Fill the remaining slots with zeros or remaining amounts
-        for (; i < 6 && j < 6; i++, j++) {
+        for (j += i; i < 6 && j < 6; i++, j++) {
             if (tapeAmountSet[i]) {
                 amountwriter.writeUInt64LEBN(new tbc.crypto.BN(0));
                 changewriter.writeUInt64LEBN(new tbc.crypto.BN(tapeAmountSet[i].toString()));
@@ -454,7 +449,6 @@ class FT {
                 changewriter.writeUInt64LEBN(new tbc.crypto.BN(0));
             }
         }
-
         const amountHex = amountwriter.toBuffer().toString('hex');
         const changeHex = changewriter.toBuffer().toString('hex');
         return { amountHex, changeHex };
@@ -645,7 +639,7 @@ function getPreTxdata(tx: tbc.Transaction, vout: number): string {
  * @param vout - The output index in the grandparent transaction.
  * @returns The transaction data as a hex string with a suffix '52'.
  */
-export function getPrePreTxdata(tx: tbc.Transaction, vout: number): string {
+function getPrePreTxdata(tx: tbc.Transaction, vout: number): string {
     const writer = new tbc.encoding.BufferWriter();
     writer.write(Buffer.from(vliolength, 'hex'));
     writer.writeUInt32LE(version);
@@ -818,5 +812,5 @@ function getSize(length: number): Buffer {
     }
 }
 
-module.exports = FT;
-
+// module.exports = FT;
+module.exports = { FT, getPrePreTxdata };

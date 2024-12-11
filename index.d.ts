@@ -1,21 +1,10 @@
 import { PrivateKey, Transaction, Script } from "tbc-lib-js";
 declare module 'tbc-contract' {
-    interface NFTInfo {
-        collectionId: string;
-        collectionIndex: number;
-        collectionName: string;
-        nftCodeBalance: number;
-        nftP2pkhBalance: number;
-        nftName: string;
-        nftSymbol: string;
-        nft_attributes: string;
-        nftDescription: string;
-        nftTransferTimeCount: number;
-        nftIcon: string
-    }
-
     export class API {
         static getFTbalance(contractTxid: string, addressOrHash: string, network?: "testnet" | "mainnet"): Promise<bigint>;
+        static fetchFtUTXO(contractTxid: string, addressOrHash: string, amount: bigint, codeScript: string, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput>;
+        static fetchFtInfo(contractTxid: string, network?: "testnet" | "mainnet"): Promise<FtInfo>;
+        static fetchFtPrePreTxData(preTX: tbc.Transaction, preTxVout: number, network?: "testnet" | "mainnet"): Promise<string>;
         static fetchUTXO(privateKey: PrivateKey, amount: number, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput>;
         static mergeUTXO(privateKey: PrivateKey, network?: "testnet" | "mainnet"): Promise<boolean>;
         static fetchTXraw(txid: string, network?: "testnet" | "mainnet"): Promise<Transaction>;
@@ -33,6 +22,20 @@ declare module 'tbc-contract' {
         file: string;
     };
 
+    interface NFTInfo {
+        collectionId: string;
+        collectionIndex: number;
+        collectionName: string;
+        nftCodeBalance: number;
+        nftP2pkhBalance: number;
+        nftName: string;
+        nftSymbol: string;
+        nft_attributes: string;
+        nftDescription: string;
+        nftTransferTimeCount: number;
+        nftIcon: string
+    }
+    
     interface NFTData {
         nftName: string;
         symbol: string;
@@ -73,23 +76,16 @@ declare module 'tbc-contract' {
         contractTxid: string;
         network: "testnet" | "mainnet"
         constructor(config?: { txidOrParams: string | { name: string, symbol: string, amount: number, decimal: number }, network?: "testnet" | "mainnet" });
-        initialize(): Promise<void>;
-        MintFT(privateKey_from: PrivateKey, address_to: string): Promise<string>;
-        transfer(privateKey_from: PrivateKey, address_to: string, amount: number): Promise<string>;
-        fetchFtTXO(contractTxid: string, addressOrHash: string, amount: bigint): Promise<Transaction.IUnspentOutput>;
-        fetchFtInfo(contractTxid: string): Promise<FtInfo>;
-        mergeFT(privateKey_from: PrivateKey): Promise<boolean>;
-        getFTunlock(privateKey_from: PrivateKey, currentTX: Transaction, currentUnlockIndex: number, preTxId: string, preVout: number): Promise<Script>;
-        getFTunlockSwap(privateKey_from: PrivateKey, currentTX: Transaction, currentUnlockIndex: number, preTxId: string, preVout: number): Promise<Script>;
+        initialize(ftInfo: FtInfo): void;
+        MintFT(privateKey_from: PrivateKey, address_to: string, utxo:Transaction.IUnspentOutput): string;
+        transfer(privateKey_from: PrivateKey, address_to: string, amount: number, ftutxo_a:Transaction.IUnspentOutput, utxo:Transaction.IUnspentOutput, preTX: Transaction, prepreTxData: string): string;
+        mergeFT(privateKey_from: PrivateKey, ftutxo:Transaction.IUnspentOutput[], utxo:Transaction.IUnspentOutput, preTX: Transaction[], prepreTxData: string[]): string | true;
+        getFTunlock(privateKey_from: PrivateKey, currentTX: Transaction, preTX: Transaction, prepreTxData: string, currentUnlockIndex: number, preTxVout: number): Script;
+        getFTunlockSwap(privateKey_from: PrivateKey, currentTX: Transaction, preTX: Transaction, prepreTxData: string, contractTX:Transaction, currentUnlockIndex: number, preTxId: string, preVout: number): Script;
         getFTmintCode(txid: string, vout: number, address: string, tapeSize: number): Script;
         static buildFTtransferCode(code: string, addressOrHash: string): Script;
         static buildFTtransferTape(tape: string, amountHex: string): Script;
         static buildTapeAmount(amountBN: bigint, tapeAmountSet: bigint[], ftInputIndex?: number): { amountHex: string, changeHex: string };
-        static getFTbalance(contractTxid: string, addressOrHash: string, network?: "testnet" | "mainnet"): Promise<bigint>;
-        static fetchUTXO(privateKey: PrivateKey, amount: number, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput>;
-        static mergeUTXO(privateKey: PrivateKey, network?: "testnet" | "mainnet"): Promise<boolean>;
-        static fetchTXraw(txid: string, network?: "testnet" | "mainnet"): Promise<Transaction>;
-        static broadcastTXraw(txraw: string, network?: "testnet" | "mainnet"): Promise<string>;
     }
 
     interface PoolNFTInfo {
