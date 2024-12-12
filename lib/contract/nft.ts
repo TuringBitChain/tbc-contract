@@ -1,6 +1,6 @@
 import * as tbc from "tbc-lib-js"
-const fs = require('fs').promises;
-const path = require('path');
+// const fs = require('fs').promises;
+// const path = require('path');
 interface NFTInfo {
     collectionId: string;
     collectionIndex: number;
@@ -231,17 +231,17 @@ class NFT {
         return tape;
     }
 
-    static async encodeByBase64(filePath: string): Promise<string> {
-        try {
-            const data = await fs.readFile(filePath);
-            const ext = path.extname(filePath).toLowerCase();
-            const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
-            const base64Data = `data:${mimeType};base64,${data.toString("base64")}`;
-            return base64Data;
-        } catch (err) {
-            throw new Error(`Failed to read or encode file: ${err.message}`);
-        }
-    }
+    // static async encodeByBase64(filePath: string): Promise<string> {
+    //     try {
+    //         const data = await fs.readFile(filePath);
+    //         const ext = path.extname(filePath).toLowerCase();
+    //         const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
+    //         const base64Data = `data:${mimeType};base64,${data.toString("base64")}`;
+    //         return base64Data;
+    //     } catch (err) {
+    //         throw new Error(`Failed to read or encode file: ${err.message}`);
+    //     }
+    // }
 
     private static getCurrentTxdata(tx: tbc.Transaction): string {
         const amountlength = '08';
