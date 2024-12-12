@@ -3,6 +3,7 @@ declare module 'tbc-contract' {
     export class API {
         static getFTbalance(contractTxid: string, addressOrHash: string, network?: "testnet" | "mainnet"): Promise<bigint>;
         static fetchFtUTXO(contractTxid: string, addressOrHash: string, amount: bigint, codeScript: string, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput>;
+        fetchFtUTXOs(contractTxid: string, addressOrHash: string, number: number, codeScript: string, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput[]>;
         static fetchFtInfo(contractTxid: string, network?: "testnet" | "mainnet"): Promise<FtInfo>;
         static fetchFtPrePreTxData(preTX: Transaction, preTxVout: number, network?: "testnet" | "mainnet"): Promise<string>;
         static fetchUTXO(privateKey: PrivateKey, amount: number, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput>;
@@ -74,9 +75,8 @@ declare module 'tbc-contract' {
         totalSupply: number;
         codeScript: string;
         tapeScript: string;
-        contractTxid: string;
-        network: "testnet" | "mainnet"
-        constructor(config?: { txidOrParams: string | { name: string, symbol: string, amount: number, decimal: number }, network?: "testnet" | "mainnet" });
+        contractTxid: string
+        constructor(txidOrParams: string | { name: string, symbol: string, amount: number, decimal: number });
         initialize(ftInfo: FtInfo): void;
         MintFT(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput): string;
         transfer(privateKey_from: PrivateKey, address_to: string, amount: number, ftutxo_a: Transaction.IUnspentOutput, utxo: Transaction.IUnspentOutput, preTX: Transaction, prepreTxData: string): string;
