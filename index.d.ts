@@ -50,7 +50,7 @@ declare module 'tbc-contract' {
         static createCollection(address: string, privateKey: PrivateKey, data: CollectionData, utxos: Transaction.IUnspentOutput[]): string;
         static createNFT(collection_id: string, address: string, privateKey: PrivateKey, data: NFTData, utxos: Transaction.IUnspentOutput[], nfttxo: Transaction.IUnspentOutput): string;
         transferNFT(address_from: string, address_to: string, privateKey: PrivateKey, utxos: Transaction.IUnspentOutput[], pre_tx: Transaction, pre_pre_tx: Transaction): string;
-        static encodeByBase64(filePath: string): Promise<string>;
+        // static encodeByBase64(filePath: string): Promise<string>;
         static buildCodeScript(tx_hash: string, outputIndex: number): Script;
         static buildHoldScript(address: string): Script;
         static buildMintScript(address: string): Script;
