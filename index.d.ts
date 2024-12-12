@@ -2,9 +2,9 @@ import { PrivateKey, Transaction, Script } from "tbc-lib-js";
 declare module 'tbc-contract' {
     export class API {
         static getFTbalance(contractTxid: string, addressOrHash: string, network?: "testnet" | "mainnet"): Promise<bigint>;
-        static fetchFtUTXO(contractTxid: string, addressOrHash: string, amount: bigint, codeScript: string, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput>;
+        static fetchFtUTXO(contractTxid: string, addressOrHash: string, amount: bigint, codeScript: string, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput>;
         static fetchFtInfo(contractTxid: string, network?: "testnet" | "mainnet"): Promise<FtInfo>;
-        static fetchFtPrePreTxData(preTX: tbc.Transaction, preTxVout: number, network?: "testnet" | "mainnet"): Promise<string>;
+        static fetchFtPrePreTxData(preTX: Transaction, preTxVout: number, network?: "testnet" | "mainnet"): Promise<string>;
         static fetchUTXO(privateKey: PrivateKey, amount: number, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput>;
         static mergeUTXO(privateKey: PrivateKey, network?: "testnet" | "mainnet"): Promise<boolean>;
         static fetchTXraw(txid: string, network?: "testnet" | "mainnet"): Promise<Transaction>;
@@ -122,12 +122,14 @@ declare module 'tbc-contract' {
         constructor(config?: { txidOrParams?: string | { ftContractTxid: string, tbc_amount: number, ft_a: number }, network?: "testnet" | "mainnet" });
         initCreate(ftContractTxid?: string): Promise<void>;
         initfromContractId(): Promise<void>;
-        createPoolNFT(privateKey_from: PrivateKey): Promise<string>;
-        initPoolNFT(privateKey_from: PrivateKey, address_to: string, tbc_amount?: number, ft_a?: number): Promise<string>;
-        increaseLP(privateKey_from: PrivateKey, address_to: string, amount_tbc: number): Promise<string>;
-        consumLP(privateKey_from: PrivateKey, address_to: string, amount_lp: number): Promise<string>;
-        swaptoToken(privateKey_from: PrivateKey, address_to: string, amount_token: number): Promise<string>;
-        swaptoTBC(privateKey_from: PrivateKey, address_to: string, amount_tbc: number): Promise<string>;
+        createPoolNFT(privateKey_from: PrivateKey, utxo: Transaction.IUnspentOutput): Promise<string>;
+        initPoolNFT(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, tbc_amount?: number, ft_a?: number): Promise<string>;
+        increaseLP(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_tbc: number): Promise<string>;
+        consumLP(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_lp: number): Promise<string>;
+        swaptoToken(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_token: number): Promise<string>;
+        swaptoToken_baseTBC(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_tbc: number): Promise<string>
+        swaptoTBC(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_tbc: number): Promise<string>;
+        swaptoTBC_baseToken(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_token: number): Promise<string>
         fetchPoolNFTInfo(contractTxid: string): Promise<PoolNFTInfo>;
         fetchPoolNftUTXO(contractTxid: string): Promise<Transaction.IUnspentOutput>;
         fetchFtlpUTXO(ftlpCode: string, amount: bigint): Promise<Transaction.IUnspentOutput>;
