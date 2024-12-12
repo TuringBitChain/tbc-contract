@@ -20,7 +20,7 @@ declare module 'tbc-contract' {
         description: string;
         supply: number;
         file: string;
-    };
+    }
 
     interface NFTInfo {
         collectionId: string;
@@ -140,6 +140,5 @@ declare module 'tbc-contract' {
         getPoolNFTunlock(privateKey_from: PrivateKey, currentTX: Transaction, currentUnlockIndex: number, preTxId: string, preVout: number, option: 1 | 2 | 3 | 4, swapOption?: 1 | 2): Promise<Script>;
         getPoolNftCode(txid: string, vout: number): Script;
         getFTLPcode(poolNftCodeHash: string, address: string, tapeSize: number): Script;
-
     }
 }
