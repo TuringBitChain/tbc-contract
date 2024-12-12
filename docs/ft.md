@@ -2,8 +2,8 @@
 import * as tbc from "tbc-lib-js"
 import { API, FT, poolNFT } from "tbc-contract"
 
-const network= network
-const privateKeyA = tbc.PrivateKey.fromString('L1u2TmR7hMMMSV9Bx2Lyt3sujbboqEFqnKygnPRnQERhKB4qptuK');
+const network= "testnet";
+const privateKeyA = tbc.PrivateKey.fromString('');
 const publicKeyA = tbc.PublicKey.fromPrivateKey(privateKeyA);
 const addressA = tbc.Address.fromPrivateKey(privateKeyA).toString();
 const addressB = "1FhSD1YezTXbdRGWzNbNvUj6qeKQ6gZDMq";

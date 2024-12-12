@@ -29,14 +29,13 @@ const main = async ()=>{
 	const contract_id = await contract.API.broadcastTXraw(txraw2);
     const nft = new contract.NFT(contract_id);
     nft.initialize(nftInfo);
-    const nfttxo2 = await contract.API.fetchNFTTXO({ script: contract.NFT.buildCodeScript(nft.collection_id, nft.collection_index).toBuffer().toString("hex"), network });
-     const pre_tx = await contract.API.fetchTXraw(nfttxo.txId, network);
-     const pre_pre_tx = await contract.API.fetchTXraw(pre_tx.toObject().inputs[0].prevTxId, network);
-     const txraw3 = nft.transferNFT(address_from, address_to, privateKey, utxos, pre_tx, pre_pre_tx);//转移nft
+    const nfttxo2 = await contract.API.fetchNFTTXO({ script: contract.NFT.buildCodeScript(nftInfo.collectionId, nftInfo.collectionIndex).toBuffer().toString("hex"), network });
+	const pre_tx = await contract.API.fetchTXraw(nfttxo2.txId, network);
+	const pre_pre_tx = await contract.API.fetchTXraw(pre_tx.toObject().inputs[0].prevTxId, network);
+	const txraw3 = nft.transferNFT(address_from, address_to, privateKey, utxos, pre_tx, pre_pre_tx);//转移nft
     await contract.API.broadcastTXraw(txraw3);
 }
 	
 main();
 
 ```
-
