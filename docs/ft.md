@@ -16,12 +16,12 @@ const ftAmount = 100000000;
 async function main() {
     try {
         //Mint
-        const newToken = new FT({txidOrParams:{
+        const newToken = new FT({
             name: ftName,
             symbol: ftSymbol,
             amount: ftAmount,
             decimal: ftDecimal
-        }, network: "testnet"});
+        });
 
         const utxo = await API.fetchUTXO(privateKeyA, 0.001, network);//准备utxo
         const mintTX = newToken.MintFT(privateKeyA, addressA, utxo);//组装交易
@@ -29,7 +29,7 @@ async function main() {
 
         //Transfer
         const transferTokenAmount = 1000;//转移数量
-        const Token = new FT({txidOrParams: "ae9107b33ba2ef5a4077396557915957942d2b25353e728f941561dfa0db5300", network:network});
+        const Token = new FT('ae9107b33ba2ef5a4077396557915957942d2b25353e728f941561dfa0db5300');
         const TokenInfo = await API.fetchFtInfo(Token.contractTxid, network);//获取FT信息
         Token.initialize(TokenInfo);
         const utxo = await API.fetchUTXO(privateKeyA, 0.01, network);//准备utxo
@@ -42,7 +42,7 @@ async function main() {
         await API.broadcastTXraw(transferTX, network);
 
         //Merge
-        const Token = new FT({txidOrParams: "ae9107b33ba2ef5a4077396557915957942d2b25353e728f941561dfa0db5300", network:network});
+        const Token = new FT('ae9107b33ba2ef5a4077396557915957942d2b25353e728f941561dfa0db5300');
         const TokenInfo = await API.fetchFtInfo(Token.contractTxid, network);//获取FT信息
         Token.initialize(TokenInfo);
         const utxo = await API.fetchUTXO(privateKeyA, 0.01, network);//准备utxo
