@@ -21,14 +21,13 @@ class FT {
     totalSupply: number;
     codeScript: string;
     tapeScript: string;
-    contractTxid: string;
-    network: "testnet" | "mainnet"
+    contractTxid: string
 
     /**
      * Constructs the FT instance either from a transaction ID or parameters.
      * @param txidOrParams - Either a contract transaction ID or token parameters.
      */
-    constructor(config?: { txidOrParams?: string | { name: string, symbol: string, amount: number, decimal: number }, network?: "testnet" | "mainnet" }) {
+    constructor(txidOrParams?: string | { name: string, symbol: string, amount: number, decimal: number }) {
         this.name = '';
         this.symbol = '';
         this.decimal = 0;
@@ -36,13 +35,12 @@ class FT {
         this.codeScript = '';
         this.tapeScript = '';
         this.contractTxid = '';
-        this.network = config?.network ?? "mainnet";
-        if (typeof config!.txidOrParams === 'string') {
+        if (typeof txidOrParams === 'string') {
             // Initialize from an existing contract transaction ID
-            this.contractTxid = config!.txidOrParams;
-        } else if (config!.txidOrParams) {
+            this.contractTxid = txidOrParams;
+        } else if (txidOrParams) {
             // Initialize with new token parameters
-            const { name, symbol, amount, decimal } = config!.txidOrParams;
+            const { name, symbol, amount, decimal } = txidOrParams;
             if (amount <= 0) {
                 throw new Error('Amount must be a natural number');
             }
