@@ -1,5 +1,6 @@
 import * as tbc from 'tbc-lib-js';
-const { getPrePreTxdata } = require('../contract/ft');
+import { getPrePreTxdata } from '../util/ftunlock';
+
 interface NFTInfo {
     collectionId: string;
     collectionIndex: number;
@@ -32,7 +33,7 @@ class API {
      * @returns {string} The base URL for the specified network.
      */
     private static getBaseURL(network: "testnet" | "mainnet"): string {
-        const url_testnet = `http://tbcdev.org:5000/v1/tbc/main/`;
+        const url_testnet = `https://tbcdev.org/v1/tbc/main/`;
         const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/`;
         const base_url = network == "testnet" ? url_testnet : url_mainnet;
         return base_url;
@@ -145,7 +146,7 @@ class API {
     }
 
     static async fetchFtUTXOs(contractTxid: string, addressOrHash: string, number: number, codeScript: string, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput[]> {
-        if (Number.isInteger(number)! || number < 1) {
+        if (!Number.isInteger(number) || number < 1) {
             throw new Error(`${number} is not a nature number`);
         } else if (number > 5) {
             throw new Error(`The number of FT UTXOs should be less than 6`);
@@ -183,10 +184,10 @@ class API {
             let ftutxos: tbc.Transaction.IUnspentOutput[] = [];
             for (let i = 0; i < responseData.ftUtxoList.length && i < 5; i++) {
                 ftutxos.push({
-                    txId: responseData.ftUtxoList[i].txId,
-                    outputIndex: responseData.ftUtxoList[i].outputIndex,
+                    txId: responseData.ftUtxoList[i].utxoId,
+                    outputIndex: responseData.ftUtxoList[i].utxoVout,
                     script: codeScript,
-                    satoshis: responseData.ftUtxoList[i].satoshis,
+                    satoshis: responseData.ftUtxoList[i].utxoBalance,
                     ftBalance: responseData.ftUtxoList[i].ftBalance
                 });
             }

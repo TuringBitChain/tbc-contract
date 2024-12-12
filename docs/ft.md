@@ -1,18 +1,15 @@
 ```ts
-import * as contract from "tbc-contract"
 import * as tbc from "tbc-lib-js"
-const network= "testnet"
+import { API, FT, poolNFT } from "tbc-contract"
 
-//测试链私钥
+const network= network
 const privateKeyA = tbc.PrivateKey.fromString('L1u2TmR7hMMMSV9Bx2Lyt3sujbboqEFqnKygnPRnQERhKB4qptuK');
 const publicKeyA = tbc.PublicKey.fromPrivateKey(privateKeyA);
 const addressA = tbc.Address.fromPrivateKey(privateKeyA).toString();
-//addressA = 143KgKGcse57nXBnXyJwtQrf2KP4KWto59
-
 const addressB = "1FhSD1YezTXbdRGWzNbNvUj6qeKQ6gZDMq";
 
-const ftName = 'test_package';
-const ftSymbol = 'tp';
+const ftName = 'test';
+const ftSymbol = 'test';
 const ftDecimal = 6;
 const ftAmount = 100000000;
 
@@ -24,24 +21,41 @@ async function main() {
             symbol: ftSymbol,
             amount: ftAmount,
             decimal: ftDecimal
-        }, network:"testnet"});
+        }, network: "testnet"});
 
-        const utxo = await API.fetchUTXO(privateKeyA, 0.001, "testnet");
-        const mintTX = newToken.MintFT(privateKeyA, addressA, utxo);
-        await API.broadcastTXraw(mintTX, "testnet");
+        const utxo = await API.fetchUTXO(privateKeyA, 0.001, network);//准备utxo
+        const mintTX = newToken.MintFT(privateKeyA, addressA, utxo);//组装交易
+        await API.broadcastTXraw(mintTX, network);
 
         //Transfer
-        const transferTokenAmount = 1000;
-        const Token = new FT({txidOrParams: "ae9107b33ba2ef5a4077396557915957942d2b25353e728f941561dfa0db5300", network:"testnet"});
-        const TokenInfo = await API.fetchFtInfo(Token.contractTxid, "testnet");
+        const transferTokenAmount = 1000;//转移数量
+        const Token = new FT({txidOrParams: "ae9107b33ba2ef5a4077396557915957942d2b25353e728f941561dfa0db5300", network:network});
+        const TokenInfo = await API.fetchFtInfo(Token.contractTxid, network);//获取FT信息
         Token.initialize(TokenInfo);
-        const utxo = await API.fetchUTXO(privateKeyA, 0.01, "testnet");
+        const utxo = await API.fetchUTXO(privateKeyA, 0.01, network);//准备utxo
         const transferTokenAmountBN = BigInt(transferTokenAmount * Math.pow(10, Token.decimal));
-        const ftutxo = await API.fetchFtUTXO(Token.contractTxid, addressA, transferTokenAmountBN, Token.codeScript, "testnet");
-        const preTX = await API.fetchTXraw(ftutxo.txId, "testnet");
-        const prepreTxData = await API.fetchFtPrePreTxData(preTX, ftutxo.outputIndex, "testnet");
-        const transferTX = Token.transfer(privateKeyA, addressB, transferTokenAmount, ftutxo, utxo, preTX, prepreTxData);
-        await API.broadcastTXraw(transferTX, "testnet");
+        const ftutxo_codeScript = FT.buildFTtransferCode(Token.codeScript, addressA).toBuffer().toString('hex');
+        const ftutxo = await API.fetchFtUTXO(Token.contractTxid, addressA, transferTokenAmountBN, ftutxo_codeScript, network);//准备ft utxo
+        const preTX = await API.fetchTXraw(ftutxo.txId, network);//获取ft输入的父交易
+        const prepreTxData = await API.fetchFtPrePreTxData(preTX, ftutxo.outputIndex, network);//获取ft输入的爷交易
+        const transferTX = Token.transfer(privateKeyA, addressB, transferTokenAmount, ftutxo, utxo, preTX, prepreTxData);//组装交易
+        await API.broadcastTXraw(transferTX, network);
+
+        //Merge
+        const Token = new FT({txidOrParams: "ae9107b33ba2ef5a4077396557915957942d2b25353e728f941561dfa0db5300", network:network});
+        const TokenInfo = await API.fetchFtInfo(Token.contractTxid, network);//获取FT信息
+        Token.initialize(TokenInfo);
+        const utxo = await API.fetchUTXO(privateKeyA, 0.01, network);//准备utxo
+        const ftutxo_codeScript = FT.buildFTtransferCode(Token.codeScript, addressA).toBuffer().toString('hex');
+        const ftutxos = await API.fetchFtUTXOs(Token.contractTxid, addressA, 5, ftutxo_codeScript, network);//准备多个ft utxo
+        let preTXs: tbc.Transaction[] = [];
+        let prepreTxDatas: string[] = [];
+        for (let i = 0; i < ftutxos.length; i++) {
+            preTXs.push(await API.fetchTXraw(ftutxos[i].txId, network));//获取每个ft输入的父交易
+            prepreTxDatas.push(await API.fetchFtPrePreTxData(preTXs[i], ftutxos[i].outputIndex, network));//获取每个ft输入的爷交易
+        }
+        const mergeTX = Token.mergeFT(privateKeyA, ftutxos, utxo, preTXs, prepreTxDatas);//组装交易
+        await API.broadcastTXraw(mergeTX, network);
     } catch (error) {
         console.error('Error:', error);
     }
