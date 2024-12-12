@@ -255,7 +255,7 @@ class poolNFT {
         await tx.setInputScriptAsync({
             inputIndex: 1,
         }, async (tx) => {
-            const unlockingScript = await FTA.getFTunlock(privateKey, tx, ftPreTX, ftPrePreTxData, 1, fttxo_a.txId, fttxo_a.outputIndex);
+            const unlockingScript = await FTA.getFTunlock(privateKey, tx, ftPreTX, ftPrePreTxData, 1, fttxo_a.outputIndex);
             return unlockingScript;
         });
         tx.sign(privateKey);
@@ -374,7 +374,7 @@ class poolNFT {
         await tx.setInputScriptAsync({
             inputIndex: 1,
         }, async (tx) => {
-            const unlockingScript = await FTA.getFTunlock(privateKey, tx, ftPreTX, ftPrePreTxData, 1, fttxo_a.txId, fttxo_a.outputIndex);
+            const unlockingScript = await FTA.getFTunlock(privateKey, tx, ftPreTX, ftPrePreTxData, 1, fttxo_a.outputIndex);
             return unlockingScript;
         });
         tx.sign(privateKey);
@@ -847,13 +847,13 @@ class poolNFT {
         await tx.setInputScriptAsync({
             inputIndex: 1,
         }, async (tx) => {
-            const unlockingScript = await FTA.getFTunlock(privateKey, tx, ftPreTX[0], ftPrePreTxData[0], 1, fttxo_a.txId, fttxo_a.outputIndex);
+            const unlockingScript = await FTA.getFTunlock(privateKey, tx, ftPreTX[0], ftPrePreTxData[0], 1, fttxo_a.outputIndex);
             return unlockingScript;
         });
         await tx.setInputScriptAsync({
             inputIndex: 2,
         }, async (tx) => {
-            const unlockingScript = await FTA.getFTunlockSwap(privateKey, tx, ftPreTX[1], ftPrePreTxData[1], contractTX, 2, fttxo_c.txId, fttxo_c.outputIndex);
+            const unlockingScript = await FTA.getFTunlockSwap(privateKey, tx, ftPreTX[1], ftPrePreTxData[1], contractTX, 2, fttxo_c.outputIndex);
             return unlockingScript;
         });
         tx.sign(privateKey);
@@ -961,13 +961,13 @@ class poolNFT {
         await tx.setInputScriptAsync({
             inputIndex: 1,
         }, async (tx) => {
-            const unlockingScript = await FTA.getFTunlock(privateKey, tx, ftPreTX[0], ftPrePreTxData[0], 1, fttxo_a.txId, fttxo_a.outputIndex);
+            const unlockingScript = await FTA.getFTunlock(privateKey, tx, ftPreTX[0], ftPrePreTxData[0], 1, fttxo_a.outputIndex);
             return unlockingScript;
         });
         await tx.setInputScriptAsync({
             inputIndex: 2,
         }, async (tx) => {
-            const unlockingScript = await FTA.getFTunlockSwap(privateKey, tx, ftPreTX[1], ftPrePreTxData[1], contractTX, 2, fttxo_c.txId, fttxo_c.outputIndex);
+            const unlockingScript = await FTA.getFTunlockSwap(privateKey, tx, ftPreTX[1], ftPrePreTxData[1], contractTX, 2, fttxo_c.outputIndex);
             return unlockingScript;
         });
         tx.sign(privateKey);
