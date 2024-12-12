@@ -320,13 +320,13 @@ class FT {
      * @param preVout - The output index in the previous transaction.
      * @returns The unlocking script as a tbc.Script object.
      */
-    getFTunlockSwap(privateKey_from: tbc.PrivateKey, currentTX: tbc.Transaction, preTX: tbc.Transaction, prepreTxData: string, contractTX: tbc.Transaction, currentUnlockIndex: number, preTxId: string, preVout: number): tbc.Script {
+    getFTunlockSwap(privateKey_from: tbc.PrivateKey, currentTX: tbc.Transaction, preTX: tbc.Transaction, prepreTxData: string, contractTX: tbc.Transaction, currentUnlockIndex: number, preTxVout: number): tbc.Script {
         const privateKey = privateKey_from;
         const prepretxdata = prepreTxData;
         //const contractTX = await API.fetchTXraw(currentTX.inputs[0].prevTxId.toString('hex'), this.network);
         const contracttxdata = getContractTxdata(contractTX, currentTX.inputs[0].outputIndex);
         //const preTX = await API.fetchTXraw(preTxId, this.network);
-        const pretxdata = getPreTxdata(preTX, preVout);
+        const pretxdata = getPreTxdata(preTX, preTxVout);
         const currentinputsdata = getCurrentInputsdata(currentTX);
         const currenttxdata = getCurrentTxdata(currentTX, currentUnlockIndex);
         const sig = (currentTX.getSignature(currentUnlockIndex, privateKey).length / 2).toString(16).padStart(2, '0') + currentTX.getSignature(currentUnlockIndex, privateKey);

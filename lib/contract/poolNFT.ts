@@ -133,7 +133,7 @@ class poolNFT {
         return txraw;
     }
 
-    async initPoolNFT(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, ftPreTX: tbc.Transaction, ftPrePreTxData: string, tbc_amount?: number, ft_a?: number): Promise<string> {
+    async initPoolNFT(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, tbc_amount?: number, ft_a?: number): Promise<string> {
         const privateKey = privateKey_from;
         const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
@@ -167,6 +167,8 @@ class poolNFT {
         }
         const ftutxo_codeScript = FT.buildFTtransferCode(FTA.codeScript, privateKey.toAddress().toString()).toBuffer().toString('hex');
         const fttxo_a = await API.fetchFtUTXO(this.ft_a_contractTxid, privateKey.toAddress().toString(), this.ft_a_amount, ftutxo_codeScript, this.network);
+        const ftPreTX = await API.fetchTXraw(fttxo_a.txId, this.network);
+        const ftPrePreTxData = await API.fetchFtPrePreTxData(ftPreTX, fttxo_a.outputIndex, this.network);
         //const fttxo_a = await FTA.fetchFtUTXO(this.ft_a_contractTxid, privateKey.toAddress().toString(), this.ft_a_amount);
         if (fttxo_a.ftBalance! < this.ft_a_amount) {
             throw new Error('Insufficient FT-A amount, please merge FT-A UTXOs');
@@ -262,7 +264,7 @@ class poolNFT {
         return txraw;
     }
 
-    async increaseLP(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, ftPreTX: tbc.Transaction, ftPrePreTxData: string, amount_tbc: number): Promise<string> {
+    async increaseLP(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, amount_tbc: number): Promise<string> {
         const privateKey = privateKey_from;
         const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
@@ -275,6 +277,8 @@ class poolNFT {
         // Fetch FT UTXO for the transfer
         const ftutxo_codeScript = FT.buildFTtransferCode(FTA.codeScript, privateKey.toAddress().toString()).toBuffer().toString('hex');
         const fttxo_a = await API.fetchFtUTXO(this.ft_a_contractTxid, privateKey.toAddress().toString(), changeDate.ft_a_difference, ftutxo_codeScript, this.network);
+        const ftPreTX = await API.fetchTXraw(fttxo_a.txId, this.network);
+        const ftPrePreTxData = await API.fetchFtPrePreTxData(ftPreTX, fttxo_a.outputIndex, this.network);
         //const fttxo_a = await FTA.fetchFtUTXO(this.ft_a_contractTxid, privateKey.toAddress().toString(), changeDate.ft_a_difference);
         tapeAmountSetIn.push(fttxo_a.ftBalance!);
         // Calculate the total available balance
@@ -379,7 +383,7 @@ class poolNFT {
         return txraw;
     }
 
-    async consumeLP(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, ftPreTX: tbc.Transaction[], ftPrePreTxData: string[], contractTX: tbc.Transaction[], amount_lp: number): Promise<string> {
+    async consumeLP(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, amount_lp: number): Promise<string> {
         const privateKey = privateKey_from;
         const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
@@ -392,8 +396,13 @@ class poolNFT {
         const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex'))).toString('hex');
         const tapeAmountSetIn: bigint[] = [];
         const lpTapeAmountSetIn: bigint[] = [];
+        const ftPreTX: tbc.Transaction[] = [];
+        const ftPrePreTxData : string[] = [];
+        const contractTX = await API.fetchTXraw(this.contractTxid, this.network);
         const ftlpCode = this.getFTLPcode(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex')).toString('hex'), privateKey.toAddress().toString(), FTA.tapeScript.length / 2);
         const fttxo_lp = await this.fetchFtlpUTXO(ftlpCode.toBuffer().toString('hex'), changeDate.ft_lp_difference);
+        ftPreTX.push(await API.fetchTXraw(fttxo_lp.txId, this.network));
+        ftPrePreTxData.push(await API.fetchFtPrePreTxData(ftPreTX[0], fttxo_lp.outputIndex, this.network));
         if (fttxo_lp.ftBalance === undefined) {
             throw new Error('ftBalance is undefined');
         } else if (fttxo_lp.ftBalance! < amount_lpbn) {
@@ -403,6 +412,8 @@ class poolNFT {
         // Fetch FT UTXO for the transfer
         const ftutxo_codeScript = FT.buildFTtransferCode(FTA.codeScript, poolnft_codehash160).toBuffer().toString('hex');
         const fttxo_c = await API.fetchFtUTXO(this.ft_a_contractTxid, poolnft_codehash160, changeDate.ft_a_difference, ftutxo_codeScript, this.network);
+        ftPreTX.push(await API.fetchTXraw(fttxo_c.txId, this.network));
+        ftPrePreTxData.push(await API.fetchFtPrePreTxData(ftPreTX[1], fttxo_c.outputIndex, this.network));
         //const fttxo_c = await FTA.fetchFtUTXO(this.ft_a_contractTxid, poolnft_codehash160, changeDate.ft_a_difference);
         if (fttxo_c.ftBalance === undefined) {
             throw new Error('ftBalance is undefined');
@@ -534,7 +545,7 @@ class poolNFT {
         return txraw;
     }
 
-    async swaptoToken(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, ftPreTX: tbc.Transaction, ftPrePreTxData: string, contractTX: tbc.Transaction, amount_token: number): Promise<string> {
+    async swaptoToken(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, amount_token: number): Promise<string> {
         const privateKey = privateKey_from;
         const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
@@ -554,6 +565,9 @@ class poolNFT {
         // Fetch FT UTXO for the transfer
         const ftutxo_codeScript = FT.buildFTtransferCode(FTA.codeScript, poolnft_codehash160).toBuffer().toString('hex');
         const fttxo_c = await API.fetchFtUTXO(this.ft_a_contractTxid, poolnft_codehash160, amount_ftbn, ftutxo_codeScript, this.network);
+        const ftPreTX = await API.fetchTXraw(fttxo_c.txId, this.network);
+        const ftPrePreTxData = await API.fetchFtPrePreTxData(ftPreTX, fttxo_c.outputIndex, this.network);
+        const contractTX = await API.fetchTXraw(this.contractTxid, this.network);
         //const fttxo_c = await FTA.fetchFtUTXO(this.ft_a_contractTxid, poolnft_codehash160, amount_ftbn);
         tapeAmountSetIn.push(fttxo_c.ftBalance!);
         // Calculate the total available balance
@@ -633,7 +647,7 @@ class poolNFT {
         return txraw;
     }
 
-    async swaptoToken_baseTBC(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, ftPreTX: tbc.Transaction, ftPrePreTxData: string, contractTX: tbc.Transaction, amount_tbc: number): Promise<string> {
+    async swaptoToken_baseTBC(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, amount_tbc: number): Promise<string> {
         const privateKey = privateKey_from;
         const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
@@ -649,8 +663,11 @@ class poolNFT {
         const ft_a_amount_decrement = BigInt(ft_a_amount) - BigInt(this.ft_a_amount);
         const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex'))).toString('hex');
         const tapeAmountSetIn: bigint[] = [];
+        const contractTX = await API.fetchTXraw(this.contractTxid, this.network);
         // Fetch FT UTXO for the transfer
         const fttxo_c = await FTA.fetchFtTXO(this.ft_a_contractTxid, poolnft_codehash160, ft_a_amount_decrement);
+        const ftPreTX = await API.fetchTXraw(fttxo_c.txId, this.network);
+        const ftPrePreTxData = await API.fetchFtPrePreTxData(ftPreTX, fttxo_c.outputIndex, this.network);
         tapeAmountSetIn.push(BigInt(fttxo_c.ftBalance!));
         // Calculate the total available balance
         let tapeAmountSum = BigInt(0);
@@ -730,7 +747,7 @@ class poolNFT {
     }
 
 
-    async swaptoTBC(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, ftPreTX: tbc.Transaction[], ftPrePreTxData: string[], contractTX: tbc.Transaction, amount_tbc: number): Promise<string> {
+    async swaptoTBC(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, amount_tbc: number): Promise<string> {
         const privateKey = privateKey_from;
         const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
@@ -746,9 +763,14 @@ class poolNFT {
         this.ft_a_amount = BigInt(poolMul) / BigInt(this.tbc_amount);
         const ft_a_amount_increment = BigInt(this.ft_a_amount) - BigInt(ft_a_amount);
         const tapeAmountSetIn: bigint[] = [];
+        const ftPreTX: tbc.Transaction[] = []; 
+        const ftPrePreTxData : string[] = [];
+        const contractTX = await API.fetchTXraw(this.contractTxid, this.network);
         // Fetch FT UTXO for the transfer
         const ftutxo_codeScript_a = FT.buildFTtransferCode(FTA.codeScript, privateKey.toAddress().toString()).toBuffer().toString('hex');
         const fttxo_a = await API.fetchFtUTXO(this.ft_a_contractTxid, privateKey.toAddress().toString(), amount_tbcbn, ftutxo_codeScript_a, this.network);
+        ftPreTX.push(await API.fetchTXraw(fttxo_a.txId, this.network));
+        ftPrePreTxData.push(await API.fetchFtPrePreTxData(ftPreTX[0], fttxo_a.outputIndex, this.network));  
         //const fttxo_a = await FTA.fetchFtUTXO(this.ft_a_contractTxid, privateKey.toAddress().toString(), amount_tbcbn);
         if (fttxo_a.ftBalance! < ft_a_amount_increment) {
             throw new Error('Insufficient FT-A amount, please merge FT-A UTXOs');
@@ -756,6 +778,8 @@ class poolNFT {
         tapeAmountSetIn.push(fttxo_a.ftBalance!);
         const ftutxo_codeScript_c = FT.buildFTtransferCode(FTA.codeScript, poolnft_codehash160).toBuffer().toString('hex');
         const fttxo_c = await API.fetchFtUTXO(this.ft_a_contractTxid, poolnft_codehash160, amount_tbcbn, ftutxo_codeScript_c, this.network);
+        ftPreTX.push(await API.fetchTXraw(fttxo_c.txId, this.network));
+        ftPrePreTxData.push(await API.fetchFtPrePreTxData(ftPreTX[1], fttxo_c.outputIndex, this.network));
         //const fttxo_c = await FTA.fetchFtUTXO(this.ft_a_contractTxid, poolnft_codehash160, amount_tbcbn);
         tapeAmountSetIn.push(fttxo_c.ftBalance!);
         // Check if the balance is sufficient
@@ -838,7 +862,7 @@ class poolNFT {
         return txraw;
     }
 
-    async swaptoTBC_baseToken(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, ftPreTX: tbc.Transaction[], ftPrePreTxData: string[], contractTX: tbc.Transaction, amount_token: number): Promise<string> {
+    async swaptoTBC_baseToken(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, amount_token: number): Promise<string> {
         const privateKey = privateKey_from;
         const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
@@ -855,14 +879,21 @@ class poolNFT {
         const tbc_amount_decrement = BigInt(tbc_amount) - BigInt(this.tbc_amount);
 
         const tapeAmountSetIn: bigint[] = [];
+        const ftPreTX: tbc.Transaction[] = []; 
+        const ftPrePreTxData : string[] = [];
+        const contractTX = await API.fetchTXraw(this.contractTxid, this.network);
         // Fetch FT UTXO for the transfer
         let fttxo_a = await FTA.fetchFtTXO(this.ft_a_contractTxid, privateKey.toAddress().toString(), amount_ftbn);
+        ftPreTX.push(await API.fetchTXraw(fttxo_a.txId, this.network));
+        ftPrePreTxData.push(await API.fetchFtPrePreTxData(ftPreTX[0], fttxo_a.outputIndex, this.network)); 
         // await FTA.mergeFT(privateKey)
         if (fttxo_a.ftBalance! < amount_ftbn) {
             throw new Error('Insufficient FT-A amount, please merge FT-A UTXOs');
         }
         tapeAmountSetIn.push(BigInt(fttxo_a.ftBalance!));
         const fttxo_c = await FTA.fetchFtTXO(this.ft_a_contractTxid, poolnft_codehash160, tbc_amount_decrement);
+        ftPreTX.push(await API.fetchTXraw(fttxo_c.txId, this.network));
+        ftPrePreTxData.push(await API.fetchFtPrePreTxData(ftPreTX[1], fttxo_c.outputIndex, this.network));
         tapeAmountSetIn.push(BigInt(fttxo_c.ftBalance!));
         // Check if the balance is sufficient
         if (tbc_amount_decrement > BigInt(fttxo_c.satoshis)) {
@@ -1023,7 +1054,7 @@ class poolNFT {
         }
     }
 
-    async mergeFTLP(privateKey_from: tbc.PrivateKey, utxo: tbc.Transaction.IUnspentOutput, ftPreTX: tbc.Transaction[], ftPrePreTxData: string[]): Promise<boolean | string> {
+    async mergeFTLP(privateKey_from: tbc.PrivateKey, utxo: tbc.Transaction.IUnspentOutput): Promise<boolean | string> {
         const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
         await FTA.initialize(FTAInfo);
@@ -1056,10 +1087,14 @@ class poolNFT {
                 }
             }
             const tapeAmountSetIn: bigint[] = [];
+            const ftPreTX: tbc.Transaction[] = []; 
+            const ftPrePreTxData : string[] = [];
             let tapeAmountSum = BigInt(0);
             for (let i = 0; i < fttxo.length; i++) {
                 tapeAmountSetIn.push(fttxo[i].ftBalance!);
                 tapeAmountSum += BigInt(fttxo[i].ftBalance!);
+                ftPreTX.push(await API.fetchTXraw(fttxo[i].txId, this.network));
+                ftPrePreTxData.push(await API.fetchFtPrePreTxData(ftPreTX[i], fttxo[i].outputIndex, this.network));  
             }
             const { amountHex, changeHex } = FT.buildTapeAmount(tapeAmountSum, tapeAmountSetIn);
             if (changeHex != '000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000') {
@@ -1103,7 +1138,7 @@ class poolNFT {
         }
     }
 
-    async mergeFTinPool(privateKey_from: tbc.PrivateKey, utxo: tbc.Transaction.IUnspentOutput, ftPreTX: tbc.Transaction[], ftPrePreTxData: string[]): Promise<boolean | string> {
+    async mergeFTinPool(privateKey_from: tbc.PrivateKey, utxo: tbc.Transaction.IUnspentOutput): Promise<boolean | string> {
         const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
         await FTA.initialize(FTAInfo);
@@ -1137,12 +1172,16 @@ class poolNFT {
                 }
             }
             const tapeAmountSetIn: bigint[] = [];
+            const ftPreTX: tbc.Transaction[] = []; 
+            const ftPrePreTxData : string[] = [];
             let tapeAmountSum = BigInt(0);
             let tbcAmountSum = 0;
             for (let i = 0; i < fttxo.length; i++) {
                 tapeAmountSetIn.push(fttxo[i].ftBalance!);
                 tapeAmountSum += BigInt(fttxo[i].ftBalance!);
                 tbcAmountSum += fttxo[i].satoshis;
+                ftPreTX.push(await API.fetchTXraw(fttxo[i].txId, this.network));
+                ftPrePreTxData.push(await API.fetchFtPrePreTxData(ftPreTX[i], fttxo[i].outputIndex, this.network));  
             }
             const { amountHex, changeHex } = FT.buildTapeAmount(tapeAmountSum, tapeAmountSetIn, 1);
             if (changeHex != '000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000') {
