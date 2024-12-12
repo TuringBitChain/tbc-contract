@@ -140,7 +140,60 @@ class API {
             }
             return fttxo;
         } catch (error) {
-            throw new Error("Failed to fetch FTTXO.");
+            throw new Error("Failed to fetch FTUTXO.");
+        }
+    }
+
+    static async fetchFtUTXOs(contractTxid: string, addressOrHash: string, number: number, codeScript: string, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput[]> {
+        if (Number.isInteger(number)! || number < 1) {
+            throw new Error(`${number} is not a nature number`);
+        } else if (number > 5) {
+            throw new Error(`The number of FT UTXOs should be less than 6`);
+        }
+        let base_url = "";
+        if (network) {
+            base_url = API.getBaseURL(network)
+        } else {
+            base_url = API.getBaseURL("mainnet")
+        }
+        let hash = '';
+        if (tbc.Address.isValid(addressOrHash)) {
+            // If the recipient is an address
+            const publicKeyHash = tbc.Address.fromString(addressOrHash).hashBuffer.toString('hex');
+            hash = publicKeyHash + '00';
+        } else {
+            // If the recipient is a hash
+            if (addressOrHash.length !== 40) {
+                throw new Error('Invalid address or hash');
+            }
+            hash = addressOrHash + '01';
+        }
+        const url = base_url + `ft/utxo/combine/script/${hash}/contract/${contractTxid}`;
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+            if (!response.ok) {
+                throw new Error(`Failed to fetch from URL: ${url}, status: ${response.status}`);
+            }
+            const responseData = await response.json();
+            let ftutxos: tbc.Transaction.IUnspentOutput[] = [];
+            for (let i = 0; i < responseData.ftUtxoList.length && i < 5; i++) {
+                ftutxos.push({
+                    txId: responseData.ftUtxoList[i].txId,
+                    outputIndex: responseData.ftUtxoList[i].outputIndex,
+                    script: codeScript,
+                    satoshis: responseData.ftUtxoList[i].satoshis,
+                    ftBalance: responseData.ftUtxoList[i].ftBalance
+                });
+            }
+            return ftutxos;
+        } catch (error) {
+            console.log(error);
+            throw new Error("Failed to fetch FTUTXO.");
         }
     }
 

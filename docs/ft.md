@@ -18,6 +18,7 @@ const ftAmount = 100000000;
 
 async function main() {
     try {
+        //Mint
         const newToken = new FT({txidOrParams:{
             name: ftName,
             symbol: ftSymbol,
@@ -29,18 +30,18 @@ async function main() {
         const mintTX = newToken.MintFT(privateKeyA, addressA, utxo);
         await API.broadcastTXraw(mintTX, "testnet");
 
-        const Token = new FT('ae9107b33ba2ef5a4077396557915957942d2b25353e728f941561dfa0db5300');
-        await Token.initialize()
-        const transferTX = await Token.transfer(privateKeyA, addressB, 100000);
-        //console.log(transferTX)
-        await Token.broadcastTXraw(transferTX)
-        // await Token.mergeFT(privateKeyB)
-        
-        // console.log(await FT.getFTbalance('6e3f499646a6f1accb8ec5055391f49ba74cc988429988ec75966bbd01a25068', '1AYCU2ZrENLJCPpkkTPkFk5tuooPxBN5So'))
-        // const address = addressA
-        // const url = `https://turingwallet.xyz/v1/tbc/main/address/${address}/get/balance`;
-        // const response = await axios.get(url);
-        // console.log(response.data.data.balance);
+        //Transfer
+        const transferTokenAmount = 1000;
+        const Token = new FT({txidOrParams: "ae9107b33ba2ef5a4077396557915957942d2b25353e728f941561dfa0db5300", network:"testnet"});
+        const TokenInfo = await API.fetchFtInfo(Token.contractTxid, "testnet");
+        Token.initialize(TokenInfo);
+        const utxo = await API.fetchUTXO(privateKeyA, 0.01, "testnet");
+        const transferTokenAmountBN = BigInt(transferTokenAmount * Math.pow(10, Token.decimal));
+        const ftutxo = await API.fetchFtUTXO(Token.contractTxid, addressA, transferTokenAmountBN, Token.codeScript, "testnet");
+        const preTX = await API.fetchTXraw(ftutxo.txId, "testnet");
+        const prepreTxData = await API.fetchFtPrePreTxData(preTX, ftutxo.outputIndex, "testnet");
+        const transferTX = Token.transfer(privateKeyA, addressB, transferTokenAmount, ftutxo, utxo, preTX, prepreTxData);
+        await API.broadcastTXraw(transferTX, "testnet");
     } catch (error) {
         console.error('Error:', error);
     }

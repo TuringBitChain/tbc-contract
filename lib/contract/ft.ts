@@ -87,7 +87,7 @@ class FT {
      * @param address_to - The recipient's address.
      * @returns The raw transaction hex string.
      */
-    MintFT(privateKey_from: tbc.PrivateKey, address_to: string, utxo:tbc.Transaction.IUnspentOutput): string {
+    MintFT(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput): string {
         const privateKey = privateKey_from;
         const address_from = privateKey.toAddress().toString();
         const name = this.name;
@@ -146,7 +146,7 @@ class FT {
      * @param amount - The amount to transfer.
      * @returns The raw transaction hex string.
      */
-    transfer(privateKey_from: tbc.PrivateKey, address_to: string, amount: number, ftutxo_a:tbc.Transaction.IUnspentOutput, utxo:tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction, prepreTxData: string): string {
+    transfer(privateKey_from: tbc.PrivateKey, address_to: string, amount: number, ftutxo_a: tbc.Transaction.IUnspentOutput, utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction, prepreTxData: string): string {
         const privateKey = privateKey_from;
         const address_from = privateKey.toAddress().toString();
         const code = this.codeScript;
@@ -218,7 +218,7 @@ class FT {
         tx.setInputScript({
             inputIndex: 0,
         }, (tx) => {
-            const unlockingScript = this.getFTunlock(privateKey, tx, preTX, prepreTxData , 0, ftutxo_a.outputIndex);
+            const unlockingScript = this.getFTunlock(privateKey, tx, preTX, prepreTxData, 0, ftutxo_a.outputIndex);
             return unlockingScript;
         });
         tx.sign(privateKey);
@@ -234,11 +234,11 @@ class FT {
      * @returns {Promise<boolean>} Returns a Promise that resolves to a boolean indicating whether the merge was successful.
      * @throws {Error} Throws an error if the merge fails.
      */
-    mergeFT(privateKey_from: tbc.PrivateKey, ftutxo:tbc.Transaction.IUnspentOutput[], utxo:tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[]): string | true {
+    mergeFT(privateKey_from: tbc.PrivateKey, ftutxo: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[]): string | true {
         const privateKey = privateKey_from;
         const address = privateKey.toAddress().toString();
         const fttxo_codeScript = FT.buildFTtransferCode(this.codeScript, address).toBuffer().toString('hex');
-        let fttxo: tbc.Transaction.IUnspentOutput[] = [];
+        let ftutxos: tbc.Transaction.IUnspentOutput[] = [];
         if (ftutxo.length === 0) {
             throw new Error('No FT UTXO available');
         }
@@ -247,7 +247,7 @@ class FT {
             return true;
         } else {
             for (let i = 0; i < ftutxo.length && i < 5; i++) {
-                fttxo.push({
+                ftutxos.push({
                     txId: ftutxo[i].txId,
                     outputIndex: ftutxo[i].outputIndex,
                     script: fttxo_codeScript,
@@ -258,16 +258,16 @@ class FT {
         }
         const tapeAmountSetIn: bigint[] = [];
         let tapeAmountSum = BigInt(0);
-        for (let i = 0; i < fttxo.length; i++) {
-            tapeAmountSetIn.push(fttxo[i].ftBalance!);
-            tapeAmountSum += BigInt(fttxo[i].ftBalance!);
+        for (let i = 0; i < ftutxos.length; i++) {
+            tapeAmountSetIn.push(ftutxos[i].ftBalance!);
+            tapeAmountSum += BigInt(ftutxos[i].ftBalance!);
         }
         const { amountHex, changeHex } = FT.buildTapeAmount(tapeAmountSum, tapeAmountSetIn);
         if (changeHex != '000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000') {
             throw new Error('Change amount is not zero');
         }
         const tx = new tbc.Transaction()
-            .from(fttxo)
+            .from(ftutxos)
             .from(utxo);
         const codeScript = FT.buildFTtransferCode(this.codeScript, address);
         tx.addOutput(new tbc.Transaction.Output({
@@ -281,11 +281,11 @@ class FT {
         }));
         tx.feePerKb(100)
         tx.change(privateKey.toAddress());
-        for (let i = 0; i < fttxo.length; i++) {
+        for (let i = 0; i < ftutxos.length; i++) {
             tx.setInputScript({
                 inputIndex: i,
             }, (tx) => {
-                const unlockingScript = this.getFTunlock(privateKey, tx, preTX[i], prepreTxData[i], i, fttxo[i].outputIndex);
+                const unlockingScript = this.getFTunlock(privateKey, tx, preTX[i], prepreTxData[i], i, ftutxos[i].outputIndex);
                 return unlockingScript;
             });
         }
@@ -325,7 +325,7 @@ class FT {
      * @param preVout - The output index in the previous transaction.
      * @returns The unlocking script as a tbc.Script object.
      */
-    getFTunlockSwap(privateKey_from: tbc.PrivateKey, currentTX: tbc.Transaction, preTX: tbc.Transaction, prepreTxData: string, contractTX:tbc.Transaction, currentUnlockIndex: number, preTxId: string, preVout: number): tbc.Script {
+    getFTunlockSwap(privateKey_from: tbc.PrivateKey, currentTX: tbc.Transaction, preTX: tbc.Transaction, prepreTxData: string, contractTX: tbc.Transaction, currentUnlockIndex: number, preTxId: string, preVout: number): tbc.Script {
         const privateKey = privateKey_from;
         const prepretxdata = prepreTxData;
         //const contractTX = await API.fetchTXraw(currentTX.inputs[0].prevTxId.toString('hex'), this.network);
