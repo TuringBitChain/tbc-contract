@@ -375,7 +375,7 @@ class poolNFT {
         return txraw;
     }
 
-    async consumLP(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, amount_lp: number): Promise<string> {
+    async consumeLP(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, amount_lp: number): Promise<string> {
         const privateKey = privateKey_from;
         const FTA = new FT({ txidOrParams: this.ft_a_contractTxid, network: this.network });
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
