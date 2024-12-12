@@ -22,7 +22,7 @@ const main = async ()=>{
           file?: content; //file可为空，为空引用合集的照片
 	}
     const nftInfo = await contract.API.fetchNFTInfo(contract_id, network);
-    const nfttxo1 = await contract.API.fetchNFTTXO({ script: contract.NFT.buildHoldScript(address).toBuffer().toString("hex"), tx_hash: collection_id, network });
+    const nfttxo1 = await contract.API.fetchNFTTXO({ script: contract.NFT.buildMintScript(address).toBuffer().toString("hex"), tx_hash: collection_id, network });
 	const txraw1 = contract.NFT.createCollection(address, privateKey, collection_data, utxos);//创建合集
 	const collection_id = await contract.API.broadcastTXraw(txraw1);
 	const txraw2 = contract.NFT.createNFT(collection_id,address,privateKey,nft_data, utxos, nfttxo1);//创建合集下的NFT

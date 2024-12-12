@@ -140,15 +140,15 @@ class poolNFT {
         await FTA.initialize(FTAInfo);
         let amount_lpbn = BigInt(0);
         if (tbc_amount && ft_a) {
-            amount_lpbn = BigInt(tbc_amount / 10 * Math.pow(10, 6));
+            amount_lpbn = BigInt(tbc_amount * Math.pow(10, 6));
             this.tbc_amount = BigInt(tbc_amount * Math.pow(10, 6));
-            this.ft_lp_amount = this.tbc_amount - amount_lpbn;
+            this.ft_lp_amount = this.tbc_amount;
             this.ft_a_number = ft_a;
             this.ft_a_amount = BigInt(this.ft_a_number * Math.pow(10, FTA.decimal));
         } else if (!tbc_amount && !ft_a && this.tbc_amount != BigInt(0) && this.ft_a_amount != BigInt(0)) {
-            amount_lpbn = BigInt(BigInt(this.tbc_amount) / BigInt(10));
+            amount_lpbn = BigInt(this.tbc_amount);
             this.tbc_amount = this.tbc_amount;
-            this.ft_lp_amount = this.tbc_amount - amount_lpbn;
+            this.ft_lp_amount = this.tbc_amount;
             this.ft_a_amount = this.ft_a_amount;
         } else {
             throw new Error('Invalid Input');
@@ -206,10 +206,10 @@ class poolNFT {
             script: ftCodeScript,
             satoshis: Number(this.tbc_amount),
         }))
-            .addOutput(new tbc.Transaction.Output({
-                script: ftTapeScript,
-                satoshis: 0
-            }))
+        .addOutput(new tbc.Transaction.Output({
+            script: ftTapeScript,
+            satoshis: 0
+        }))
         //FTLP
         const nameHex = Buffer.from(FTA.name, 'utf8').toString('hex');
         const symbolHex = Buffer.from(FTA.symbol, 'utf8').toString('hex');
@@ -398,7 +398,6 @@ class poolNFT {
         const lpTapeAmountSetIn: bigint[] = [];
         const ftPreTX: tbc.Transaction[] = [];
         const ftPrePreTxData : string[] = [];
-        const contractTX = await API.fetchTXraw(this.contractTxid, this.network);
         const ftlpCode = this.getFTLPcode(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex')).toString('hex'), privateKey.toAddress().toString(), FTA.tapeScript.length / 2);
         const fttxo_lp = await this.fetchFtlpUTXO(ftlpCode.toBuffer().toString('hex'), changeDate.ft_lp_difference);
         ftPreTX.push(await API.fetchTXraw(fttxo_lp.txId, this.network));
@@ -439,6 +438,7 @@ class poolNFT {
         const ftlpChange = changeHex;
         //const utxo = await API.fetchUTXO(privateKey, 0.1, this.network);
         const poolnft = await this.fetchPoolNftUTXO(this.contractTxid);
+        const contractTX = await API.fetchTXraw(poolnft.txId, this.network);
         // Construct the transaction
         const tx = new tbc.Transaction()
             .from(poolnft)
@@ -529,13 +529,13 @@ class poolNFT {
         await tx.setInputScriptAsync({
             inputIndex: 1,
         }, async (tx) => {
-            const unlockingScript = await FTA.getFTunlock(privateKey, tx, ftPreTX[0], ftPrePreTxData[0], 1, fttxo_lp.txId, fttxo_lp.outputIndex);
+            const unlockingScript = await FTA.getFTunlock(privateKey, tx, ftPreTX[0], ftPrePreTxData[0], 1, fttxo_lp.outputIndex);
             return unlockingScript;
         });
         await tx.setInputScriptAsync({
             inputIndex: 2,
         }, async (tx) => {
-            const unlockingScript = await FTA.getFTunlockSwap(privateKey, tx, ftPreTX[1], ftPrePreTxData[1], contractTX, 2, fttxo_c.txId, fttxo_c.outputIndex);
+            const unlockingScript = await FTA.getFTunlockSwap(privateKey, tx, ftPreTX[1], ftPrePreTxData[1], contractTX, 2, fttxo_c.outputIndex);
             return unlockingScript;
         });
 
@@ -567,7 +567,6 @@ class poolNFT {
         const fttxo_c = await API.fetchFtUTXO(this.ft_a_contractTxid, poolnft_codehash160, amount_ftbn, ftutxo_codeScript, this.network);
         const ftPreTX = await API.fetchTXraw(fttxo_c.txId, this.network);
         const ftPrePreTxData = await API.fetchFtPrePreTxData(ftPreTX, fttxo_c.outputIndex, this.network);
-        const contractTX = await API.fetchTXraw(this.contractTxid, this.network);
         //const fttxo_c = await FTA.fetchFtUTXO(this.ft_a_contractTxid, poolnft_codehash160, amount_ftbn);
         tapeAmountSetIn.push(fttxo_c.ftBalance!);
         // Calculate the total available balance
@@ -586,6 +585,7 @@ class poolNFT {
             throw new Error('Insufficient TBC amount, please merge UTXOs');
         }
         const poolnft = await this.fetchPoolNftUTXO(this.contractTxid);
+        const contractTX = await API.fetchTXraw(poolnft.txId, this.network);
         // Construct the transaction
         const tx = new tbc.Transaction()
             .from(poolnft)
@@ -638,7 +638,7 @@ class poolNFT {
         await tx.setInputScriptAsync({
             inputIndex: 2,
         }, async (tx) => {
-            const unlockingScript = await FTA.getFTunlockSwap(privateKey, tx, ftPreTX, ftPrePreTxData, contractTX, 2, fttxo_c.txId, fttxo_c.outputIndex);
+            const unlockingScript = await FTA.getFTunlockSwap(privateKey, tx, ftPreTX, ftPrePreTxData, contractTX, 2, fttxo_c.outputIndex);
             return unlockingScript;
         });
         tx.sign(privateKey);
@@ -663,7 +663,6 @@ class poolNFT {
         const ft_a_amount_decrement = BigInt(ft_a_amount) - BigInt(this.ft_a_amount);
         const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex'))).toString('hex');
         const tapeAmountSetIn: bigint[] = [];
-        const contractTX = await API.fetchTXraw(this.contractTxid, this.network);
         // Fetch FT UTXO for the transfer
         const fttxo_c = await FTA.fetchFtTXO(this.ft_a_contractTxid, poolnft_codehash160, ft_a_amount_decrement);
         const ftPreTX = await API.fetchTXraw(fttxo_c.txId, this.network);
@@ -685,6 +684,7 @@ class poolNFT {
             throw new Error('Insufficient TBC amount, please merge UTXOs');
         }
         const poolnft = await this.fetchPoolNftUTXO(this.contractTxid);
+        const contractTX = await API.fetchTXraw(poolnft.txId, this.network);
         // Construct the transaction
         const tx = new tbc.Transaction()
             .from(poolnft)
@@ -737,7 +737,7 @@ class poolNFT {
         await tx.setInputScriptAsync({
             inputIndex: 2,
         }, async (tx) => {
-            const unlockingScript = await FTA.getFTunlockSwap(privateKey, tx, ftPreTX, ftPrePreTxData, contractTX, 2, fttxo_c.txId, fttxo_c.outputIndex);
+            const unlockingScript = await FTA.getFTunlockSwap(privateKey, tx, ftPreTX, ftPrePreTxData, contractTX, 2, fttxo_c.outputIndex);
             return unlockingScript;
         });
         tx.sign(privateKey);
@@ -765,7 +765,6 @@ class poolNFT {
         const tapeAmountSetIn: bigint[] = [];
         const ftPreTX: tbc.Transaction[] = []; 
         const ftPrePreTxData : string[] = [];
-        const contractTX = await API.fetchTXraw(this.contractTxid, this.network);
         // Fetch FT UTXO for the transfer
         const ftutxo_codeScript_a = FT.buildFTtransferCode(FTA.codeScript, privateKey.toAddress().toString()).toBuffer().toString('hex');
         const fttxo_a = await API.fetchFtUTXO(this.ft_a_contractTxid, privateKey.toAddress().toString(), amount_tbcbn, ftutxo_codeScript_a, this.network);
@@ -790,6 +789,7 @@ class poolNFT {
         const { amountHex, changeHex } = FT.buildTapeAmount(BigInt(ft_a_amount_increment) + BigInt(fttxo_c.ftBalance!), tapeAmountSetIn, 1);
         //const utxo = await API.fetchUTXO(privateKey, 0.1, this.network);
         const poolnft = await this.fetchPoolNftUTXO(this.contractTxid);
+        const contractTX = await API.fetchTXraw(poolnft.txId, this.network);
         // Construct the transaction
         const tx = new tbc.Transaction()
             .from(poolnft)
@@ -881,7 +881,6 @@ class poolNFT {
         const tapeAmountSetIn: bigint[] = [];
         const ftPreTX: tbc.Transaction[] = []; 
         const ftPrePreTxData : string[] = [];
-        const contractTX = await API.fetchTXraw(this.contractTxid, this.network);
         // Fetch FT UTXO for the transfer
         let fttxo_a = await FTA.fetchFtTXO(this.ft_a_contractTxid, privateKey.toAddress().toString(), amount_ftbn);
         ftPreTX.push(await API.fetchTXraw(fttxo_a.txId, this.network));
@@ -903,6 +902,7 @@ class poolNFT {
         const { amountHex, changeHex } = FTA.buildTapeAmount(BigInt(amount_ftbn) + BigInt(fttxo_c.ftBalance!), tapeAmountSetIn, 1);
         //const utxo = await FTA.fetchUTXO(privateKey.toAddress().toString());
         const poolnft = await this.fetchPoolNftUTXO(this.contractTxid);
+        const contractTX = await API.fetchTXraw(poolnft.txId, this.network);
         // Construct the transaction
         const tx = new tbc.Transaction()
             .from(poolnft)
@@ -1120,7 +1120,7 @@ class poolNFT {
                 await tx.setInputScriptAsync({
                     inputIndex: i,
                 }, async (tx) => {
-                    const unlockingScript = await FTA.getFTunlock(privateKey, tx, ftPreTX[i], ftPrePreTxData[i], i, fttxo[i].txId, fttxo[i].outputIndex);
+                    const unlockingScript = await FTA.getFTunlock(privateKey, tx, ftPreTX[i], ftPrePreTxData[i], i, fttxo[i].outputIndex);
                     return unlockingScript;
                 });
             }
@@ -1188,6 +1188,7 @@ class poolNFT {
                 throw new Error('Change amount is not zero');
             }
             const poolnft = await this.fetchPoolNftUTXO(this.contractTxid);
+            const contractTX = await API.fetchTXraw(poolnft.txId, this.network);
             //const utxo = await API.fetchUTXO(privateKey, 0.1, this.network);
             const tx = new tbc.Transaction()
                 .from(poolnft)
@@ -1231,7 +1232,7 @@ class poolNFT {
                 await tx.setInputScriptAsync({
                     inputIndex: i + 1,
                 }, async (tx) => {
-                    const unlockingScript = await FTA.getFTunlock(privateKey, tx, ftPreTX[i], ftPrePreTxData[i], i + 1, fttxo[i].txId, fttxo[i].outputIndex);
+                    const unlockingScript = await FTA.getFTunlockSwap(privateKey, tx, ftPreTX[i], ftPrePreTxData[i], contractTX, i + 1, fttxo[i].outputIndex);
                     return unlockingScript;
                 });
             }
@@ -1307,13 +1308,13 @@ class poolNFT {
         }
         if (this.tbc_amount > tbc_amount_old) {
             return {
-                ft_lp_difference: BigInt(ft_lp_old) - BigInt(this.ft_lp_amount),
+                ft_lp_difference: BigInt(this.ft_lp_amount) - BigInt(ft_lp_old),
                 ft_a_difference: BigInt(this.ft_a_amount) - BigInt(ft_a_old),
                 tbc_amount_difference: BigInt(this.tbc_amount) - BigInt(tbc_amount_old)
             }
         } else {
             return {
-                ft_lp_difference: BigInt(this.ft_lp_amount) - BigInt(ft_lp_old),
+                ft_lp_difference: BigInt(ft_lp_old) - BigInt(this.ft_lp_amount),
                 ft_a_difference: BigInt(ft_a_old) - BigInt(this.ft_a_amount),
                 tbc_amount_difference: BigInt(tbc_amount_old) - BigInt(this.tbc_amount)
             }
@@ -1325,10 +1326,10 @@ class poolNFT {
         if (increment == BigInt(0)) {
             return;
         } else if (increment > BigInt(0) && increment <= BigInt(this.ft_lp_amount)) {
-            const ratio = BigInt(this.ft_lp_amount) / increment;
-            this.ft_lp_amount = BigInt(this.ft_lp_amount) + BigInt(this.ft_lp_amount) / ratio;
-            this.ft_a_amount = BigInt(this.ft_a_amount) - BigInt(this.ft_a_amount) / ratio;
-            this.tbc_amount = BigInt(this.tbc_amount) - BigInt(this.tbc_amount) / ratio;
+            const ratio = (BigInt(this.ft_lp_amount)) / increment;
+            this.ft_lp_amount = BigInt(this.ft_lp_amount) - BigInt(this.ft_lp_amount) / ratio;
+            this.ft_a_amount = BigInt(this.ft_a_amount) - (BigInt(this.ft_a_amount)) / ratio;
+            this.tbc_amount = BigInt(this.tbc_amount) - (BigInt(this.tbc_amount)) / ratio;
         } else {
             throw new Error("Increment is invalid!")
         }
@@ -1339,10 +1340,10 @@ class poolNFT {
         if (increment == BigInt(0)) {
             return;
         } else if (increment > BigInt(0) && increment <= BigInt(this.ft_a_amount)) {
-            const ratio = BigInt(this.ft_a_amount) / increment;
+            const ratio = (BigInt(this.ft_a_amount)) / increment;
             this.ft_a_amount = BigInt(this.ft_a_amount) + BigInt(increment);
-            this.ft_lp_amount = BigInt(this.ft_lp_amount) - BigInt(this.ft_lp_amount) / ratio;
-            this.tbc_amount = BigInt(this.ft_a_amount) + BigInt(this.ft_a_amount) / ratio;
+            this.ft_lp_amount = BigInt(this.ft_lp_amount) + (BigInt(this.ft_lp_amount)) / ratio;
+            this.tbc_amount = BigInt(this.ft_a_amount) + (BigInt(this.ft_a_amount)) / ratio;
         } else {
             throw new Error("Increment is invalid!")
         }
@@ -1353,10 +1354,10 @@ class poolNFT {
         if (increment == BigInt(0)) {
             return;
         } else if (increment > BigInt(0) && increment <= BigInt(this.tbc_amount)) {
-            const ratio = BigInt(this.tbc_amount) / increment;
+            const ratio = (BigInt(this.tbc_amount)) / increment;
             this.tbc_amount = BigInt(this.tbc_amount) + BigInt(increment);
-            this.ft_lp_amount = BigInt(this.ft_lp_amount) - BigInt(this.ft_lp_amount) / ratio;
-            this.ft_a_amount = BigInt(this.ft_a_amount) + BigInt(this.ft_a_amount) / ratio;
+            this.ft_lp_amount = BigInt(this.ft_lp_amount) + (BigInt(this.ft_lp_amount)) / ratio;
+            this.ft_a_amount = BigInt(this.ft_a_amount) + (BigInt(this.ft_a_amount)) / ratio;
         } else {
             throw new Error("Increment is invalid!")
         }
@@ -1372,7 +1373,7 @@ class poolNFT {
         //OP_DUP OP_1 OP_SPLIT OP_NIP OP_4 OP_SPLIT OP_DROP 0x04 0x00000000 OP_EQUALVERIFY 
     }
 
-    getFTLPcode(poolNftCodeHash: string, address: string, tapeSize: number): tbc.Script {
+    getFTLPcode(poolNftCodeHash: string, address: any, tapeSize: number): tbc.Script {
         const codeHash = poolNftCodeHash;
         const publicKeyHash = tbc.Address.fromString(address).hashBuffer.toString('hex');
         const hash = publicKeyHash + '00';
