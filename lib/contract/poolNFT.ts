@@ -1011,7 +1011,7 @@ class poolNFT {
         }
     }
 
-    async mergeFTLP(privateKey_from: tbc.PrivateKey, utxo: tbc.Transaction.IUnspentOutput): Promise<boolean> {
+    async mergeFTLP(privateKey_from: tbc.PrivateKey, utxo: tbc.Transaction.IUnspentOutput): Promise<boolean | string> {
         const FTA = new FT({ txidOrParams: this.ft_a_contractTxid, network: this.network });
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
         await FTA.initialize(FTAInfo);
@@ -1081,17 +1081,17 @@ class poolNFT {
             await tx.sealAsync();
             const txraw = tx.uncheckedSerialize();
             console.log('Merge FTLPUTXO:');
-            await API.broadcastTXraw(txraw, this.network);
+            //await API.broadcastTXraw(txraw, this.network);
             // // wait 5 seconds
             // await new Promise(resolve => setTimeout(resolve, 5000));
             // await this.mergeFTLP(privateKey);
-            return true;
+            return txraw;
         } catch (error) {
             throw new Error("Merge Faild!.");
         }
     }
 
-    async mergeFTinPool(privateKey_from: tbc.PrivateKey, utxo: tbc.Transaction.IUnspentOutput): Promise<boolean> {
+    async mergeFTinPool(privateKey_from: tbc.PrivateKey, utxo: tbc.Transaction.IUnspentOutput): Promise<boolean | string> {
         const FTA = new FT({ txidOrParams: this.ft_a_contractTxid, network: this.network });
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
         await FTA.initialize(FTAInfo);
@@ -1188,11 +1188,11 @@ class poolNFT {
             await tx.sealAsync();
             const txraw = tx.uncheckedSerialize();
             console.log('Merge FtUTXOinPool:');
-            await API.broadcastTXraw(txraw, this.network);
+            // await API.broadcastTXraw(txraw, this.network);
             // // wait 5 seconds
             // await new Promise(resolve => setTimeout(resolve, 5000));
             // await this.mergeFTinPool(privateKey);
-            return true;
+            return txraw;
         } catch (error) {
             throw new Error("Merge Faild!.");
         }
