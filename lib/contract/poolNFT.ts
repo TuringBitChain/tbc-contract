@@ -75,7 +75,7 @@ class poolNFT {
 
     async initCreate(ftContractTxid?: string) {
         if (!ftContractTxid && this.ft_a_contractTxid != '') {
-            const FTA = new FT({ txidOrParams: this.ft_a_contractTxid, network: this.network });
+            const FTA = new FT(this.ft_a_contractTxid);
             const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
             await FTA.initialize(FTAInfo);
             this.ft_a_amount = BigInt(this.ft_a_number * Math.pow(10, FTA.decimal));
@@ -99,7 +99,7 @@ class poolNFT {
 
     async createPoolNFT(privateKey_from: tbc.PrivateKey, utxo: tbc.Transaction.IUnspentOutput): Promise<string> {
         const privateKey = privateKey_from;
-        const FTA = new FT({ txidOrParams: this.ft_a_contractTxid, network: this.network });
+        const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
         await FTA.initialize(FTAInfo);
         //const utxo = await API.fetchUTXO(privateKey, 0.1, this.network);
@@ -135,7 +135,7 @@ class poolNFT {
 
     async initPoolNFT(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, tbc_amount?: number, ft_a?: number): Promise<string> {
         const privateKey = privateKey_from;
-        const FTA = new FT({ txidOrParams: this.ft_a_contractTxid, network: this.network });
+        const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
         await FTA.initialize(FTAInfo);
         let amount_lpbn = BigInt(0);
@@ -262,7 +262,7 @@ class poolNFT {
 
     async increaseLP(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, amount_tbc: number): Promise<string> {
         const privateKey = privateKey_from;
-        const FTA = new FT({ txidOrParams: this.ft_a_contractTxid, network: this.network });
+        const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
         await FTA.initialize(FTAInfo);
         const amount_tbcbn = BigInt(amount_tbc * Math.pow(10, 6));
@@ -377,7 +377,7 @@ class poolNFT {
 
     async consumeLP(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, amount_lp: number): Promise<string> {
         const privateKey = privateKey_from;
-        const FTA = new FT({ txidOrParams: this.ft_a_contractTxid, network: this.network });
+        const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
         await FTA.initialize(FTAInfo);
         const amount_lpbn = BigInt(amount_lp * Math.pow(10, 6));
@@ -530,7 +530,7 @@ class poolNFT {
 
     async swaptoToken(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, amount_token: number): Promise<string> {
         const privateKey = privateKey_from;
-        const FTA = new FT({ txidOrParams: this.ft_a_contractTxid, network: this.network });
+        const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
         await FTA.initialize(FTAInfo);
         const amount_ftbn = BigInt(amount_token * Math.pow(10, FTA.decimal));
@@ -724,7 +724,7 @@ class poolNFT {
 
     async swaptoTBC(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, amount_tbc: number): Promise<string> {
         const privateKey = privateKey_from;
-        const FTA = new FT({ txidOrParams: this.ft_a_contractTxid, network: this.network });
+        const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
         await FTA.initialize(FTAInfo);
         const amount_tbcbn = BigInt(amount_tbc * Math.pow(10, 6));
@@ -1012,7 +1012,7 @@ class poolNFT {
     }
 
     async mergeFTLP(privateKey_from: tbc.PrivateKey, utxo: tbc.Transaction.IUnspentOutput): Promise<boolean | string> {
-        const FTA = new FT({ txidOrParams: this.ft_a_contractTxid, network: this.network });
+        const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
         await FTA.initialize(FTAInfo);
         const privateKey = privateKey_from;
@@ -1092,7 +1092,7 @@ class poolNFT {
     }
 
     async mergeFTinPool(privateKey_from: tbc.PrivateKey, utxo: tbc.Transaction.IUnspentOutput): Promise<boolean | string> {
-        const FTA = new FT({ txidOrParams: this.ft_a_contractTxid, network: this.network });
+        const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
         await FTA.initialize(FTAInfo);
         const privateKey = privateKey_from;
