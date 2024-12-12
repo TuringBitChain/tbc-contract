@@ -126,7 +126,7 @@ declare module 'tbc-contract' {
         createPoolNFT(privateKey_from: PrivateKey, utxo: Transaction.IUnspentOutput): Promise<string>;
         initPoolNFT(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, tbc_amount?: number, ft_a?: number): Promise<string>;
         increaseLP(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_tbc: number): Promise<string>;
-        consumLP(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_lp: number): Promise<string>;
+        consumeLP(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_lp: number): Promise<string>;
         swaptoToken(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_token: number): Promise<string>;
         swaptoToken_baseTBC(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_tbc: number): Promise<string>
         swaptoTBC(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_tbc: number): Promise<string>;
