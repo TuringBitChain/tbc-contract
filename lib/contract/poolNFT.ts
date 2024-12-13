@@ -977,7 +977,7 @@ class poolNFT {
     }
 
     async fetchPoolNFTInfo(contractTxid: string): Promise<PoolNFTInfo> {
-        const url_testnet = `http://tbcdev.org:5000/v1/tbc/main/ft/pool/nft/info/contract/id/${contractTxid}`;
+        const url_testnet = `https://tbcdev.org/v1/tbc/main/ft/pool/nft/info/contract/id/${contractTxid}`;
         const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/pool/nft/info/contract/id/${contractTxid}`;
         let url = this.network == "testnet" ? url_testnet : url_mainnet;
         try {
@@ -1018,7 +1018,7 @@ class poolNFT {
 
     async fetchFtlpUTXO(ftlpCode: string, amount: bigint): Promise<tbc.Transaction.IUnspentOutput> {
         const ftlpHash = tbc.crypto.Hash.sha256(Buffer.from(ftlpCode, 'hex')).reverse().toString('hex');
-        const url_testnet = `http://tbcdev.org:5000/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpHash}`;
+        const url_testnet = `https://tbcdev.org/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpHash}`;
         const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpHash}`;
         let url = this.network == "testnet" ? url_testnet : url_mainnet;
         try {
@@ -1062,7 +1062,7 @@ class poolNFT {
         const address = privateKey.toAddress().toString();
         const ftlpCodeScript = this.getFTLPcode(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex')).toString('hex'), address, FTA.tapeScript.length / 2);
         const ftlpCodeHash = tbc.crypto.Hash.sha256(ftlpCodeScript.toBuffer());
-        const url_testnet = `http://tbcdev.org:5000/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpCodeHash}`;
+        const url_testnet = `https://tbcdev.org/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpCodeHash}`;
         const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpCodeHash}`;
         let url = this.network == "testnet" ? url_testnet : url_mainnet;
         const fttxo_codeScript = FT.buildFTtransferCode(ftlpCodeScript.toBuffer().toString(), address).toBuffer().toString('hex');
@@ -1147,7 +1147,7 @@ class poolNFT {
         const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex'))).toString('hex');
         const hash = poolnft_codehash160 + '01';
         const contractTxid = this.ft_a_contractTxid;
-        const url_testnet = `http://tbcdev.org:5000/v1/tbc/main/ft/utxo/combine/script/${hash}/contract/${contractTxid}`;
+        const url_testnet = `https://tbcdev.org/v1/tbc/main/ft/utxo/combine/script/${hash}/contract/${contractTxid}`;
         const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/utxo/combine/script/${hash}/contract/${contractTxid}`;
         let url = this.network == "testnet" ? url_testnet : url_mainnet;
         const fttxo_codeScript = FT.buildFTtransferCode(FTA.codeScript, poolnft_codehash160).toBuffer().toString('hex');
