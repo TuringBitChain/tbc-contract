@@ -141,15 +141,18 @@ class API {
             }
             return fttxo;
         } catch (error) {
+            console.log(error);
             throw new Error("Failed to fetch FTUTXO.");
         }
     }
 
-    static async fetchFtUTXOs(contractTxid: string, addressOrHash: string, number: number, codeScript: string, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput[]> {
-        if (!Number.isInteger(number) || number < 1) {
-            throw new Error(`${number} is not a nature number`);
-        } else if (number > 5) {
-            throw new Error(`The number of FT UTXOs should be less than 6`);
+    static async fetchFtUTXOs(contractTxid: string, addressOrHash: string, codeScript: string, network?: "testnet" | "mainnet", amount?: bigint): Promise<tbc.Transaction.IUnspentOutput[]> {
+        interface FTUnspentOutput {
+            utxoId: string;
+            utxoVout: number;
+            utxoBalance: number;
+            ftContractId: string;
+            ftBalance: bigint;
         }
         let base_url = "";
         if (network) {
@@ -181,15 +184,21 @@ class API {
                 throw new Error(`Failed to fetch from URL: ${url}, status: ${response.status}`);
             }
             const responseData = await response.json();
+            let sortedData: FTUnspentOutput[] = responseData.ftUtxoList.sort((a: FTUnspentOutput, b: FTUnspentOutput) => b.ftBalance - a.ftBalance);
+            let sumBalance = BigInt(0);
             let ftutxos: tbc.Transaction.IUnspentOutput[] = [];
-            for (let i = 0; i < responseData.ftUtxoList.length && i < 5; i++) {
+            for (let i = 0; i < sortedData.length && i < 5; i++) {
+                sumBalance += BigInt(sortedData[i].ftBalance);
                 ftutxos.push({
-                    txId: responseData.ftUtxoList[i].utxoId,
-                    outputIndex: responseData.ftUtxoList[i].utxoVout,
+                    txId: sortedData[i].utxoId,
+                    outputIndex: sortedData[i].utxoVout,
                     script: codeScript,
-                    satoshis: responseData.ftUtxoList[i].utxoBalance,
-                    ftBalance: responseData.ftUtxoList[i].ftBalance
+                    satoshis: sortedData[i].utxoBalance,
+                    ftBalance: sortedData[i].ftBalance
                 });
+                if (sumBalance >= amount!) {
+                    break;
+                }
             }
             return ftutxos;
         } catch (error) {
@@ -235,6 +244,7 @@ class API {
             }
             return ftInfo;
         } catch (error) {
+            console.log(error);
             throw new Error("Failed to fetch FtInfo.");
         }
     }
@@ -445,6 +455,7 @@ class API {
             }
             return data.result;
         } catch (error) {
+            console.log(error);
             throw new Error("Failed to broadcast TXraw.");
         }
     }
@@ -481,6 +492,7 @@ class API {
                 satoshis: utxo.value
             }));
         } catch (error) {
+            console.log(error);
             throw new Error("Failed to fetch UTXO.");
         }
     }

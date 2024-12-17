@@ -35,10 +35,14 @@ async function main() {
         const utxo = await API.fetchUTXO(privateKeyA, 0.01, network);//准备utxo
         const transferTokenAmountBN = BigInt(transferTokenAmount * Math.pow(10, Token.decimal));
         const ftutxo_codeScript = FT.buildFTtransferCode(Token.codeScript, addressA).toBuffer().toString('hex');
-        const ftutxo = await API.fetchFtUTXO(Token.contractTxid, addressA, transferTokenAmountBN, ftutxo_codeScript, network);//准备ft utxo
-        const preTX = await API.fetchTXraw(ftutxo.txId, network);//获取ft输入的父交易
-        const prepreTxData = await API.fetchFtPrePreTxData(preTX, ftutxo.outputIndex, network);//获取ft输入的爷交易
-        const transferTX = Token.transfer(privateKeyA, addressB, transferTokenAmount, ftutxo, utxo, preTX, prepreTxData);//组装交易
+        const ftutxos = await API.fetchFtUTXOs(Token.contractTxid, addressA, ftutxo_codeScript, network, transferTokenAmountBN);//准备ft utxo
+        let preTXs: tbc.Transaction[] = [];
+        let prepreTxDatas: string[] = [];
+        for (let i = 0; i < ftutxos.length; i++) {
+            preTXs.push(await API.fetchTXraw(ftutxos[i].txId, network));//获取每个ft输入的父交易
+            prepreTxDatas.push(await API.fetchFtPrePreTxData(preTXs[i], ftutxos[i].outputIndex, network));//获取每个ft输入的爷交易
+        }
+        const transferTX = Token.transfer(privateKeyA, addressA, transferTokenAmount, ftutxos, utxo, preTXs, prepreTxDatas);//组装交易
         await API.broadcastTXraw(transferTX, network);
 
         //Merge
@@ -47,7 +51,7 @@ async function main() {
         Token.initialize(TokenInfo);
         const utxo = await API.fetchUTXO(privateKeyA, 0.01, network);//准备utxo
         const ftutxo_codeScript = FT.buildFTtransferCode(Token.codeScript, addressA).toBuffer().toString('hex');
-        const ftutxos = await API.fetchFtUTXOs(Token.contractTxid, addressA, 5, ftutxo_codeScript, network);//准备多个ft utxo
+        const ftutxos = await API.fetchFtUTXOs(Token.contractTxid, addressA, ftutxo_codeScript, network);//准备多个ft utxo
         let preTXs: tbc.Transaction[] = [];
         let prepreTxDatas: string[] = [];
         for (let i = 0; i < ftutxos.length; i++) {
