@@ -1,5 +1,11 @@
 import * as tbc from 'tbc-lib-js';
-import { getPreTxdata, getCurrentTxdata, getCurrentInputsdata, getContractTxdata, getSize } from '../util/ftunlock';
+import { 
+        getPreTxdata, 
+        getCurrentTxdata, 
+        getCurrentInputsdata, 
+        getContractTxdata, 
+        getSize 
+    } from '../util/ftunlock';
 
 interface FtInfo {
     contractTxid?: string;
@@ -141,7 +147,7 @@ class FT {
      * @param amount - The amount to transfer.
      * @returns The raw transaction hex string.
      */
-    transfer(privateKey_from: tbc.PrivateKey, address_to: string, amount: number, ftutxo_a: tbc.Transaction.IUnspentOutput, utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction, prepreTxData: string): string {
+    transfer(privateKey_from: tbc.PrivateKey, address_to: string, amount: number, ftutxo_a: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[]): string {
         const privateKey = privateKey_from;
         const address_from = privateKey.toAddress().toString();
         const code = this.codeScript;
@@ -154,10 +160,11 @@ class FT {
         const amountbn = BigInt(amount * Math.pow(10, decimal));
         // Fetch FT UTXO for the transfer
         //const ftutxo_a = await this.fetchFtTXO(this.contractTxid, address_from, amountbn);
-        tapeAmountSetIn.push(ftutxo_a.ftBalance!);
+        
         // Calculate the total available balance
         let tapeAmountSum = BigInt(0);
-        for (let i = 0; i < tapeAmountSetIn.length; i++) {
+        for (let i = 0; i < ftutxo_a.length; i++) {
+            tapeAmountSetIn.push(ftutxo_a[i].ftBalance!);
             tapeAmountSum += BigInt(tapeAmountSetIn[i]);
         }
         // Check if the balance is sufficient
@@ -210,12 +217,14 @@ class FT {
         tx.feePerKb(100)
         tx.change(address_from);
         // Set the input script asynchronously for the FT UTXO
-        tx.setInputScript({
-            inputIndex: 0,
-        }, (tx) => {
-            const unlockingScript = this.getFTunlock(privateKey, tx, preTX, prepreTxData, 0, ftutxo_a.outputIndex);
-            return unlockingScript;
-        });
+        for (let i = 0; i < ftutxo_a.length; i++) {
+            tx.setInputScript({
+                inputIndex: i,
+            }, (tx) => {
+                const unlockingScript = this.getFTunlock(privateKey, tx, preTX[i], prepreTxData[i], i, ftutxo_a[i].outputIndex);
+                return unlockingScript;
+            });
+        }
         tx.sign(privateKey);
         tx.seal();
         const txraw = tx.uncheckedSerialize();
