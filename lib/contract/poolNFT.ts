@@ -675,7 +675,7 @@ class poolNFT {
             throw new Error('Insufficient FT, please merge FT UTXOs');
         }
         // Build the amount and change hex strings for the tape
-        const { amountHex, changeHex } = FTA.buildTapeAmount(ft_a_amount_decrement, tapeAmountSetIn, 2);
+        const { amountHex, changeHex } = FT.buildTapeAmount(ft_a_amount_decrement, tapeAmountSetIn, 2);
         //const utxo = await FTA.fetchUTXO(privateKey.toAddress().toString());
         if (BigInt(utxo.satoshis) < amount_tbc) {
             throw new Error('Insufficient TBC amount, please merge UTXOs');
@@ -702,23 +702,23 @@ class poolNFT {
             satoshis: 0
         }));
         // FTAbyA
-        const ftCodeScript = FTA.buildFTtransferCode(FTA.codeScript, address_to);
+        const ftCodeScript = FT.buildFTtransferCode(FTA.codeScript, address_to);
         tx.addOutput(new tbc.Transaction.Output({
             script: ftCodeScript,
             satoshis: 2000
         }));
-        const ftTapeScript = FTA.buildFTtransferTape(FTA.tapeScript, amountHex);
+        const ftTapeScript = FT.buildFTtransferTape(FTA.tapeScript, amountHex);
         tx.addOutput(new tbc.Transaction.Output({
             script: ftTapeScript,
             satoshis: 0
         }));
         // FTAbyC
-        const ftabycCodeScript = FTA.buildFTtransferCode(FTA.codeScript, poolnft_codehash160);
+        const ftabycCodeScript = FT.buildFTtransferCode(FTA.codeScript, poolnft_codehash160);
         tx.addOutput(new tbc.Transaction.Output({
             script: ftabycCodeScript,
             satoshis: fttxo_c.satoshis + Number(amount_tbcbn)
         }));
-        const ftabycTapeScript = FTA.buildFTtransferTape(FTA.tapeScript, changeHex);
+        const ftabycTapeScript = FT.buildFTtransferTape(FTA.tapeScript, changeHex);
         tx.addOutput(new tbc.Transaction.Output({
             script: ftabycTapeScript,
             satoshis: 0
@@ -897,7 +897,7 @@ class poolNFT {
             throw new Error('Insufficient PoolTbc, please merge FT UTXOs');
         }
         // Build the amount and change hex strings for the tape
-        const { amountHex, changeHex } = FTA.buildTapeAmount(BigInt(amount_ftbn) + BigInt(fttxo_c.ftBalance!), tapeAmountSetIn, 1);
+        const { amountHex, changeHex } = FT.buildTapeAmount(BigInt(amount_ftbn) + BigInt(fttxo_c.ftBalance!), tapeAmountSetIn, 1);
         //const utxo = await FTA.fetchUTXO(privateKey.toAddress().toString());
         const poolnft = await this.fetchPoolNftUTXO(this.contractTxid);
         const contractTX = await API.fetchTXraw(poolnft.txId, this.network);
@@ -924,25 +924,25 @@ class poolNFT {
         }));
         tx.to(address_to, Number(tbc_amount_decrement));
         // FTAbyC
-        const ftCodeScript = FTA.buildFTtransferCode(FTA.codeScript, poolnft_codehash160);
+        const ftCodeScript = FT.buildFTtransferCode(FTA.codeScript, poolnft_codehash160);
         tx.addOutput(new tbc.Transaction.Output({
             script: ftCodeScript,
             satoshis: fttxo_c.satoshis - Number(tbc_amount_decrement)
         }));
-        const ftTapeScript = FTA.buildFTtransferTape(FTA.tapeScript, amountHex);
+        const ftTapeScript = FT.buildFTtransferTape(FTA.tapeScript, amountHex);
         tx.addOutput(new tbc.Transaction.Output({
             script: ftTapeScript,
             satoshis: 0
         }));
         // FTAbyA_change
         if (amount_ftbn < fttxo_a.ftBalance!) {
-            const ftabyaCodeScript = FTA.buildFTtransferCode(FTA.codeScript, privateKey.toAddress().toString());
+            const ftabyaCodeScript = FT.buildFTtransferCode(FTA.codeScript, privateKey.toAddress().toString());
 
             tx.addOutput(new tbc.Transaction.Output({
                 script: ftabyaCodeScript,
                 satoshis: 2000
             }));
-            const ftabyaTapeScript = FTA.buildFTtransferTape(FTA.tapeScript, changeHex);
+            const ftabyaTapeScript = FT.buildFTtransferTape(FTA.tapeScript, changeHex);
             tx.addOutput(new tbc.Transaction.Output({
                 script: ftabyaTapeScript,
                 satoshis: 0
