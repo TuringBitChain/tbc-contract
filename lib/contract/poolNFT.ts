@@ -152,7 +152,7 @@ class poolNFT {
 
         const tapeAmountSetIn: bigint[] = [];
         //const utxo = await API.fetchUTXO(privateKey, 0.1, this.network);
-        if (utxo.satoshis < this.tbc_amount) {
+        if (utxo.satoshis < Number(this.tbc_amount)) {
             throw new Error('Insufficient TBC amount, please merge UTXOs');
         }
         const poolnft_codehash = tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex'));
@@ -289,7 +289,7 @@ class poolNFT {
         // Build the amount and change hex strings for the tape
         let { amountHex, changeHex } = FT.buildTapeAmount(changeDate.ft_a_difference, tapeAmountSetIn, 1);
         //const utxo = await API.fetchUTXO(privateKey, 0.1, this.network);
-        if (utxo.satoshis < amount_tbcbn) {
+        if (utxo.satoshis < Number(amount_tbcbn)) {
             throw new Error('Insufficient TBC amount, please merge UTXOs');
         }
         const poolnft = await this.fetchPoolNftUTXO(this.contractTxid);
@@ -412,7 +412,7 @@ class poolNFT {
         //const fttxo_c = await FTA.fetchFtUTXO(this.ft_a_contractTxid, poolnft_codehash160, changeDate.ft_a_difference);
         if (fttxo_c.ftBalance === undefined) {
             throw new Error('ftBalance is undefined');
-        } else if (BigInt(fttxo_c.satoshis) < changeDate.tbc_amount_difference) {
+        } else if (fttxo_c.satoshis < Number(changeDate.tbc_amount_difference)) {
             throw new Error('PoolFtUTXO tbc_amount is insufficient, please merge UTXOs');
         }
         tapeAmountSetIn.push(fttxo_c.ftBalance);
@@ -577,7 +577,7 @@ class poolNFT {
         // Build the amount and change hex strings for the tape
         const { amountHex, changeHex } = FT.buildTapeAmount(amount_ftbn, tapeAmountSetIn, 2);
         //const utxo = await API.fetchUTXO(privateKey, Number(tbc_amount_increment) / Math.pow(10, 6), this.network);
-        if (BigInt(utxo.satoshis) < tbc_amount_increment) {
+        if (utxo.satoshis < Number(tbc_amount_increment)) {
             throw new Error('Insufficient TBC amount, please merge UTXOs');
         }
         const poolnft = await this.fetchPoolNftUTXO(this.contractTxid);
@@ -778,7 +778,7 @@ class poolNFT {
         //const fttxo_c = await FTA.fetchFtUTXO(this.ft_a_contractTxid, poolnft_codehash160, amount_tbcbn);
         tapeAmountSetIn.push(fttxo_c.ftBalance!);
         // Check if the balance is sufficient
-        if (amount_tbcbn > BigInt(fttxo_c.satoshis)) {
+        if (Number(amount_tbcbn) > fttxo_c.satoshis) {
             throw new Error('Insufficient PoolTbc, please merge FT UTXOs');
         }
         // Build the amount and change hex strings for the tape
@@ -893,7 +893,7 @@ class poolNFT {
         ftPrePreTxData.push(await API.fetchFtPrePreTxData(ftPreTX[1], fttxo_c.outputIndex, this.network));
         tapeAmountSetIn.push(BigInt(fttxo_c.ftBalance!));
         // Check if the balance is sufficient
-        if (tbc_amount_decrement > BigInt(fttxo_c.satoshis)) {
+        if (Number(tbc_amount_decrement) > fttxo_c.satoshis) {
             throw new Error('Insufficient PoolTbc, please merge FT UTXOs');
         }
         // Build the amount and change hex strings for the tape
@@ -1048,6 +1048,7 @@ class poolNFT {
             }
             return ftlp;
         } catch (error) {
+            console.log(error);
             throw new Error("Failed to fetch FTLP UTXO.");
         }
     }
@@ -1132,6 +1133,7 @@ class poolNFT {
             // await this.mergeFTLP(privateKey);
             return txraw;
         } catch (error) {
+            console.log(error);
             throw new Error("Merge Faild!.");
         }
     }
@@ -1244,6 +1246,7 @@ class poolNFT {
             // await this.mergeFTinPool(privateKey);
             return txraw;
         } catch (error) {
+            console.log(error);
             throw new Error("Merge Faild!.");
         }
     }
