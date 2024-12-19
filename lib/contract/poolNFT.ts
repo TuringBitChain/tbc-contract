@@ -93,6 +93,23 @@ class poolNFT {
         this.poolnft_code = poolNFTInfo.poolnft_code;
     }
 
+    /**
+     * 创建一个池 NFT，并返回未检查的交易原始数据。
+     *
+     * @param {tbc.PrivateKey} privateKey_from - 用于创建池 NFT 的私钥。
+     * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
+     * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的原始交易数据。
+     *
+     * 该函数执行以下主要步骤：
+     * 1. 初始化 FT 实例并获取相关信息，包括合约交易 ID 和网络信息。
+     * 2. 生成池 NFT 代码，使用 UTXO 的交易 ID 和输出索引。
+     * 3. 计算 FT LP 代码，并生成相关的部分哈希值。
+     * 4. 创建一个 BufferWriter 实例，并写入初始值（0）。
+     * 5. 构建池 NFT 的脚本，包含部分哈希、金额数据和合约交易 ID。
+     * 6. 创建新的交易实例，添加 UTXO 输入和多个输出，包括池 NFT 和脚本输出。
+     * 7. 设置每千字节的交易费用，指定找零地址，并使用私钥对交易进行签名。
+     * 8. 封装交易并返回序列化后的未检查交易数据以供发送。
+     */
     async createPoolNFT(privateKey_from: tbc.PrivateKey, utxo: tbc.Transaction.IUnspentOutput): Promise<string> {
         const privateKey = privateKey_from;
         const FTA = new FT(this.ft_a_contractTxid);
@@ -129,6 +146,29 @@ class poolNFT {
         return txraw;
     }
 
+    /**
+     * 初始化池 NFT 的创建过程，并返回未检查的交易原始数据。
+     *
+     * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
+     * @param {string} address_to - NFT 接收地址。
+     * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
+     * @param {number} [tbc_amount] - 可选的 TBC 数量，用于交易。
+     * @param {number} [ft_a] - 可选的 FT-A 数量，用于交易。
+     * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
+     *
+     * 该函数执行以下主要步骤：
+     * 1. 初始化 FT 实例并获取相关信息，包括合约交易 ID 和网络信息。
+     * 2. 根据输入参数计算 LP 和 FT-A 的金额，确保输入有效并处理不同情况。
+     * 3. 检查 UTXO 是否有足够的 TBC 金额，抛出错误如果不足。
+     * 4. 计算池 NFT 代码的哈希值，并验证 FT-A 的最大金额限制。
+     * 5. 获取 FT-A 的 UTXO 和相关交易数据，确保有足够的 FT-A 金额进行交易。
+     * 6. 构建用于池 NFT 和 FT-A 转移的脚本，并设置相关输出。
+     * 7. 构建 FT LP 的脚本，包含名称和符号信息，并添加到交易中。
+     * 8. 根据需要添加找零输出，确保所有金额正确处理。
+     * 9. 设置每千字节的交易费用，并指定找零地址。
+     * 10. 异步设置输入脚本以解锁相应的 UTXO，并签名交易。
+     * 11. 封装交易并返回序列化后的未检查交易数据以供发送。
+     */
     async initPoolNFT(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, tbc_amount?: number, ft_a?: number): Promise<string> {
         const privateKey = privateKey_from;
         const FTA = new FT(this.ft_a_contractTxid);
@@ -260,6 +300,27 @@ class poolNFT {
         return txraw;
     }
 
+    /**
+     * 增加流动性池中的 LP，并返回未检查的交易原始数据。
+     *
+     * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
+     * @param {string} address_to - LP 接收地址。
+     * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
+     * @param {number} amount_tbc - 增加的 TBC 数量。
+     * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
+     *
+     * 该函数执行以下主要步骤：
+     * 1. 初始化 FT 实例并获取相关信息，包括合约交易 ID 和网络信息。
+     * 2. 将输入的 TBC 数量转换为 BigInt，并更新流动性池的数据。
+     * 3. 计算池 NFT 的哈希值，并验证是否有足够的 FT-A 和 TBC 金额进行交易。
+     * 4. 获取 FT-A 的 UTXO 和相关交易数据，确保有足够的 FT-A 金额进行流动性增加。
+     * 5. 构建用于池 NFT 和 FT-A 转移的脚本，并设置相关输出。
+     * 6. 构建 FT LP 的脚本，包含名称和符号信息，并添加到交易中。
+     * 7. 根据需要添加找零输出，确保所有金额正确处理。
+     * 8. 设置每千字节的交易费用，并指定找零地址。
+     * 9. 异步设置输入脚本以解锁相应的 UTXO，并签名交易。
+     * 10. 封装交易并返回序列化后的未检查交易数据以供发送。
+     */
     async increaseLP(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, amount_tbc: number): Promise<string> {
         const privateKey = privateKey_from;
         const FTA = new FT(this.ft_a_contractTxid);
@@ -379,6 +440,27 @@ class poolNFT {
         return txraw;
     }
 
+    /**
+     * 消耗流动性池中的 LP，并返回未检查的交易原始数据。
+     *
+     * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
+     * @param {string} address_to - LP 转移接收地址。
+     * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
+     * @param {number} amount_lp - 要消耗的 LP 数量。
+     * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
+     *
+     * 该函数执行以下主要步骤：
+     * 1. 初始化 FT 实例并获取相关信息，包括合约交易 ID 和网络信息。
+     * 2. 将输入的 LP 数量转换为 BigInt，并验证是否有足够的 LP 可供消耗。
+     * 3. 更新池 NFT 的状态，并计算相关的哈希值。
+     * 4. 获取流动性池 UTXO 和 FT UTXO，确保有足够的余额进行交易。
+     * 5. 构建用于流动性池和 FT 转移的脚本，并设置相关输出。
+     * 6. 构建 FT LP 的脚本，包含名称和符号信息，并添加到交易中。
+     * 7. 根据需要添加找零输出，确保所有金额正确处理。
+     * 8. 设置每千字节的交易费用，并指定找零地址。
+     * 9. 异步设置输入脚本以解锁相应的 UTXO，并签名交易。
+     * 10. 封装交易并返回序列化后的未检查交易数据以供发送。
+     */
     async consumeLP(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, amount_lp: number): Promise<string> {
         const privateKey = privateKey_from;
         const FTA = new FT(this.ft_a_contractTxid);
@@ -541,6 +623,26 @@ class poolNFT {
         return txraw;
     }
 
+    /**
+     * 将 FT-A 交换为指定数量的代币，并返回未检查的交易原始数据。
+     *
+     * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
+     * @param {string} address_to - 接收代币的地址。
+     * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
+     * @param {number} amount_token - 要交换的代币数量。
+     * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
+     *
+     * 该函数执行以下主要步骤：
+     * 1. 初始化 FT 实例并获取相关信息，包括合约交易 ID 和网络信息。
+     * 2. 将输入的代币数量转换为 BigInt，并验证是否有足够的 FT-A 余额进行交换。
+     * 3. 计算池 NFT 的哈希值，并更新 FT-A 和 TBC 的余额。
+     * 4. 获取 FT UTXO 和相关交易数据，确保有足够的 FT 进行交换。
+     * 5. 构建用于池 NFT 和 FT 转移的脚本，并设置相关输出。
+     * 6. 构建 FT-A 的转移脚本和相应的输出，确保所有金额正确处理。
+     * 7. 设置每千字节的交易费用，并指定找零地址。
+     * 8. 异步设置输入脚本以解锁相应的 UTXO，并签名交易。
+     * 9. 封装交易并返回序列化后的未检查交易数据以供发送。
+     */
     async swaptoToken(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, amount_token: number): Promise<string> {
         const privateKey = privateKey_from;
         const FTA = new FT(this.ft_a_contractTxid);
@@ -643,6 +745,26 @@ class poolNFT {
         return txraw;
     }
 
+    /**
+     * 将指定数量的 TBC 交换为 FT-A，并返回未检查的交易原始数据。
+     *
+     * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
+     * @param {string} address_to - 接收 FT-A 的地址。
+     * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
+     * @param {number} amount_tbc - 要交换的 TBC 数量。
+     * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
+     *
+     * 该函数执行以下主要步骤：
+     * 1. 初始化 FT 实例并获取相关信息，包括合约交易 ID 和网络信息。
+     * 2. 将输入的 TBC 数量转换为 BigInt，并验证是否有足够的 TBC 余额进行交换。
+     * 3. 更新 TBC 和 FT-A 的余额，计算新的 FT-A 数量。
+     * 4. 获取池 NFT 的哈希值，并准备 FT UTXO 的转移脚本。
+     * 5. 检查是否有足够的 FT 可供交换，抛出错误如果不足。
+     * 6. 构建用于池 NFT 和 FT 转移的脚本，并设置相关输出。
+     * 7. 设置每千字节的交易费用，并指定找零地址。
+     * 8. 异步设置输入脚本以解锁相应的 UTXO，并签名交易。
+     * 9. 封装交易并返回序列化后的未检查交易数据以供发送。
+     */
     async swaptoToken_baseTBC(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, amount_tbc: number): Promise<string> {
         const privateKey = privateKey_from;
         const FTA = new FT(this.ft_a_contractTxid);
@@ -743,6 +865,26 @@ class poolNFT {
         return txraw;
     }
 
+    /**
+     * 将指定数量的 FT-A 交换为 TBC，并返回未检查的交易原始数据。
+     *
+     * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
+     * @param {string} address_to - 接收 TBC 的地址。
+     * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
+     * @param {number} amount_tbc - 要交换的 TBC 数量。
+     * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
+     *
+     * 该函数执行以下主要步骤：
+     * 1. 初始化 FT 实例并获取相关信息，包括合约交易 ID 和网络信息。
+     * 2. 将输入的 TBC 数量转换为 BigInt，并验证是否有足够的 TBC 余额进行交换。
+     * 3. 计算池 NFT 的哈希值，并更新 FT-A 和 TBC 的余额。
+     * 4. 获取 FT-A 的 UTXO 和相关交易数据，确保有足够的 FT-A 金额进行交换。
+     * 5. 获取与池 NFT 相关的 FT UTXO，并验证其余额是否足够。
+     * 6. 构建用于池 NFT 和 FT 转移的脚本，并设置相关输出。
+     * 7. 设置每千字节的交易费用，并指定找零地址。
+     * 8. 异步设置输入脚本以解锁相应的 UTXO，并签名交易。
+     * 9. 封装交易并返回序列化后的未检查交易数据以供发送。
+     */
     async swaptoTBC(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, amount_tbc: number): Promise<string> {
         const privateKey = privateKey_from;
         const FTA = new FT(this.ft_a_contractTxid);
@@ -858,6 +1000,26 @@ class poolNFT {
         return txraw;
     }
 
+    /**
+     * 将指定数量的 FT-A 交换为 TBC，并返回未检查的交易原始数据。
+     *
+     * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
+     * @param {string} address_to - 接收 TBC 的地址。
+     * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
+     * @param {number} amount_token - 要交换的 FT-A 数量。
+     * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
+     *
+     * 该函数执行以下主要步骤：
+     * 1. 初始化 FT 实例并获取相关信息，包括合约交易 ID 和网络信息。
+     * 2. 将输入的 FT-A 数量转换为 BigInt，并验证是否有足够的 FT-A 余额进行交换。
+     * 3. 计算池 NFT 的哈希值，并更新 FT-A 和 TBC 的余额。
+     * 4. 获取与 FT-A 相关的 UTXO 和相关交易数据，确保有足够的 FT-A 金额进行交换。
+     * 5. 获取与池 NFT 相关的 FT UTXO，并验证其余额是否足够。
+     * 6. 构建用于池 NFT 和 FT 转移的脚本，并设置相关输出。
+     * 7. 设置每千字节的交易费用，并指定找零地址。
+     * 8. 异步设置输入脚本以解锁相应的 UTXO，并签名交易。
+     * 9. 封装交易并返回序列化后的未检查交易数据以供发送。
+     */
     async swaptoTBC_baseToken(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, amount_token: number): Promise<string> {
         const privateKey = privateKey_from;
         const FTA = new FT(this.ft_a_contractTxid);
@@ -974,6 +1136,29 @@ class poolNFT {
         return txraw;
     }
 
+    /**
+     * 根据合约交易 ID 获取池 NFT 的相关信息。
+     *
+     * @param {string} contractTxid - 池 NFT 合约的交易 ID。
+     * @returns {Promise<PoolNFTInfo>} 返回一个 Promise，解析为包含池 NFT 信息的对象。
+     *
+     * 该函数执行以下主要步骤：
+     * 1. 根据网络环境（测试网或主网）构建请求 URL。
+     * 2. 发送 HTTP 请求以获取池 NFT 的信息。
+     * 3. 处理响应数据，将其映射到 `PoolNFTInfo` 对象中，包括：
+     *    - FT-LP 余额
+     *    - FT-A 余额
+     *    - TBC 余额
+     *    - FT-LP 部分哈希
+     *    - FT-A 部分哈希
+     *    - FT-A 合约交易 ID
+     *    - 池 NFT 代码脚本
+     *    - 当前合约交易 ID
+     *    - 当前合约输出索引
+     *    - 当前合约余额
+     * 4. 返回包含上述信息的 `PoolNFTInfo` 对象。
+     * 5. 如果请求失败，抛出一个错误。
+     */
     async fetchPoolNFTInfo(contractTxid: string): Promise<PoolNFTInfo> {
         const url_testnet = `https://tbcdev.org/v1/tbc/main/ft/pool/nft/info/contract/id/${contractTxid}`;
         const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/pool/nft/info/contract/id/${contractTxid}`;
@@ -999,6 +1184,22 @@ class poolNFT {
         }
     }
 
+    /**
+     * 根据合约交易 ID 获取池 NFT 的未花费交易输出 (UTXO)。
+     *
+     * @param {string} contractTxid - 池 NFT 合约的交易 ID。
+     * @returns {Promise<tbc.Transaction.IUnspentOutput>} 返回一个 Promise，解析为包含池 NFT UTXO 的对象。
+     *
+     * 该函数执行以下主要步骤：
+     * 1. 调用 `fetchPoolNFTInfo` 方法获取与指定合约交易 ID 相关的池 NFT 信息。
+     * 2. 创建一个 `tbc.Transaction.IUnspentOutput` 对象，包含以下信息：
+     *    - `txId`: 当前合约的交易 ID。
+     *    - `outputIndex`: 当前合约的输出索引。
+     *    - `script`: 池 NFT 的代码脚本。
+     *    - `satoshis`: 当前合约的余额（以 satoshis 为单位）。
+     * 3. 返回构建好的池 NFT UTXO 对象。
+     * 4. 如果在获取信息时发生错误，则抛出一个错误。
+     */
     async fetchPoolNftUTXO(contractTxid: string): Promise<tbc.Transaction.IUnspentOutput> {
         try {
             const poolNftInfo = await this.fetchPoolNFTInfo(contractTxid);
@@ -1014,6 +1215,28 @@ class poolNFT {
         }
     }
 
+    /**
+     * 根据 FT-LP 代码和指定金额获取相应的未花费交易输出 (UTXO)。
+     *
+     * @param {string} ftlpCode - FT-LP 的代码，以十六进制字符串形式提供。
+     * @param {bigint} amount - 要获取的 FT-LP 数量（以 BigInt 表示）。
+     * @returns {Promise<tbc.Transaction.IUnspentOutput>} 返回一个 Promise，解析为包含 FT-LP UTXO 的对象。
+     *
+     * 该函数执行以下主要步骤：
+     * 1. 计算 FT-LP 代码的 SHA-256 哈希值，并构建请求 URL（根据网络环境选择测试网或主网）。
+     * 2. 发送 HTTP 请求以获取与指定 FT-LP 代码相关的 UTXO 列表。
+     * 3. 遍历 UTXO 列表，查找余额大于或等于所需金额的 UTXO。
+     * 4. 如果找到合适的 UTXO，则返回该 UTXO；否则，检查所有 UTXO 的总余额：
+     *    - 如果总余额小于所需金额，抛出错误 "Insufficient FT-LP amount"。
+     *    - 如果总余额足够但没有单个 UTXO 满足条件，抛出错误 "Please merge FT-LP UTXOs"。
+     * 5. 返回包含以下信息的 FT-LP UTXO 对象：
+     *    - `txId`: UTXO 的交易 ID。
+     *    - `outputIndex`: UTXO 的输出索引。
+     *    - `script`: FT-LP 的代码脚本。
+     *    - `satoshis`: UTXO 的余额（以 satoshis 为单位）。
+     *
+     * @throws {Error} 如果请求失败或未能找到足够的 UTXO，将抛出错误。
+     */
     async fetchFtlpUTXO(ftlpCode: string, amount: bigint): Promise<tbc.Transaction.IUnspentOutput> {
         const ftlpHash = tbc.crypto.Hash.sha256(Buffer.from(ftlpCode, 'hex')).reverse().toString('hex');
         const url_testnet = `https://tbcdev.org/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpHash}`;
@@ -1053,6 +1276,26 @@ class poolNFT {
         }
     }
 
+    /**
+     * 合并 FT-LP UTXO，并返回合并交易的原始数据或成功标志。
+     *
+     * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
+     * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
+     * @returns {Promise<boolean | string>} 返回一个 Promise，解析为布尔值表示合并是否成功，或返回合并交易的原始数据。
+     *
+     * 该函数执行以下主要步骤：
+     * 1. 初始化 FT 实例并获取相关信息，包括合约交易 ID 和网络信息。
+     * 2. 计算 FT-LP 代码的哈希值，并构建请求 URL（根据网络环境选择测试网或主网）。
+     * 3. 发送 HTTP 请求以获取与指定 FT-LP 代码相关的 UTXO 列表。
+     * 4. 检查 UTXO 列表，如果没有可用的 FT UTXO，则抛出错误。
+     * 5. 如果只有一个 UTXO，记录成功并返回 true；否则，遍历 UTXO 列表，收集余额和交易信息。
+     * 6. 验证是否有足够的 FT-LP 金额进行合并，如果不足则抛出错误。
+     * 7. 构建用于合并的交易，包括输入和输出，设置交易费用和找零地址。
+     * 8. 异步设置输入脚本以解锁相应的 UTXO，并签名交易。
+     * 9. 封装交易并返回序列化后的未检查交易数据以供发送。
+     *
+     * @throws {Error} 如果请求失败或未能找到足够的 UTXO，将抛出错误。
+     */
     async mergeFTLP(privateKey_from: tbc.PrivateKey, utxo: tbc.Transaction.IUnspentOutput): Promise<boolean | string> {
         const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
@@ -1138,6 +1381,26 @@ class poolNFT {
         }
     }
 
+    /**
+     * 合并 FT UTXO 到池中，并返回合并交易的原始数据或成功标志。
+     *
+     * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
+     * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
+     * @returns {Promise<boolean | string>} 返回一个 Promise，解析为布尔值表示合并是否成功，或返回合并交易的原始数据。
+     *
+     * 该函数执行以下主要步骤：
+     * 1. 初始化 FT 实例并获取相关信息，包括合约交易 ID 和网络信息。
+     * 2. 计算池 NFT 的哈希值，并构建请求 URL（根据网络环境选择测试网或主网）。
+     * 3. 发送 HTTP 请求以获取与指定池 NFT 代码相关的 FT UTXO 列表。
+     * 4. 检查 UTXO 列表，如果没有可用的 FT UTXO，则抛出错误。
+     * 5. 如果只有一个 UTXO，记录成功并返回 true；否则，收集多个 UTXO 的信息以进行合并。
+     * 6. 验证是否有足够的 FT 金额进行合并，如果不足则抛出错误。
+     * 7. 构建用于合并的交易，包括输入和输出，设置交易费用和找零地址。
+     * 8. 异步设置输入脚本以解锁相应的 UTXO，并签名交易。
+     * 9. 封装交易并返回序列化后的未检查交易数据以供发送。
+     *
+     * @throws {Error} 如果请求失败或未能找到足够的 UTXO，将抛出错误。
+     */
     async mergeFTinPool(privateKey_from: tbc.PrivateKey, utxo: tbc.Transaction.IUnspentOutput): Promise<boolean | string> {
         const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
@@ -1251,6 +1514,26 @@ class poolNFT {
         }
     }
 
+    /**
+     * 合并 FT UTXO 到池中，并返回合并交易的原始数据或成功标志。
+     *
+     * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
+     * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
+     * @returns {Promise<boolean | string>} 返回一个 Promise，解析为布尔值表示合并是否成功，或返回合并交易的原始数据。
+     *
+     * 该函数执行以下主要步骤：
+     * 1. 初始化 FT 实例并获取相关信息，包括合约交易 ID 和网络信息。
+     * 2. 计算池 NFT 的哈希值，并构建请求 URL（根据网络环境选择测试网或主网）。
+     * 3. 发送 HTTP 请求以获取与指定池 NFT 代码相关的 FT UTXO 列表。
+     * 4. 检查 UTXO 列表，如果没有可用的 FT UTXO，则抛出错误。
+     * 5. 如果只有一个 UTXO，记录成功并返回 true；否则，收集多个 UTXO 的信息以进行合并。
+     * 6. 验证是否有足够的 FT 金额进行合并，如果不足则抛出错误。
+     * 7. 构建用于合并的交易，包括输入和输出，设置交易费用和找零地址。
+     * 8. 异步设置输入脚本以解锁相应的 UTXO，并签名交易。
+     * 9. 封装交易并返回序列化后的未检查交易数据以供发送。
+     *
+     * @throws {Error} 如果请求失败或未能找到足够的 UTXO，将抛出错误。
+     */
     async getPoolNFTunlock(privateKey_from: tbc.PrivateKey, currentTX: tbc.Transaction, currentUnlockIndex: number, preTxId: string, preVout: number, option: 1 | 2 | 3 | 4, swapOption?: 1 | 2): Promise<tbc.Script> {
         const privateKey = privateKey_from;
         const preTX = await API.fetchTXraw(preTxId, this.network);
@@ -1293,6 +1576,28 @@ class poolNFT {
         return unlockingScript;
     }
     
+    /**
+     * 更新池 NFT 的相关金额，并返回金额差异。
+     *
+     * @param {number} increment - 增加的金额，单位取决于选项。
+     * @param {number} ft_a_decimal - FT-A 的小数位数，用于计算。
+     * @param {1 | 2 | 3} option - 指定更新类型：
+     *        1 - 更新 FT-LP 金额；
+     *        2 - 更新 TBC 金额；
+     *        3 - 更新 FT-A 金额。
+     * @returns {poolNFTDifference} 返回一个对象，包含各类金额的差异：
+     *          - ft_lp_difference: FT-LP 金额的变化；
+     *          - ft_a_difference: FT-A 金额的变化；
+     *          - tbc_amount_difference: TBC 金额的变化。
+     *
+     * 该函数执行以下主要步骤：
+     * 1. 保存当前 FT-A、FT-LP 和 TBC 的金额。
+     * 2. 根据指定的选项更新相应的金额：
+     *    - 如果选项为 1，调用 `updateWhenFtLpChange` 方法更新 FT-LP 金额；
+     *    - 如果选项为 2，调用 `updateWhenTbcAmountChange` 方法更新 TBC 金额；
+     *    - 如果选项为 3，调用 `updateWhenFtAChange` 方法更新 FT-A 金额。
+     * 3. 根据更新后的 TBC 金额与之前的 TBC 金额进行比较，计算各类金额的差异并返回。
+     */
     updatePoolNFT(increment: number, ft_a_decimal: number, option: 1 | 2 | 3): poolNFTDifference {
         const ft_a_old = this.ft_a_amount;
         const ft_lp_old = this.ft_lp_amount;
