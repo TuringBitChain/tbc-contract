@@ -771,9 +771,10 @@ class poolNFT {
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
         await FTA.initialize(FTAInfo);
 
-        const amount_tbcbn = BigInt(amount_tbc * Math.pow(10, 6));
         const poolMul = this.ft_a_amount * this.tbc_amount;
         const ft_a_amount = this.ft_a_amount;
+        const amount_tbcbn = BigInt(amount_tbc * Math.pow(10, 6));
+        
         this.tbc_amount = BigInt(this.tbc_amount) + BigInt(amount_tbcbn);
         this.ft_a_amount = BigInt(poolMul) / BigInt(this.tbc_amount);
         const ft_a_amount_decrement = BigInt(ft_a_amount) - BigInt(this.ft_a_amount);
