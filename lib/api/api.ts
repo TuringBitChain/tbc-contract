@@ -73,7 +73,7 @@ class API {
             const ftBalance = response.ftBalance;
             return ftBalance;
         } catch (error) {
-            throw new Error("Failed to get ftBalance.");
+            throw new Error(error.message);
         }
     }
 
@@ -141,8 +141,7 @@ class API {
             }
             return fttxo;
         } catch (error) {
-            console.log(error);
-            throw new Error("Failed to fetch FTUTXO.");
+            throw new Error(error.message);
         }
     }
 
@@ -202,8 +201,7 @@ class API {
             }
             return ftutxos;
         } catch (error) {
-            console.log(error);
-            throw new Error("Failed to fetch FTUTXO.");
+            throw new Error(error.message);
         }
     }
 
@@ -244,8 +242,7 @@ class API {
             }
             return ftInfo;
         } catch (error) {
-            console.log(error);
-            throw new Error("Failed to fetch FtInfo.");
+            throw new Error(error.message);
         }
     }
 
@@ -329,7 +326,7 @@ class API {
             }
             return utxo;
         } catch (error) {
-            throw new Error("Failed to fetch UTXO.");
+            throw new Error(error.message);
         }
     }
 
@@ -385,7 +382,7 @@ class API {
             await API.mergeUTXO(privateKey, network);
             return true;
         } catch (error) {
-            throw new Error("Failed to merge UTXO.");
+            throw new Error(error.message);
         }
     }
 
@@ -415,7 +412,7 @@ class API {
             tx.fromString(rawtx);
             return tx;
         } catch (error) {
-            throw new Error("Failed to fetch TXraw.");
+            throw new Error(error.message);
         }
     }
 
@@ -455,8 +452,7 @@ class API {
             }
             return data.result;
         } catch (error) {
-            console.log(error);
-            throw new Error("Failed to broadcast TXraw.");
+            throw new Error(error.message);
         }
     }
 
@@ -492,8 +488,7 @@ class API {
                 satoshis: utxo.value
             }));
         } catch (error) {
-            console.log(error);
-            throw new Error("Failed to fetch UTXO.");
+            throw new Error(error.message);
         }
     }
 
@@ -592,7 +587,7 @@ class API {
             }
 
         } catch (error) {
-            throw new Error("Failed to fetch UTXO.");
+            throw new Error(error.message);
         }
     }
 
@@ -646,7 +641,7 @@ class API {
 
             return nftInfo;
         } catch (error) {
-            throw new Error("Failed to fetch NFTInfo.");
+            throw new Error(error.message);
         }
     }
 }
