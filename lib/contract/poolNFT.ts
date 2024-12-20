@@ -770,15 +770,18 @@ class poolNFT {
         const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
         await FTA.initialize(FTAInfo);
+
         const amount_tbcbn = BigInt(amount_tbc * Math.pow(10, 6));
-        if (this.tbc_amount < amount_tbcbn) {
-            throw new Error('Invalid tbc amount input');
-        }
         const poolMul = this.ft_a_amount * this.tbc_amount;
         const ft_a_amount = this.ft_a_amount;
         this.tbc_amount = BigInt(this.tbc_amount) + BigInt(amount_tbcbn);
         this.ft_a_amount = BigInt(poolMul) / BigInt(this.tbc_amount);
         const ft_a_amount_decrement = BigInt(ft_a_amount) - BigInt(this.ft_a_amount);
+        
+        if (this.ft_a_amount < ft_a_amount_decrement) {
+            throw new Error('Invalid FT amount input');
+        }
+
         const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex'))).toString('hex');
         const tapeAmountSetIn: bigint[] = [];
         // Fetch FT UTXO for the transfer

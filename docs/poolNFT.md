@@ -54,7 +54,7 @@ async function main() {
 
         // Step 2.4: 用 TBC 兑换 Token (输入参数为要交换的Token数量)
         {
-            let ftAmount = 100; // 至少花费0.1个TBC
+            let ftAmount = 100; // 期望得到的ft数量
             // 准备 utxo
             const utxo = await API.fetchUTXO(privateKeyA, fee, network);
             const tx5 = await poolUse.swaptoToken(privateKeyA, addressA, utxo, ftAmount);
@@ -63,7 +63,7 @@ async function main() {
 
         // Step 2.5: 用 TBC 兑换 Token
         {
-            let tbcAmount = 0.1; // 至少花费0.1个TBC
+            let tbcAmount = 0.1; // 用于兑换的tbc数量
             // 准备 utxo
             const utxo = await API.fetchUTXO(privateKeyA, tbcAmount + fee, network);
             const tx6 = await poolUse.swaptoToken_baseTBC(privateKeyA, addressA, utxo, tbcAmount);
@@ -72,7 +72,7 @@ async function main() {
 
         // Step 2.6: Token 兑换 TBC(输入参数为要交换的TBC数量)
         {
-            let tbcAmount = 0.1; // 至少兑换0.1个TBC
+            let tbcAmount = 0.1; // 期望得到的tbc数量，至少兑换0.1个TBC
             // 准备 utxo
             const utxo = await API.fetchUTXO(privateKeyA, tbcAmount + fee, network);
             const tx7 = await poolUse.swaptoTBC(privateKeyA, addressA, utxo, tbcAmount);
@@ -81,7 +81,7 @@ async function main() {
 
         // Step 2.7: 用基础 Token 兑换 TBC
         {
-            let ftAmount = 100; // 至少兑换0.1个TBC
+            let ftAmount = 100; // 用于兑换的ft数量，至少兑换0.1个TBC
             // 准备 utxo
             const utxo = await API.fetchUTXO(privateKeyA, fee, network);
             const tx8 = await poolUse.swaptoTBC_baseToken(privateKeyA, addressA, utxo, ftAmount);
