@@ -1082,6 +1082,7 @@ class poolNFT {
         try {
             fttxo_c = await API.fetchFtUTXO(this.ft_a_contractTxid, poolnft_codehash160, tbc_amount_decrement, ftutxo_codeScript_c, this.network);
         } catch (error) {
+
             const errorMessage = error.message === "Insufficient FTbalance, please merge FT UTXOs"
                 ? 'Insufficient PoolTbc, please merge FT UTXOs'
                 : error.message;
@@ -1728,3 +1729,4 @@ class poolNFT {
 }
 
 module.exports = poolNFT;
+
