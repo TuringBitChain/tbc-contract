@@ -6,11 +6,9 @@
   "author": "Edmund <makinishikino4eva@gmail.com>",
   "repository": "https://github.com/MakiNishikino6/tbc-contract.git",
   "dependencies": {
+    "@types/node": "^22.10.1",
     "tbc-lib-js": "1.0.17"
   },
   "license": "OpenTBC",
-  "description": "A TBC smart contract SDK.",
-  "devDependencies": {
-    "@types/node": "^20"
-  }
+  "description": "A TBC smart contract SDK."
 }
