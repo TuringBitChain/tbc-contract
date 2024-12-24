@@ -130,6 +130,8 @@ class API {
                 const totalBalance = await API.getFTbalance(contractTxid, addressOrHash, network);
                 if (totalBalance >= amount) {
                     throw new Error('Insufficient FTbalance, please merge FT UTXOs');
+                } else {
+                    throw new Error('FTbalance not enough!');
                 }
             }
             const fttxo: tbc.Transaction.IUnspentOutput = {
