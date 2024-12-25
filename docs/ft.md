@@ -33,7 +33,7 @@ async function main() {
         const TokenInfo = await API.fetchFtInfo(Token.contractTxid, network);//获取FT信息
         Token.initialize(TokenInfo);
         const utxo = await API.fetchUTXO(privateKeyA, 0.01, network);//准备utxo
-        const transferTokenAmountBN = BigInt(transferTokenAmount * Math.pow(10, Token.decimal));
+        const transferTokenAmountBN = BigInt(Math.ceil(transferTokenAmount * Math.pow(10, Token.decimal)));
         const ftutxo_codeScript = FT.buildFTtransferCode(Token.codeScript, addressA).toBuffer().toString('hex');
         const ftutxos = await API.fetchFtUTXOs(Token.contractTxid, addressA, ftutxo_codeScript, network, transferTokenAmountBN);//准备ft utxo
         let preTXs: tbc.Transaction[] = [];
