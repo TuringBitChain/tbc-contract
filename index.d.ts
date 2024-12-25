@@ -6,6 +6,7 @@ declare module 'tbc-contract' {
         static fetchFtUTXOs(contractTxid: string, addressOrHash: string, codeScript: string, network?: "testnet" | "mainnet", amount?: bigint): Promise<Transaction.IUnspentOutput[]>;
         static fetchFtInfo(contractTxid: string, network?: "testnet" | "mainnet"): Promise<FtInfo>;
         static fetchFtPrePreTxData(preTX: Transaction, preTxVout: number, network?: "testnet" | "mainnet"): Promise<string>;
+        static getTBCbalance(address: string, network?: "testnet" | "mainnet"): Promise<number>;
         static fetchUTXO(privateKey: PrivateKey, amount: number, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput>;
         static mergeUTXO(privateKey: PrivateKey, network?: "testnet" | "mainnet"): Promise<boolean>;
         static fetchTXraw(txid: string, network?: "testnet" | "mainnet"): Promise<Transaction>;
