@@ -4,7 +4,7 @@
   "main": "index.js",
   "types": "index.d.ts",
   "author": "Edmund <makinishikino4eva@gmail.com>",
-  "repository": "https://github.com/MakiNishikino6/tbc-contract.git",
+  "repository": "https://github.com/LoongYearMeta/tbc-contract.git",
   "dependencies": {
     "@types/node": "^22.10.1",
     "tbc-lib-js": "^1.0.18"
