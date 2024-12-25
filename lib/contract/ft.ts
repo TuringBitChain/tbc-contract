@@ -57,7 +57,7 @@ class FT {
                 throw new Error('The maximum value for decimal cannot exceed 18');
             }
             // Calculate the maximum allowable amount based on the decimal
-            const maxAmount = 18 * Math.pow(10, 18 - decimal);
+            const maxAmount = Math.ceil(18 * Math.pow(10, 18 - decimal));
             if (amount > maxAmount) {
                 throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
             }
@@ -94,7 +94,7 @@ class FT {
         const name = this.name;
         const symbol = this.symbol;
         const decimal = this.decimal;
-        const totalSupply = BigInt(this.totalSupply * Math.pow(10, decimal));
+        const totalSupply = BigInt(Math.ceil(this.totalSupply * Math.pow(10, decimal)));
 
         // Prepare the amount in BN format and write it into a buffer
         const amountbn = new tbc.crypto.BN(totalSupply.toString());
@@ -157,7 +157,7 @@ class FT {
         if (amount < 0) {
             throw new Error('Invalid amount input');
         }
-        const amountbn = BigInt(amount * Math.pow(10, decimal));
+        const amountbn = BigInt(Math.ceil(amount * Math.pow(10, decimal)));
         // Fetch FT UTXO for the transfer
         //const ftutxo_a = await this.fetchFtTXO(this.contractTxid, address_from, amountbn);
         
@@ -175,7 +175,7 @@ class FT {
         if (decimal > 18) {
             throw new Error('The maximum value for decimal cannot exceed 18');
         }
-        const maxAmount = Math.pow(10, 18 - decimal);
+        const maxAmount = Math.ceil(Math.pow(10, 18 - decimal));
         if (amount > maxAmount) {
             throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
         }
