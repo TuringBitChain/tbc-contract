@@ -4,9 +4,6 @@
   "main": "index.js",
   "types": "index.d.ts",
   "author": "Edmund <makinishikino4eva@gmail.com>",
-  "scripts": {
-    "build": "webpack --mode production"
-  },
   "repository": "https://github.com/LoongYearMeta/tbc-contract.git",
   "dependencies": {
     "@types/node": "^22.10.1",
