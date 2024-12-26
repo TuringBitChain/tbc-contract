@@ -81,6 +81,7 @@ declare module 'tbc-contract' {
         initialize(ftInfo: FtInfo): void;
         MintFT(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput): string;
         transfer(privateKey_from: PrivateKey, address_to: string, amount: number, ftutxo_a: Transaction.IUnspentOutput[], utxo: Transaction.IUnspentOutput, preTX: Transaction[], prepreTxData: string[]): string;
+        transferWithAdditionalInfo(privateKey_from: tbc.PrivateKey, address_to: string, amount: number, ftutxo_a: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[], additionalInfo: Buffer): string;
         mergeFT(privateKey_from: PrivateKey, ftutxo: Transaction.IUnspentOutput[], utxo: Transaction.IUnspentOutput, preTX: Transaction[], prepreTxData: string[]): string | true;
         getFTunlock(privateKey_from: PrivateKey, currentTX: Transaction, preTX: Transaction, prepreTxData: string, currentUnlockIndex: number, preTxVout: number): Script;
         getFTunlockSwap(privateKey_from: PrivateKey, currentTX: Transaction, preTX: Transaction, prepreTxData: string, contractTX: Transaction, currentUnlockIndex: number, preTxId: string, preVout: number): Script;
