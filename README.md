@@ -224,7 +224,7 @@ async function main() {
 
             // Step 2.3: 花费拥有的 LP
             {
-                let lpAmount = 2; // 至少花费1个LP
+                let lpAmount = 2; // 至少花费0.1个LP，若花费的LP高于池子LP的10%，必须满足池子LP与花费的LP比值没有余数（即被整除）
                 // 准备 utxo
                 const utxo = await API.fetchUTXO(privateKeyA, fee, network);
                 const tx4 = await poolUse.consumeLP(privateKeyA, addressA, utxo, lpAmount);
