@@ -81,7 +81,7 @@ declare module 'tbc-contract' {
         initialize(ftInfo: FtInfo): void;
         MintFT(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput): string;
         transfer(privateKey_from: PrivateKey, address_to: string, amount: number, ftutxo_a: Transaction.IUnspentOutput[], utxo: Transaction.IUnspentOutput, preTX: Transaction[], prepreTxData: string[]): string;
-        transferWithAdditionalInfo(privateKey_from: tbc.PrivateKey, address_to: string, amount: number, ftutxo_a: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[], additionalInfo: Buffer): string;
+        transferWithAdditionalInfo(privateKey_from: PrivateKey, address_to: string, amount: number, ftutxo_a: Transaction.IUnspentOutput[], utxo: Transaction.IUnspentOutput, preTX: Transaction[], prepreTxData: string[], additionalInfo: Buffer): string;
         mergeFT(privateKey_from: PrivateKey, ftutxo: Transaction.IUnspentOutput[], utxo: Transaction.IUnspentOutput, preTX: Transaction[], prepreTxData: string[]): string | true;
         getFTunlock(privateKey_from: PrivateKey, currentTX: Transaction, preTX: Transaction, prepreTxData: string, currentUnlockIndex: number, preTxVout: number): Script;
         getFTunlockSwap(privateKey_from: PrivateKey, currentTX: Transaction, preTX: Transaction, prepreTxData: string, contractTX: Transaction, currentUnlockIndex: number, preTxId: string, preVout: number): Script;
@@ -126,6 +126,7 @@ declare module 'tbc-contract' {
         initCreate(ftContractTxid?: string): Promise<void>;
         initfromContractId(): Promise<void>;
         createPoolNFT(privateKey_from: PrivateKey, utxo: Transaction.IUnspentOutput): Promise<string>;
+        createPoolNftWithLock(privateKey_from: PrivateKey, utxo: Transaction.IUnspentOutput): Promise<string>;
         initPoolNFT(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, tbc_amount?: number, ft_a?: number): Promise<string>;
         increaseLP(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_tbc: number): Promise<string>;
         consumeLP(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_lp: number): Promise<string>;
@@ -141,6 +142,7 @@ declare module 'tbc-contract' {
         updatePoolNFT(increment: number, ft_a_decimal: number, option: 1 | 2 | 3): poolNFTDifference;
         getPoolNFTunlock(privateKey_from: PrivateKey, currentTX: Transaction, currentUnlockIndex: number, preTxId: string, preVout: number, option: 1 | 2 | 3 | 4, swapOption?: 1 | 2): Promise<Script>;
         getPoolNftCode(txid: string, vout: number): Script;
+        getPoolNftCodeWithLock(txid: string, vout: number): Script;
         getFTLPcode(poolNftCodeHash: string, address: string, tapeSize: number): Script;
     }
 }

@@ -298,8 +298,6 @@ class FT {
                 satoshis: 0
             }));
         }
-        tx.feePerKb(100)
-        tx.change(address_from);
         //Additional infromation output
         let additionalInfoScript = tbc.Script.fromASM('OP_FALSE OP_RETURN');
         additionalInfoScript = additionalInfoScript.add(additionalInfo);
@@ -307,6 +305,8 @@ class FT {
             script: additionalInfoScript,
             satoshis: 0
         }));
+        tx.feePerKb(100)
+        tx.change(address_from);
         // Set the input script asynchronously for the FT UTXO
         for (let i = 0; i < ftutxo_a.length; i++) {
             tx.setInputScript({
