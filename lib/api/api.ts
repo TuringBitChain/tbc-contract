@@ -506,7 +506,7 @@ class API {
      * @returns {Promise<tbc.Transaction.IUnspentOutput[]>} Returns a Promise that resolves to an array of UTXOs.
      * @throws {Error} Throws an error if the request fails.
      */
-    static async fetchUTXOs(address: string, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput[]> {
+    private static async fetchUTXOs(address: string, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput[]> {
         let base_url = "";
         if (network) {
             base_url = API.getBaseURL(network)
@@ -535,7 +535,7 @@ class API {
     }
 
     /**
-     * Selects UTXOs for a given address and amount.
+     * Get UTXOs for a given address and amount.
      *
      * @param {string} address - The address to fetch UTXOs for.
      * @param {number} amount_tbc - The required amount in TBC.
@@ -543,37 +543,41 @@ class API {
      * @returns {Promise<tbc.Transaction.IUnspentOutput[]>} Returns a Promise that resolves to an array of selected UTXOs.
      * @throws {Error} Throws an error if the balance is insufficient.
      */
-    static async selectUTXOs(address: string, amount_tbc: number, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput[]> {
-        let utxos: tbc.Transaction.IUnspentOutput[] = [];
-        if (network) {
-            utxos = await this.fetchUTXOs(address, network);
-        } else {
-            utxos = await this.fetchUTXOs(address);
-        }
-        utxos.sort((a, b) => a.satoshis - b.satoshis);
-        const amount_satoshis = Math.ceil(amount_tbc * Math.pow(10, 6));
-        const closestUTXO = utxos.find(utxo => utxo.satoshis >= amount_satoshis + 50000);
-        if (closestUTXO) {
-            return [closestUTXO];
-        }
-
-        let totalAmount = 0;
-        const selectedUTXOs: tbc.Transaction.IUnspentOutput[] = [];
-
-        for (const utxo of utxos) {
-            totalAmount += utxo.satoshis;
-            selectedUTXOs.push(utxo);
-
-            if (totalAmount >= amount_satoshis + 2000) {
-                break;
+    static async getUTXOs(address: string, amount_tbc: number, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput[]> {
+        try {
+            let utxos: tbc.Transaction.IUnspentOutput[] = [];
+            if (network) {
+                utxos = await this.fetchUTXOs(address, network);
+            } else {
+                utxos = await this.fetchUTXOs(address);
             }
-        }
+            utxos.sort((a, b) => a.satoshis - b.satoshis);
+            const amount_satoshis = amount_tbc * Math.pow(10, 6);
+            const closestUTXO = utxos.find(utxo => utxo.satoshis >= amount_satoshis + 100000);
+            if (closestUTXO) {
+                return [closestUTXO];
+            }
 
-        if (totalAmount < amount_satoshis + 2000) {
-            throw new Error("Insufficient balance");
-        }
+            let totalAmount = 0;
+            const selectedUTXOs: tbc.Transaction.IUnspentOutput[] = [];
 
-        return selectedUTXOs;
+            for (const utxo of utxos) {
+                totalAmount += utxo.satoshis;
+                selectedUTXOs.push(utxo);
+
+                if (totalAmount >= amount_satoshis) {
+                    break;
+                }
+            }
+
+            if (totalAmount < amount_satoshis) {
+                throw new Error("Insufficient balance");
+            }
+
+            return selectedUTXOs;
+        } catch (error) {
+            throw new Error(error.message);
+        }
     }
 
     /**
@@ -682,6 +686,152 @@ class API {
             }
 
             return nftInfo;
+        } catch (error) {
+            throw new Error(error.message);
+        }
+    }
+
+    /**
+   * Fetches the UMTXO for a given script.
+   *
+   * @param {string} script_asm - The script to fetch the UMTXO for.
+   * @param {("testnet" | "mainnet")} [network] - The network type.
+   * @returns {Promise<tbc.Transaction.IUnspentOutput>} Returns a Promise that resolves to the UMTXO.
+   * @throws {Error} Throws an error if the request fails.
+   */
+    static async fetchUMTXO(script_asm: string, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput> {
+        const multiScript = tbc.Script.fromASM(script_asm).toHex();
+
+        const script_hash = Buffer.from(tbc.crypto.Hash.sha256(Buffer.from(multiScript, "hex")).toString("hex"), "hex").reverse().toString("hex");
+        let base_url = "";
+        if (network) {
+            base_url = API.getBaseURL(network)
+        } else {
+            base_url = API.getBaseURL("mainnet")
+        }
+        const url = base_url + `script/hash/${script_hash}/unspent/`;
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch UTXO: ${response.statusText}`);
+            }
+            const data = await response.json();
+
+            let selectedUTXO = data[0];
+            for (let i = 0; i < data.length; i++) {
+                if (data[i].value > 10000 && data[i].value < 3200000000) {
+                    selectedUTXO = data[i];
+                    break;
+                }
+            }
+
+            if (selectedUTXO.value < 10000) {
+                let balance = 0;
+                for (let i = 0; i < data.length; i++) {
+                    balance += data[i].value;
+                }
+                if (balance < 10000) {
+                    throw new Error('Insufficient balance');
+                } else {
+                    throw new Error('Please mergeUTXO');
+                }
+            }
+
+            const umtxo: tbc.Transaction.IUnspentOutput = {
+                txId: selectedUTXO.tx_hash,
+                outputIndex: selectedUTXO.tx_pos,
+                script: multiScript,
+                satoshis: selectedUTXO.value
+            };
+            return umtxo;
+        } catch (error) {
+            throw new Error(error.message);
+        }
+    }
+
+    /**
+     * Fetches all UMTXOs for a given script.
+     *
+     * @param {string} script_asm - The script to fetch UMTXOs for.
+     * @param {("testnet" | "mainnet")} [network] - The network type.
+     * @returns {Promise<tbc.Transaction.IUnspentOutput[]>} Returns a Promise that resolves to an array of UMTXOs.
+     * @throws {Error} Throws an error if the request fails.
+     */
+    private static async fetchUMTXOs(script_asm: string, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput[]> {
+        const multiScript = tbc.Script.fromASM(script_asm).toHex();
+
+        const script_hash = Buffer.from(tbc.crypto.Hash.sha256(Buffer.from(multiScript, "hex")).toString("hex"), "hex").reverse().toString("hex");
+        let base_url = "";
+        if (network) {
+            base_url = API.getBaseURL(network);
+        } else {
+            base_url = API.getBaseURL("mainnet");
+        }
+        const url = base_url + `script/hash/${script_hash}/unspent/`;
+
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch UTXO: ${response.statusText}`);
+            }
+            const data = await response.json();
+
+            const umtxos = data.map((utxo) => {
+                return {
+                    txId: utxo.tx_hash,
+                    outputIndex: utxo.tx_pos,
+                    script: multiScript,
+                    satoshis: utxo.value
+                } as tbc.Transaction.IUnspentOutput;
+            });
+
+            return umtxos;
+        } catch (error) {
+            throw new Error(error.message);
+        }
+    }
+
+    /**
+     * Get UMTXOs for a given address and amount.
+     *
+     * @param {string} address - The address to fetch UMTXOs for.
+     * @param {number} amount_tbc - The required amount in TBC.
+     * @param {("testnet" | "mainnet")} [network] - The network type.
+     * @returns {Promise<tbc.Transaction.IUnspentOutput[]>} Returns a Promise that resolves to an array of selected UMTXOs.
+     * @throws {Error} Throws an error if the balance is insufficient.
+     */
+    static async getUMTXOs(script_asm: string, amount_tbc: number, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput[]> {
+        try {
+            let umtxos: tbc.Transaction.IUnspentOutput[] = [];
+            if (network) {
+                umtxos = await this.fetchUMTXOs(script_asm, network);
+            } else {
+                umtxos = await this.fetchUMTXOs(script_asm);
+            }
+            umtxos.sort((a, b) => a.satoshis - b.satoshis);
+            const amount_satoshis = amount_tbc * Math.pow(10, 6);
+            const closestUMTXO = umtxos.find(umtxo => umtxo.satoshis >= amount_satoshis + 100000);
+            if (closestUMTXO) {
+                return [closestUMTXO];
+            }
+
+            let totalSatoshis = 0;
+            let selectedUMTXOs: tbc.Transaction.IUnspentOutput[] = [];
+
+            for (const umtxo of umtxos) {
+                totalSatoshis += umtxo.satoshis;
+                selectedUMTXOs.push(umtxo);
+
+                if (totalSatoshis >= amount_satoshis) {
+                    break;
+                }
+            }
+
+            if (totalSatoshis < amount_satoshis) {
+                throw new Error("Insufficient balance");
+            }
+
+            return selectedUMTXOs;
         } catch (error) {
             throw new Error(error.message);
         }

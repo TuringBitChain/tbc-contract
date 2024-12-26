@@ -11,10 +11,11 @@ declare module 'tbc-contract' {
         static mergeUTXO(privateKey: PrivateKey, network?: "testnet" | "mainnet"): Promise<boolean>;
         static fetchTXraw(txid: string, network?: "testnet" | "mainnet"): Promise<Transaction>;
         static broadcastTXraw(txraw: string, network?: "testnet" | "mainnet"): Promise<string>;
-        static fetchUTXOs(address: string, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput[]>;
-        static selectUTXOs(address: string, amount_tbc: number, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput[]>;
+        static getUTXOs(address: string, amount_tbc: number, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput[]>;
         static fetchNFTTXO(params: { script: string, tx_hash?: string, network?: "testnet" | "mainnet" }): Promise<Transaction.IUnspentOutput>;
         static fetchNFTInfo(contract_id: string, network?: "testnet" | "mainnet"): Promise<NFTInfo>;
+        static fetchUMTXO(script_asm: string, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput>;
+        static getUMTXOs(script_asm: string, amount_tbc: number, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput[]>;
     }
 
     interface CollectionData {
@@ -52,7 +53,6 @@ declare module 'tbc-contract' {
         static createCollection(address: string, privateKey: PrivateKey, data: CollectionData, utxos: Transaction.IUnspentOutput[]): string;
         static createNFT(collection_id: string, address: string, privateKey: PrivateKey, data: NFTData, utxos: Transaction.IUnspentOutput[], nfttxo: Transaction.IUnspentOutput): string;
         transferNFT(address_from: string, address_to: string, privateKey: PrivateKey, utxos: Transaction.IUnspentOutput[], pre_tx: Transaction, pre_pre_tx: Transaction): string;
-        // static encodeByBase64(filePath: string): Promise<string>;
         static buildCodeScript(tx_hash: string, outputIndex: number): Script;
         static buildHoldScript(address: string): Script;
         static buildMintScript(address: string): Script;

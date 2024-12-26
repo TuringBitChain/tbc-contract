@@ -1,6 +1,5 @@
 import * as tbc from "tbc-lib-js"
-// const fs = require('fs').promises;
-// const path = require('path');
+
 interface NFTInfo {
     collectionId: string;
     collectionIndex: number;
@@ -103,14 +102,12 @@ class NFT {
      * 6. 返回序列化后的未检查交易数据以供发送。
      */
     static createCollection(address: string, privateKey: tbc.PrivateKey, data: CollectionData, utxos: tbc.Transaction.IUnspentOutput[]): string {
-        const tx = new tbc.Transaction();
-        for (let i = 0; i < utxos.length; i++) {
-            tx.from(utxos[i]);
-        }
-        tx.addOutput(new tbc.Transaction.Output({
-            script: NFT.buildTapeScript(data),
-            satoshis: 0,
-        }));
+        const tx = new tbc.Transaction()
+            .from(utxos)
+            .addOutput(new tbc.Transaction.Output({
+                script: NFT.buildTapeScript(data),
+                satoshis: 0,
+            }));
 
         for (let i = 0; i < data.supply; i++) {
             tx.addOutput(new tbc.Transaction.Output({
@@ -155,15 +152,13 @@ class NFT {
             const writer = new tbc.encoding.BufferWriter();
             data.file = collection_id + writer.writeUInt32LE(nfttxo.outputIndex).toBuffer().toString("hex");
         }
-        const tx = new tbc.Transaction();
-        tx.from(nfttxo);
-        for (let i = 0; i < utxos.length; i++) {
-            tx.from(utxos[i]);
-        };
-        tx.addOutput(new tbc.Transaction.Output({
-            script: NFT.buildCodeScript(nfttxo.txId, nfttxo.outputIndex),
-            satoshis: 1000,
-        }))
+        const tx = new tbc.Transaction()
+            .from(nfttxo)
+            .from(utxos)
+            .addOutput(new tbc.Transaction.Output({
+                script: NFT.buildCodeScript(nfttxo.txId, nfttxo.outputIndex),
+                satoshis: 1000,
+            }))
             .addOutput(new tbc.Transaction.Output({
                 script: hold,
                 satoshis: 100,
@@ -219,13 +214,11 @@ class NFT {
         const tx = new tbc.Transaction()
             .addInputFromPrevTx(pre_tx, 0)
             .addInputFromPrevTx(pre_tx, 1)
-        for (let i = 0; i < utxos.length; i++) {
-            tx.from(utxos[i]);
-        };
-        tx.addOutput(new tbc.Transaction.Output({
-            script: code,
-            satoshis: this.code_balance,
-        }))
+            .from(utxos)
+            .addOutput(new tbc.Transaction.Output({
+                script: code,
+                satoshis: this.code_balance,
+            }))
             .addOutput(new tbc.Transaction.Output({
                 script: NFT.buildHoldScript(address_to),
                 satoshis: this.hold_balance,
@@ -293,18 +286,6 @@ class NFT {
         const tape = tbc.Script.fromASM(`OP_FALSE OP_RETURN ${dataHex} 4e54617065`);
         return tape;
     }
-
-    // static async encodeByBase64(filePath: string): Promise<string> {
-    //     try {
-    //         const data = await fs.readFile(filePath);
-    //         const ext = path.extname(filePath).toLowerCase();
-    //         const mimeType = ext === '.png' ? 'image/png' : 'image/jpeg';
-    //         const base64Data = `data:${mimeType};base64,${data.toString("base64")}`;
-    //         return base64Data;
-    //     } catch (err) {
-    //         throw new Error(`Failed to read or encode file: ${err.message}`);
-    //     }
-    // }
 
     private static getCurrentTxdata(tx: tbc.Transaction): string {
         const amountlength = '08';
