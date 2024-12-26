@@ -140,7 +140,11 @@ async function main() {
             prepreTxDatas.push(await API.fetchFtPrePreTxData(preTXs[i], ftutxos[i].outputIndex, network));//获取每个ft输入的爷交易
         }
         const mergeTX = Token.mergeFT(privateKeyA, ftutxos, utxo, preTXs, prepreTxDatas);//组装交易
-        await API.broadcastTXraw(mergeTX, network);
+        if (typeof mergeTX === 'string') {
+            await API.broadcastTXraw(mergeTX, network); 
+        } else {
+            console.log("Merge success");
+        }
     } catch (error) {
         console.error('Error:', error);
     }
