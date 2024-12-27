@@ -188,25 +188,38 @@ class API {
             let sortedData: FTUnspentOutput[] = responseData.ftUtxoList.sort((a: FTUnspentOutput, b: FTUnspentOutput) => b.ftBalance - a.ftBalance);
             let sumBalance = BigInt(0);
             let ftutxos: tbc.Transaction.IUnspentOutput[] = [];
-            for (let i = 0; i < sortedData.length && i < 5; i++) {
-                sumBalance += BigInt(sortedData[i].ftBalance);
-                ftutxos.push({
-                    txId: sortedData[i].utxoId,
-                    outputIndex: sortedData[i].utxoVout,
-                    script: codeScript,
-                    satoshis: sortedData[i].utxoBalance,
-                    ftBalance: sortedData[i].ftBalance
-                });
-                if (sumBalance >= amount!) {
-                    break;
+            if (!amount) {
+                for (let i = 0; i < sortedData.length && i < 5; i++) {
+                    sumBalance += BigInt(sortedData[i].ftBalance);
+                    ftutxos.push({
+                        txId: sortedData[i].utxoId,
+                        outputIndex: sortedData[i].utxoVout,
+                        script: codeScript,
+                        satoshis: sortedData[i].utxoBalance,
+                        ftBalance: sortedData[i].ftBalance
+                    });
                 }
-            }
-            if (sumBalance < amount!) {
-                const totalBalance = await API.getFTbalance(contractTxid, addressOrHash, network);
-                if (totalBalance >= amount!) {
-                    throw new Error('Insufficient FTbalance, please merge FT UTXOs');
-                } else {
-                    throw new Error('FTbalance not enough!');
+            } else {
+                for (let i = 0; i < sortedData.length && i < 5; i++) {
+                    sumBalance += BigInt(sortedData[i].ftBalance);
+                    ftutxos.push({
+                        txId: sortedData[i].utxoId,
+                        outputIndex: sortedData[i].utxoVout,
+                        script: codeScript,
+                        satoshis: sortedData[i].utxoBalance,
+                        ftBalance: sortedData[i].ftBalance
+                    });
+                    if (sumBalance >= amount) {
+                        break;
+                    }
+                }
+                if (sumBalance < amount) {
+                    const totalBalance = await API.getFTbalance(contractTxid, addressOrHash, network);
+                    if (totalBalance >= amount!) {
+                        throw new Error('Insufficient FTbalance, please merge FT UTXOs');
+                    } else {
+                        throw new Error('FTbalance not enough!');
+                    }
                 }
             }
             return ftutxos;
