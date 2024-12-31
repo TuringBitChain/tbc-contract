@@ -15,10 +15,11 @@ async function main() {
         // Step 1: 创建 poolNFT，并初始化
         const pool = new poolNFT({network: "testnet"});
         await pool.initCreate(ftContractTxid);
-        //0.001为手续费
-        const utxo = await API.fetchUTXO(privateKeyA, 0.001, network);
+        const utxo = await API.fetchUTXO(privateKeyA, fee, network);
         const tx1 = await pool.createPoolNFT(privateKeyA, utxo);
-        await API.broadcastTXraw(tx1, network);
+        await API.broadcastTXraw(tx1[0], network);
+        console.log("poolNFT Contract ID:");
+        await API.broadcastTXraw(tx1[1], network);
 
         // Step 2: 使用已创建的 poolNFT
         const poolUse = new poolNFT({txidOrParams: poolNftContractId, network:"testnet"});

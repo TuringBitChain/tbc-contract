@@ -110,13 +110,27 @@ class poolNFT {
      * 7. 设置每千字节的交易费用，指定找零地址，并使用私钥对交易进行签名。
      * 8. 封装交易并返回序列化后的未检查交易数据以供发送。
      */
-    async createPoolNFT(privateKey_from: tbc.PrivateKey, utxo: tbc.Transaction.IUnspentOutput): Promise<string> {
+    async createPoolNFT(privateKey_from: tbc.PrivateKey, utxo: tbc.Transaction.IUnspentOutput): Promise<string[]> {
         const privateKey = privateKey_from;
+        const publicKeyHash = tbc.Address.fromPrivateKey(privateKey).hashBuffer.toString('hex');
+        const flagHex = Buffer.from('for poolnft mint', 'utf8').toString('hex');
+        const txSource = new tbc.Transaction()//Build transcation
+        .from(utxo)
+        .addOutput(new tbc.Transaction.Output({
+            script: tbc.Script.fromASM(`OP_DUP OP_HASH160 ${publicKeyHash} OP_EQUALVERIFY OP_CHECKSIG OP_RETURN ${flagHex}`),
+            satoshis: 9900,
+        }))
+        .change(privateKey.toAddress())
+        .sign(privateKey)
+        .seal();
+        const txSourceRaw = txSource.serialize();//Generate txraw
+
         const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
         FTA.initialize(FTAInfo);
         //const utxo = await API.fetchUTXO(privateKey, 0.1, this.network);
-        this.poolnft_code = this.getPoolNftCode(utxo.txId, utxo.outputIndex).toBuffer().toString('hex');
+        this.poolnft_code = this.getPoolNftCode(txSource.hash, 0).toBuffer().toString('hex');
+        //this.poolnft_code = this.getPoolNftCode(utxo.txId, utxo.outputIndex).toBuffer().toString('hex');
         const ftlpCode = this.getFTLPcode(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex')).toString('hex'), privateKey.toAddress().toString(), FTA.tapeScript.length / 2);
         this.ft_lp_partialhash = partial_sha256.calculate_partial_hash(ftlpCode.toBuffer().subarray(0, 1536));
         this.ft_a_partialhash = partial_sha256.calculate_partial_hash(Buffer.from(FTA.codeScript, 'hex').subarray(0, 1536));
@@ -128,11 +142,12 @@ class poolNFT {
         const poolnftTapeScript = tbc.Script.fromASM(`OP_FALSE OP_RETURN ${this.ft_lp_partialhash + this.ft_a_partialhash} ${amountData} ${this.ft_a_contractTxid} 4e54617065`)
 
         const tx = new tbc.Transaction()
-            .from(utxo)
+            .addInputFromPrevTx(txSource, 0)
+            //.from(utxo)
             //poolNft
             .addOutput(new tbc.Transaction.Output({
                 script: tbc.Script.fromHex(this.poolnft_code),
-                satoshis: 2000,
+                satoshis: 1000,
             }))
             .addOutput(new tbc.Transaction.Output({
                 script: poolnftTapeScript,
@@ -140,9 +155,20 @@ class poolNFT {
             }))
         tx.feePerKb(100);
         tx.change(privateKey.toAddress());
+        tx.setInputScript({
+            inputIndex: 0,
+            privateKey
+        }, (tx) => {
+            const sig = tx.getSignature(0);
+            const publickey = privateKey.toPublicKey().toBuffer().toString('hex');
+            return tbc.Script.fromASM(`${sig} ${publickey}`);
+        })
         tx.sign(privateKey);
         tx.seal();
-        const txraw = tx.uncheckedSerialize();
+        const txMintRaw = tx.uncheckedSerialize();
+        const txraw: string[] = [];
+        txraw.push(txSourceRaw);
+        txraw.push(txMintRaw);
         return txraw;
     }
 
@@ -163,13 +189,26 @@ class poolNFT {
      * 7. 设置每千字节的交易费用，指定找零地址，并使用私钥对交易进行签名。
      * 8. 封装交易并返回序列化后的未检查交易数据以供发送。
      */
-    async createPoolNftWithLock(privateKey_from: tbc.PrivateKey, utxo: tbc.Transaction.IUnspentOutput): Promise<string> {
+    async createPoolNftWithLock(privateKey_from: tbc.PrivateKey, utxo: tbc.Transaction.IUnspentOutput): Promise<string[]> {
         const privateKey = privateKey_from;
+        const publicKeyHash = tbc.Address.fromPrivateKey(privateKey).hashBuffer.toString('hex');
+        const flagHex = Buffer.from('for poolnft mint', 'utf8').toString('hex');
+        const txSource = new tbc.Transaction()//Build transcation
+        .from(utxo)
+        .addOutput(new tbc.Transaction.Output({
+            script: tbc.Script.fromASM(`OP_DUP OP_HASH160 ${publicKeyHash} OP_EQUALVERIFY OP_CHECKSIG OP_RETURN ${flagHex}`),
+            satoshis: 9900,
+        }))
+        .change(privateKey.toAddress())
+        .sign(privateKey)
+        .seal();
+        const txSourceRaw = txSource.serialize();//Generate txraw
+
         const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
         FTA.initialize(FTAInfo);
         //const utxo = await API.fetchUTXO(privateKey, 0.1, this.network);
-        this.poolnft_code = this.getPoolNftCodeWithLock(utxo.txId, utxo.outputIndex).toBuffer().toString('hex');
+        this.poolnft_code = this.getPoolNftCodeWithLock(txSource.hash, 0).toBuffer().toString('hex');
         const ftlpCode = this.getFTLPcode(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex')).toString('hex'), privateKey.toAddress().toString(), FTA.tapeScript.length / 2);
         this.ft_lp_partialhash = partial_sha256.calculate_partial_hash(ftlpCode.toBuffer().subarray(0, 1536));
         this.ft_a_partialhash = partial_sha256.calculate_partial_hash(Buffer.from(FTA.codeScript, 'hex').subarray(0, 1536));
@@ -181,11 +220,12 @@ class poolNFT {
         const poolnftTapeScript = tbc.Script.fromASM(`OP_FALSE OP_RETURN ${this.ft_lp_partialhash + this.ft_a_partialhash} ${amountData} ${this.ft_a_contractTxid} 4e54617065`)
 
         const tx = new tbc.Transaction()
-            .from(utxo)
+            .addInputFromPrevTx(txSource, 0)
+            //.from(utxo)
             //poolNft
             .addOutput(new tbc.Transaction.Output({
                 script: tbc.Script.fromHex(this.poolnft_code),
-                satoshis: 2000,
+                satoshis: 1000,
             }))
             .addOutput(new tbc.Transaction.Output({
                 script: poolnftTapeScript,
@@ -193,9 +233,20 @@ class poolNFT {
             }))
         tx.feePerKb(100);
         tx.change(privateKey.toAddress());
+        tx.setInputScript({
+            inputIndex: 0,
+            privateKey
+        }, (tx) => {
+            const sig = tx.getSignature(0);
+            const publickey = privateKey.toPublicKey().toBuffer().toString('hex');
+            return tbc.Script.fromASM(`${sig} ${publickey}`);
+        })
         tx.sign(privateKey);
         tx.seal();
-        const txraw = tx.uncheckedSerialize();
+        const txMintRaw = tx.uncheckedSerialize();
+        const txraw: string[] = [];
+        txraw.push(txSourceRaw);
+        txraw.push(txMintRaw);
         return txraw;
     }
 
@@ -293,7 +344,7 @@ class poolNFT {
             //poolNft
             .addOutput(new tbc.Transaction.Output({
                 script: tbc.Script.fromHex(this.poolnft_code),
-                satoshis: 2000,
+                satoshis: 1000,
             }))
             .addOutput(new tbc.Transaction.Output({
                 script: poolnftTapeScript,
@@ -326,7 +377,7 @@ class poolNFT {
         const ftlpCodeScript = this.getFTLPcode(poolnft_codehash.toString('hex'), address_to, tapeSize);
         tx.addOutput(new tbc.Transaction.Output({
             script: ftlpCodeScript,
-            satoshis: 2000
+            satoshis: 500
         }));
         tx.addOutput(new tbc.Transaction.Output({
             script: ftlpTapeScript,
@@ -336,7 +387,7 @@ class poolNFT {
             const changeCodeScript = FT.buildFTtransferCode(FTA.codeScript, privateKey.toAddress().toString());
             tx.addOutput(new tbc.Transaction.Output({
                 script: changeCodeScript,
-                satoshis: 2000
+                satoshis: 500
             }));
             const changeTapeScript = FT.buildFTtransferTape(FTA.tapeScript, changeHex);
             tx.addOutput(new tbc.Transaction.Output({
@@ -436,7 +487,7 @@ class poolNFT {
             .from(utxo);
         tx.addOutput(new tbc.Transaction.Output({
             script: tbc.Script.fromHex(this.poolnft_code),
-            satoshis: 2000
+            satoshis: 1000
         }));
         const writer = new tbc.encoding.BufferWriter();
         writer.writeUInt64LEBN(new tbc.crypto.BN(this.ft_lp_amount));
@@ -476,7 +527,7 @@ class poolNFT {
         const ftlpCodeScript = this.getFTLPcode(poolnft_codehash.toString('hex'), address_to, tapeSize);
         tx.addOutput(new tbc.Transaction.Output({
             script: ftlpCodeScript,
-            satoshis: 2000
+            satoshis: 500
         }));
         tx.addOutput(new tbc.Transaction.Output({
             script: ftlpTapeScript,
@@ -487,7 +538,7 @@ class poolNFT {
             const ftabya_changeCodeScript = FT.buildFTtransferCode(FTA.codeScript, privateKey.toAddress().toString());
             tx.addOutput(new tbc.Transaction.Output({
                 script: ftabya_changeCodeScript,
-                satoshis: 2000
+                satoshis: 500
             }));
             const ftabya_changeTapeScript = FT.buildFTtransferTape(FTA.tapeScript, changeHex);
             tx.addOutput(new tbc.Transaction.Output({
@@ -611,7 +662,7 @@ class poolNFT {
         //poolNft
         tx.addOutput(new tbc.Transaction.Output({
             script: tbc.Script.fromHex(this.poolnft_code),
-            satoshis: 2000
+            satoshis: 1000
         }));
         const writer = new tbc.encoding.BufferWriter();
         writer.writeUInt64LEBN(new tbc.crypto.BN(this.ft_lp_amount));
@@ -627,7 +678,7 @@ class poolNFT {
         const ftCodeScript = FT.buildFTtransferCode(FTA.codeScript, address_to);
         tx.addOutput(new tbc.Transaction.Output({
             script: ftCodeScript,
-            satoshis: 2000
+            satoshis: 500
         }));
         const ftTapeScript = FT.buildFTtransferTape(FTA.tapeScript, ftAbyA);
         tx.addOutput(new tbc.Transaction.Output({
@@ -648,7 +699,7 @@ class poolNFT {
         const ftlpCodeScript = FT.buildFTtransferCode(ftlpCode.toBuffer().toString('hex'), '1BitcoinEaterAddressDontSendf59kuE');
         tx.addOutput(new tbc.Transaction.Output({
             script: ftlpCodeScript,
-            satoshis: 2000
+            satoshis: 500
         }));
         ftlpTapeScript = FT.buildFTtransferTape(ftlpTapeScript.toBuffer().toString('hex'), ftlpBurn);
         tx.addOutput(new tbc.Transaction.Output({
@@ -660,7 +711,7 @@ class poolNFT {
             const ftlp_changeCodeScript = FT.buildFTtransferCode(ftlpCode.toBuffer().toString('hex'), address_to);
             tx.addOutput(new tbc.Transaction.Output({
                 script: ftlp_changeCodeScript,
-                satoshis: 2000
+                satoshis: 500
             }));
             const ftlp_changeTapeScript = FT.buildFTtransferTape(ftlpTapeScript.toBuffer().toString('hex'), ftlpChange);
             tx.addOutput(new tbc.Transaction.Output({
@@ -783,7 +834,7 @@ class poolNFT {
             .from(fttxo_c);
         tx.addOutput(new tbc.Transaction.Output({
             script: tbc.Script.fromHex(this.poolnft_code),
-            satoshis: 2000
+            satoshis: 1000
         }));
         const writer = new tbc.encoding.BufferWriter();
         writer.writeUInt64LEBN(new tbc.crypto.BN(this.ft_lp_amount));
@@ -799,7 +850,7 @@ class poolNFT {
         const ftCodeScript = FT.buildFTtransferCode(FTA.codeScript, address_to);
         tx.addOutput(new tbc.Transaction.Output({
             script: ftCodeScript,
-            satoshis: 2000
+            satoshis: 500
         }));
         const ftTapeScript = FT.buildFTtransferTape(FTA.tapeScript, amountHex);
         tx.addOutput(new tbc.Transaction.Output({
@@ -911,7 +962,7 @@ class poolNFT {
             .from(fttxo_c);
         tx.addOutput(new tbc.Transaction.Output({
             script: tbc.Script.fromHex(this.poolnft_code),
-            satoshis: 2000
+            satoshis: 1000
         }));
         const writer = new tbc.encoding.BufferWriter();
         writer.writeUInt64LEBN(new tbc.crypto.BN(this.ft_lp_amount));
@@ -927,7 +978,7 @@ class poolNFT {
         const ftCodeScript = FT.buildFTtransferCode(FTA.codeScript, address_to);
         tx.addOutput(new tbc.Transaction.Output({
             script: ftCodeScript,
-            satoshis: 2000
+            satoshis: 500
         }));
         const ftTapeScript = FT.buildFTtransferTape(FTA.tapeScript, amountHex);
         tx.addOutput(new tbc.Transaction.Output({
@@ -1057,7 +1108,7 @@ class poolNFT {
         //poolNft
         tx.addOutput(new tbc.Transaction.Output({
             script: tbc.Script.fromHex(this.poolnft_code),
-            satoshis: 2000
+            satoshis: 1000
         }));
         const writer = new tbc.encoding.BufferWriter();
         writer.writeUInt64LEBN(new tbc.crypto.BN(this.ft_lp_amount));
@@ -1086,7 +1137,7 @@ class poolNFT {
             const ftabycCodeScript = FT.buildFTtransferCode(FTA.codeScript, privateKey.toAddress().toString());
             tx.addOutput(new tbc.Transaction.Output({
                 script: ftabycCodeScript,
-                satoshis: 2000
+                satoshis: 500
             }));
             const ftabycTapeScript = FT.buildFTtransferTape(FTA.tapeScript, changeHex);
             tx.addOutput(new tbc.Transaction.Output({
@@ -1210,7 +1261,7 @@ class poolNFT {
         //poolNft
         tx.addOutput(new tbc.Transaction.Output({
             script: tbc.Script.fromHex(this.poolnft_code),
-            satoshis: 2000
+            satoshis: 1000
         }));
         const writer = new tbc.encoding.BufferWriter();
         writer.writeUInt64LEBN(new tbc.crypto.BN(this.ft_lp_amount));
@@ -1240,7 +1291,7 @@ class poolNFT {
 
             tx.addOutput(new tbc.Transaction.Output({
                 script: ftabyaCodeScript,
-                satoshis: 2000
+                satoshis: 500
             }));
             const ftabyaTapeScript = FT.buildFTtransferTape(FTA.tapeScript, changeHex);
             tx.addOutput(new tbc.Transaction.Output({
@@ -1486,7 +1537,7 @@ class poolNFT {
             const codeScript = FT.buildFTtransferCode(fttxo_codeScript, address);
             tx.addOutput(new tbc.Transaction.Output({
                 script: codeScript,
-                satoshis: 2000
+                satoshis: 500
             }));
             const tapeScript = FT.buildFTtransferTape(FTA.tapeScript, amountHex);
             tx.addOutput(new tbc.Transaction.Output({
@@ -1596,7 +1647,7 @@ class poolNFT {
             //poolNft
             tx.addOutput(new tbc.Transaction.Output({
                 script: tbc.Script.fromHex(this.poolnft_code),
-                satoshis: 2000
+                satoshis: 1000
             }));
             const writer = new tbc.encoding.BufferWriter();
             writer.writeUInt64LEBN(new tbc.crypto.BN(this.ft_lp_amount));

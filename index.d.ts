@@ -79,7 +79,7 @@ declare module 'tbc-contract' {
         contractTxid: string
         constructor(txidOrParams: string | { name: string, symbol: string, amount: number, decimal: number });
         initialize(ftInfo: FtInfo): void;
-        MintFT(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput): string;
+        MintFT(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput): string[];
         transfer(privateKey_from: PrivateKey, address_to: string, amount: number, ftutxo_a: Transaction.IUnspentOutput[], utxo: Transaction.IUnspentOutput, preTX: Transaction[], prepreTxData: string[]): string;
         transferWithAdditionalInfo(privateKey_from: PrivateKey, address_to: string, amount: number, ftutxo_a: Transaction.IUnspentOutput[], utxo: Transaction.IUnspentOutput, preTX: Transaction[], prepreTxData: string[], additionalInfo: Buffer): string;
         mergeFT(privateKey_from: PrivateKey, ftutxo: Transaction.IUnspentOutput[], utxo: Transaction.IUnspentOutput, preTX: Transaction[], prepreTxData: string[]): string | true;
@@ -125,7 +125,7 @@ declare module 'tbc-contract' {
         constructor(config?: { txidOrParams?: string | { ftContractTxid: string, tbc_amount: number, ft_a: number }, network?: "testnet" | "mainnet" });
         initCreate(ftContractTxid?: string): Promise<void>;
         initfromContractId(): Promise<void>;
-        createPoolNFT(privateKey_from: PrivateKey, utxo: Transaction.IUnspentOutput): Promise<string>;
+        createPoolNFT(privateKey_from: PrivateKey, utxo: Transaction.IUnspentOutput): Promise<string[]>;
         createPoolNftWithLock(privateKey_from: PrivateKey, utxo: Transaction.IUnspentOutput): Promise<string>;
         initPoolNFT(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, tbc_amount?: number, ft_a?: number): Promise<string>;
         increaseLP(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_tbc: number): Promise<string>;
