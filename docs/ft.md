@@ -23,9 +23,11 @@ async function main() {
             decimal: ftDecimal
         });
 
-        const utxo = await API.fetchUTXO(privateKeyA, 0.001, network);//准备utxo
+        const utxo = await API.fetchUTXO(privateKeyA, 0.01, network);//准备utxo
         const mintTX = newToken.MintFT(privateKeyA, addressA, utxo);//组装交易
-        await API.broadcastTXraw(mintTX, network);
+        await API.broadcastTXraw(mintTX[0], network);
+        console.log("FT Contract ID:");
+        await API.broadcastTXraw(mintTX[1], network);
 
         //Transfer
         const transferTokenAmount = 1000;//转移数量
