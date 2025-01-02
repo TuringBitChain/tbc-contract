@@ -1564,7 +1564,7 @@ class poolNFT {
             // await this.mergeFTLP(privateKey);
             return txraw;
         } catch (error) {
-            throw new Error("Merge Faild!.");
+            throw new Error("Merge Faild!."+ error.message);
         }
     }
 
@@ -1697,7 +1697,7 @@ class poolNFT {
             return txraw;
         } catch (error) {
             console.log(error);
-            throw new Error("Merge Faild!.");
+            throw new Error("Merge Faild!." + error.message);
         }
     }
 
