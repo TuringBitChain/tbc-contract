@@ -186,7 +186,7 @@ class FT {
         if (amount < 0) {
             throw new Error('Invalid amount input');
         }
-        const amountbn = BigInt(Math.ceil(amount * Math.pow(10, decimal)));
+        const amountbn = BigInt(Math.floor(amount * Math.pow(10, decimal)));
         // Fetch FT UTXO for the transfer
         //const ftutxo_a = await this.fetchFtTXO(this.contractTxid, address_from, amountbn);
         
@@ -270,7 +270,7 @@ class FT {
         if (amount < 0) {
             throw new Error('Invalid amount input');
         }
-        const amountbn = BigInt(Math.ceil(amount * Math.pow(10, decimal)));
+        const amountbn = BigInt(Math.floor(amount * Math.pow(10, decimal)));
         // Fetch FT UTXO for the transfer
         //const ftutxo_a = await this.fetchFtTXO(this.contractTxid, address_from, amountbn);
         

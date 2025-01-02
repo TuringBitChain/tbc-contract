@@ -592,7 +592,7 @@ class poolNFT {
         const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
         FTA.initialize(FTAInfo);
-        const amount_lpbn = BigInt(Math.ceil(amount_lp * Math.pow(10, 6)));
+        const amount_lpbn = BigInt(Math.floor(amount_lp * Math.pow(10, 6)));
         if (this.ft_lp_amount < amount_lpbn) {
             throw new Error('Invalid FT-LP amount input');
         }
@@ -1790,7 +1790,7 @@ class poolNFT {
         const ft_lp_old = this.ft_lp_amount;
         const tbc_amount_old = this.tbc_amount;
         if (option == 1) {
-            const ftLpIncrement = BigInt(Math.ceil(increment * Math.pow(10, 6)));
+            const ftLpIncrement = BigInt(Math.floor(increment * Math.pow(10, 6)));
             this.updateWhenFtLpChange(ftLpIncrement);
         } else if (option == 2) {
             const tbcIncrement = BigInt(Math.ceil(increment * Math.pow(10, 6)));
