@@ -16,6 +16,7 @@ declare module 'tbc-contract' {
         static fetchNFTInfo(contract_id: string, network?: "testnet" | "mainnet"): Promise<NFTInfo>;
         static fetchUMTXO(script_asm: string, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput>;
         static getUMTXOs(script_asm: string, amount_tbc: number, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput[]>;
+        static fetchFtUTXOS_multiSig(contractTxid: string, addressOrHash: string, codeScript: string, amount: bigint, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput[]>;
     }
 
     interface CollectionData {
@@ -84,7 +85,7 @@ declare module 'tbc-contract' {
         transferWithAdditionalInfo(privateKey_from: PrivateKey, address_to: string, amount: number, ftutxo_a: Transaction.IUnspentOutput[], utxo: Transaction.IUnspentOutput, preTX: Transaction[], prepreTxData: string[], additionalInfo: Buffer): string;
         mergeFT(privateKey_from: PrivateKey, ftutxo: Transaction.IUnspentOutput[], utxo: Transaction.IUnspentOutput, preTX: Transaction[], prepreTxData: string[]): string | true;
         getFTunlock(privateKey_from: PrivateKey, currentTX: Transaction, preTX: Transaction, prepreTxData: string, currentUnlockIndex: number, preTxVout: number): Script;
-        getFTunlockSwap(privateKey_from: PrivateKey, currentTX: Transaction, preTX: Transaction, prepreTxData: string, contractTX: Transaction, currentUnlockIndex: number, preTxId: string, preVout: number): Script;
+        getFTunlockSwap(privateKey_from: PrivateKey, currentTX: Transaction, preTX: Transaction, prepreTxData: string, contractTX: Transaction, currentUnlockIndex: number, preVout: number): Script;
         getFTmintCode(txid: string, vout: number, address: string, tapeSize: number): Script;
         static buildFTtransferCode(code: string, addressOrHash: string): Script;
         static buildFTtransferTape(tape: string, amountHex: string): Script;
@@ -144,5 +145,27 @@ declare module 'tbc-contract' {
         getPoolNftCode(txid: string, vout: number): Script;
         getPoolNftCodeWithLock(txid: string, vout: number): Script;
         getFTLPcode(poolNftCodeHash: string, address: string, tapeSize: number): Script;
+    }
+
+    interface MultiSigTxRaw {
+        txraw: string;
+        amounts: number[];
+    }
+
+    export class MultiSig {
+        static createMultiSigWallet(address_from: string, pubKeys: string[], signatureCount: number, publicKeyCount: number, amount_tbc: number, utxos: Transaction.IUnspentOutput[], privateKey: PrivateKey): string;
+        static p2pkhToMultiSig_sendTBC(address_from: string, address_to: string, amount_tbc: number, utxos: Transaction.IUnspentOutput[], privateKey: PrivateKey): string;
+        static buildMultiSigTransaction_sendTBC(address_from: string, toAddress: string, amount_tbc: number, utxos: Transaction.IUnspentOutput[]): MultiSigTxRaw;
+        static signMultiSigTransaction_sendTBC(address_from: string, multiSigTxraw: MultiSigTxRaw, privateKey: PrivateKey): string[];
+        static finishMultiSigTransaction_sendTBC(txraw: string, sigs: string[][], pubKeys: string[]): string;
+        static p2pkhToMultiSig_transferFT(address_from: string, address_to: string, ft: FT, ft_amount: number, utxo: Transaction.IUnspentOutput, ftutxos: Transaction.IUnspentOutput[], preTXs: Transaction[], prepreTxDatas: string[], privateKey: PrivateKey): string;
+        static buildMultiSigTransaction_transferFT(address_from: string, address_to: string, ft: any, ft_amount: number, utxo: Transaction.IUnspentOutput, ftutxos: Transaction.IUnspentOutput[], preTXs: Transaction[], prepreTxDatas: string[], contractTX: Transaction, privateKey: PrivateKey): MultiSigTxRaw;
+        static signMultiSigTransaction_transferFT(address_from: string, ft: FT, multiSigTxraw: MultiSigTxRaw, privateKey: PrivateKey): string[];
+        static finishMultiSigTransaction_transferFT(txraw: string, sigs: string[][], pubKeys: string[]): string;
+        static getMultiSigAddress(pubKeys: string[], signatureCount: number, publicKeyCount: number): string;
+        static getSignatureAndPublicKeyCount(address: string): { signatureCount: number, publicKeyCount: number };
+        static verifyMultiSigAddress(pubKeys: string[], address: string): boolean;
+        static getMultiSigLockScript(address: string): string;
+        static getCombineHash(address: string): string;
     }
 }
