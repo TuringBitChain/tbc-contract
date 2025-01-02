@@ -1,5 +1,6 @@
 import * as tbc from 'tbc-lib-js';
 import { getPrePreTxdata } from '../util/ftunlock';
+import { findMinFiveSum, findMinFourSum, findMinThreeSum, findMinTwoSum } from '../util/utxoSelect';
 
 interface NFTInfo {
     collectionId: string;
@@ -23,6 +24,14 @@ interface FtInfo {
     decimal: number;
     name: string;
     symbol: string;
+}
+
+interface FTUnspentOutput {
+    utxoId: string;
+    utxoVout: number;
+    utxoBalance: number;
+    ftContractId: string;
+    ftBalance: bigint;
 }
 
 class API {
@@ -119,6 +128,9 @@ class API {
                 throw new Error(`Failed to fetch from URL: ${url}, status: ${response.status}`);
             }
             const responseData = await response.json();
+            if (responseData.ftUtxoList.length === 0) {
+                throw new Error('The ft balance in the account is zero.');
+            }
             let data = responseData.ftUtxoList[0];
             for (let i = 0; i < responseData.ftUtxoList.length; i++) {
                 if (responseData.ftUtxoList[i].ftBalance >= amount) {
@@ -148,13 +160,6 @@ class API {
     }
 
     static async fetchFtUTXOs(contractTxid: string, addressOrHash: string, codeScript: string, network?: "testnet" | "mainnet", amount?: bigint): Promise<tbc.Transaction.IUnspentOutput[]> {
-        interface FTUnspentOutput {
-            utxoId: string;
-            utxoVout: number;
-            utxoBalance: number;
-            ftContractId: string;
-            ftBalance: bigint;
-        }
         let base_url = "";
         if (network) {
             base_url = API.getBaseURL(network)
@@ -185,6 +190,9 @@ class API {
                 throw new Error(`Failed to fetch from URL: ${url}, status: ${response.status}`);
             }
             const responseData = await response.json();
+            if (responseData.ftUtxoList.length === 0) {
+                throw new Error('The ft balance in the account is zero.');
+            }
             let sortedData: FTUnspentOutput[] = responseData.ftUtxoList.sort((a: FTUnspentOutput, b: FTUnspentOutput) => b.ftBalance - a.ftBalance);
             let sumBalance = BigInt(0);
             let ftutxos: tbc.Transaction.IUnspentOutput[] = [];
@@ -342,6 +350,9 @@ class API {
         const amount_bn = Math.ceil(amount * Math.pow(10, 6));
         try {
             const response = await (await fetch(url)).json();
+            if (response.length === 0) {
+                throw new Error('The balance in the account is zero.');
+            }
             if (response.length === 1 && response[0].value > amount_bn) {
                 const utxo: tbc.Transaction.IUnspentOutput = {
                     txId: response[0].tx_hash,
@@ -533,7 +544,9 @@ class API {
                 throw new Error("Failed to fetch UTXO: ".concat(response.statusText));
             }
             const data: { tx_hash: string; tx_pos: number; height: number; value: number; }[] = await response.json();
-
+            if (data.length === 0) {
+                throw new Error('The balance in the account is zero.');
+            }
             const scriptPubKey = tbc.Script.buildPublicKeyHashOut(address).toBuffer().toString('hex');
 
             return data.map((utxo) => ({
@@ -729,7 +742,9 @@ class API {
                 throw new Error(`Failed to fetch UTXO: ${response.statusText}`);
             }
             const data = await response.json();
-
+            if (data.length === 0) {
+                throw new Error('The balance in the account is zero.');
+            }
             let selectedUTXO = data[0];
             for (let i = 0; i < data.length; i++) {
                 if (data[i].value > 10000 && data[i].value < 3200000000) {
@@ -788,7 +803,9 @@ class API {
                 throw new Error(`Failed to fetch UTXO: ${response.statusText}`);
             }
             const data = await response.json();
-
+            if (data.length === 0) {
+                throw new Error('The balance in the account is zero.');
+            }
             const umtxos = data.map((utxo) => {
                 return {
                     txId: utxo.tx_hash,
@@ -849,6 +866,169 @@ class API {
             throw new Error(error.message);
         }
     }
+
+    /**
+     * Fetches the UMTXOs for a given contract and address.
+     *
+     * @param {string} contractTxid - The contract TXID.
+     * @param {string} addressOrHash - The address or hash to fetch UMTXOs for.
+     * @param {string} codeScript - The code script.
+     * @param {bigint} amount - The amount to fetch UMTXOs for.
+     * @param {("testnet" | "mainnet")} [network] - The network type.
+     * @returns {Promise<tbc.Transaction.IUnspentOutput[]>} Returns a Promise that resolves to an array of UMTXOs.
+     * @throws {Error} Throws an error if the request fails.
+     */
+    static async fetchFtUTXOS_multiSig(contractTxid: string, addressOrHash: string, codeScript: string, amount: bigint, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput[]> {
+        let base_url = network ? API.getBaseURL(network) : API.getBaseURL("mainnet");
+        let hash = '';
+        if (tbc.Address.isValid(addressOrHash)) {
+            const publicKeyHash = tbc.Address.fromString(addressOrHash).hashBuffer.toString('hex');
+            hash = publicKeyHash + '00';
+        } else {
+            if (addressOrHash.length !== 40) {
+                throw new Error('Invalid address or hash');
+            }
+            hash = addressOrHash + '01';
+        }
+        try {
+            const url = base_url + `ft/utxo/combine/script/${hash}/contract/${contractTxid}`;
+
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+            if (!response.ok) {
+                throw new Error(`Failed to fetch from URL: ${url}, status: ${response.status}`);
+            }
+            const responseData = await response.json();
+            if (responseData.ftUtxoList.length === 0) {
+                throw new Error('The ft balance in the account is zero.');
+            }
+            let sortedData: FTUnspentOutput[] = responseData.ftUtxoList.sort((a: FTUnspentOutput, b: FTUnspentOutput) => a.ftBalance - b.ftBalance);
+            let ftutxos: tbc.Transaction.IUnspentOutput[] = [];
+            for (let i = 0; i < sortedData.length; i++) {
+                ftutxos.push({
+                    txId: sortedData[i].utxoId,
+                    outputIndex: sortedData[i].utxoVout,
+                    script: codeScript,
+                    satoshis: sortedData[i].utxoBalance,
+                    ftBalance: sortedData[i].ftBalance
+                });
+            }
+            const ftBalanceArray: bigint[] = ftutxos.map(item => BigInt(item.ftBalance));
+            switch (ftBalanceArray.length) {
+                case 1:
+                    if (ftBalanceArray[0] >= amount) {
+                        return [ftutxos[0]];
+                    } else {
+                        throw new Error('Insufficient FT balance');
+                    }
+                case 2:
+                    if (ftBalanceArray[0] + ftBalanceArray[1] < amount) {
+                        throw new Error('Insufficient FT balance');
+                    } else if (ftBalanceArray[0] >= amount) {
+                        return [ftutxos[0]];
+                    } else if (ftBalanceArray[1] >= amount) {
+                        return [ftutxos[1]];
+                    } else {
+                        return [ftutxos[0], ftutxos[1]];
+                    }
+                case 3:
+                    if (ftBalanceArray[0] + ftBalanceArray[1] + ftBalanceArray[2] < amount) {
+                        throw new Error('Insufficient FT balance');
+                    } else if (findMinTwoSum(ftBalanceArray, amount)) {
+                        const result = findMinTwoSum(ftBalanceArray, amount);
+                        if (ftBalanceArray[result[0]] >= amount) {
+                            return [ftutxos[result[0]]];
+                        } else if (ftBalanceArray[result[1]] >= amount) {
+                            return [ftutxos[result[1]]];
+                        } else {
+                            return [ftutxos[result[0]], ftutxos[result[1]]];
+                        }
+                    } else {
+                        return [ftutxos[0], ftutxos[1], ftutxos[2]];
+                    }
+                case 4:
+                    if (ftBalanceArray[0] + ftBalanceArray[1] + ftBalanceArray[2] + ftBalanceArray[3] < amount) {
+                        throw new Error('Insufficient FT balance');
+                    } else if (findMinThreeSum(ftBalanceArray, amount)) {
+                        const result_three = findMinThreeSum(ftBalanceArray, amount);
+                        if (findMinTwoSum([ftBalanceArray[result_three[0]], ftBalanceArray[result_three[1]], ftBalanceArray[result_three[2]]], amount)) {
+                            const result_two = findMinTwoSum([ftBalanceArray[result_three[0]], ftBalanceArray[result_three[1]], ftBalanceArray[result_three[2]]], amount);
+                            if (ftBalanceArray[result_two[0]] >= amount) {
+                                return [ftutxos[result_two[0]]];
+                            } else if (ftBalanceArray[result_two[1]] >= amount) {
+                                return [ftutxos[result_two[1]]];
+                            } else {
+                                return [ftutxos[result_two[0]], ftutxos[result_two[1]]];
+                            }
+                        } else {
+                            return [ftutxos[result_three[0]], ftutxos[result_three[1]], ftutxos[result_three[2]]];
+                        }
+                    } else {
+                        return [ftutxos[0], ftutxos[1], ftutxos[2], ftutxos[3]];
+                    }
+                case 5:
+                    if (ftBalanceArray[0] + ftBalanceArray[1] + ftBalanceArray[2] + ftBalanceArray[3] + ftBalanceArray[4] < amount) {
+                        throw new Error('Insufficient FT balance');
+                    } else if (findMinFourSum(ftBalanceArray, amount)) {
+                        const result_four = findMinFourSum(ftBalanceArray, amount);
+                        if (findMinThreeSum([ftBalanceArray[result_four[0]], ftBalanceArray[result_four[1]], ftBalanceArray[result_four[2]], ftBalanceArray[result_four[3]]], amount)) {
+                            const result_three = findMinThreeSum([ftBalanceArray[result_four[0]], ftBalanceArray[result_four[1]], ftBalanceArray[result_four[2]], ftBalanceArray[result_four[3]]], amount);
+                            if (findMinTwoSum([ftBalanceArray[result_three[0]], ftBalanceArray[result_three[1]], ftBalanceArray[result_three[2]]], amount)) {
+                                const result_two = findMinTwoSum([ftBalanceArray[result_three[0]], ftBalanceArray[result_three[1]], ftBalanceArray[result_three[2]]], amount);
+                                if (ftBalanceArray[result_two[0]] >= amount) {
+                                    return [ftutxos[result_two[0]]];
+                                } else if (ftBalanceArray[result_two[1]] >= amount) {
+                                    return [ftutxos[result_two[1]]];
+                                } else {
+                                    return [ftutxos[result_two[0]], ftutxos[result_two[1]]];
+                                }
+                            } else {
+                                return [ftutxos[result_three[0]], ftutxos[result_three[1]], ftutxos[result_three[2]]];
+                            }
+                        } else {
+                            return [ftutxos[result_four[0]], ftutxos[result_four[1]], ftutxos[result_four[2]], ftutxos[result_four[3]]];
+                        }
+                    } else {
+                        return [ftutxos[0], ftutxos[1], ftutxos[2], ftutxos[3], ftutxos[4]];
+                    }
+                default:
+                    if (findMinFiveSum(ftBalanceArray, amount)) {
+                        const result_five = findMinFiveSum(ftBalanceArray, amount);
+                        if (findMinFourSum([ftBalanceArray[result_five[0]], ftBalanceArray[result_five[1]], ftBalanceArray[result_five[2]], ftBalanceArray[result_five[3]], ftBalanceArray[result_five[4]]], amount)) {
+                            const result_four = findMinFourSum([ftBalanceArray[result_five[0]], ftBalanceArray[result_five[1]], ftBalanceArray[result_five[2]], ftBalanceArray[result_five[3]], ftBalanceArray[result_five[4]]], amount);
+                            if (findMinThreeSum([ftBalanceArray[result_four[0]], ftBalanceArray[result_four[1]], ftBalanceArray[result_four[2]], ftBalanceArray[result_four[3]]], amount)) {
+                                const result_three = findMinThreeSum([ftBalanceArray[result_four[0]], ftBalanceArray[result_four[1]], ftBalanceArray[result_four[2]], ftBalanceArray[result_four[3]]], amount);
+                                if (findMinTwoSum([ftBalanceArray[result_three[0]], ftBalanceArray[result_three[1]], ftBalanceArray[result_three[2]]], amount)) {
+                                    const result_two = findMinTwoSum([ftBalanceArray[result_three[0]], ftBalanceArray[result_three[1]], ftBalanceArray[result_three[2]]], amount);
+                                    if (ftBalanceArray[result_two[0]] >= amount) {
+                                        return [ftutxos[result_two[0]]];
+                                    } else if (ftBalanceArray[result_two[1]] >= amount) {
+                                        return [ftutxos[result_two[1]]];
+                                    } else {
+                                        return [ftutxos[result_two[0]], ftutxos[result_two[1]]];
+                                    }
+                                } else {
+                                    return [ftutxos[result_three[0]], ftutxos[result_three[1]], ftutxos[result_three[2]]];
+                                }
+                            } else {
+                                return [ftutxos[result_four[0]], ftutxos[result_four[1]], ftutxos[result_four[2]], ftutxos[result_four[3]]];
+                            }
+                        } else {
+                            return [ftutxos[result_five[0]], ftutxos[result_five[1]], ftutxos[result_five[2]], ftutxos[result_five[3]], ftutxos[result_five[4]]];
+                        }
+                    } else {
+                        throw new Error('Insufficient FT balance');
+                    }
+            }
+        } catch (error) {
+            throw new Error(error.message);
+        }
+    }
 }
+
 
 module.exports = API
