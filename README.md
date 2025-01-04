@@ -77,7 +77,7 @@ const main = async ()=>{
     const nft_data = {
         nftName: "";
         symbol: "";
-        discription: "";
+        description: "";
         attributes: "";
         file?: content; //file可为空，为空引用合集的照片
     }
