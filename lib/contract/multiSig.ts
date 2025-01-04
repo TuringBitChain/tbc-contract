@@ -18,15 +18,14 @@ class MultiSig {
   * @param privateKey The private key used to sign the transaction
   * @returns The raw serialized transaction string
   */
-    static createMultiSigWallet(address_from: string, pubKeys: string[], signatureCount: number, publicKeyCount: number, amount_tbc: number, utxos: tbc.Transaction.IUnspentOutput[], privateKey: tbc.PrivateKey): string {
+    static createMultiSigWallet(address_from: string, pubKeys: string[], signatureCount: number, publicKeyCount: number, utxos: tbc.Transaction.IUnspentOutput[], privateKey: tbc.PrivateKey): string {
         const address = MultiSig.getMultiSigAddress(pubKeys, signatureCount, publicKeyCount);
         const script_asm = MultiSig.getMultiSigLockScript(address);
-        const amount_satoshis = Math.ceil(amount_tbc * Math.pow(10, 6));
         const tx = new tbc.Transaction();
         tx.from(utxos)
         tx.addOutput(new tbc.Transaction.Output({
             script: tbc.Script.fromASM(script_asm),
-            satoshis: amount_satoshis
+            satoshis: 5000
         }))
         for (let i = 0; i < publicKeyCount; i++) {
             tx.addOutput(new tbc.Transaction.Output({
