@@ -10,13 +10,13 @@ const multiSigAddress = contract.MultiSig.getMultiSigAddress(pubKeys, signatureC
 
 //创建多签钱包
 const amount_tbc = 1 //创建时候往多签地址下存的tbc数量
-const utxos = await contract.API.getUTXOs(addressC, amount_tbc + 0.0003, network);
+const utxos = await contract.API.getUTXOs(address_from, amount_tbc + 0.0003, network);
 const txraw = contract.MultiSig.createMultiSigWallet(address_from, pubKeys, signatureCount, publicKeyCount, amount_tbc, utxos, privateKey);
 await contract.API.broadcastTXraw(txraw, network);
 
 //普通地址向多签地址转tbc
 const amount_tbc = 10//转移的tbc数量
-const utxos = await contract.API.getUTXOs(addressC, amount_tbc + 0.0003, network);
+const utxos = await contract.API.getUTXOs(address_from, amount_tbc + 0.0003, network);
 const txraw = contract.MultiSig.p2pkhToMultiSig_sendTBC(address_from, multiSigAddress, amount_tbc, utxos, privateKey);
 await contract.API.broadcastTXraw(txraw, network);
 
