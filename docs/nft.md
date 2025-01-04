@@ -22,7 +22,7 @@ const privateKey = tbc.PrivateKey.fromString("");
 const address = privateKey.toAddress().toString();
 const main = async ()=>{
     const utxos = await contract.API.getUTXOs(address,0.01,network);
-    const content = await contract.NFT.encodeByBase64(filePath);
+    const content = await encodeByBase64(filePath);
     const collection_data = {
       collectionName: "";
       description: "";
@@ -33,7 +33,7 @@ const main = async ()=>{
     const collection_id = await contract.API.broadcastTXraw(txraw1);
 
     const utxos = await contract.API.getUTXOs(address,0.01,network);
-    const content = await contract.NFT.encodeByBase64(filePath);
+    const content = await encodeByBase64(filePath);
     const nft_data = {
         nftName: "";
         symbol: "";
