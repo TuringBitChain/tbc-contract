@@ -24,7 +24,7 @@ interface CollectionData {
 interface NFTData {
     nftName: string;
     symbol: string;
-    discription: string;
+    description: string;
     attributes: string;
     file?: string;
 }
@@ -41,7 +41,7 @@ class NFT {
         nftName: "",
         symbol: "",
         file: "",
-        discription: "",
+        description: "",
         attributes: "",
     };
 
@@ -72,7 +72,7 @@ class NFT {
         this.nftData = {
             nftName,
             symbol: nftSymbol,
-            discription: nftDescription,
+            description: nftDescription,
             attributes: nft_attributes,
             file
         }

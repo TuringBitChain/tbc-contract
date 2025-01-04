@@ -43,7 +43,7 @@ declare module 'tbc-contract' {
     interface NFTData {
         nftName: string;
         symbol: string;
-        discription: string;
+        description: string;
         attributes: string;
         file?: string;
     }
