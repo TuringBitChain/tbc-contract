@@ -153,7 +153,7 @@ declare module 'tbc-contract' {
     }
 
     export class MultiSig {
-        static createMultiSigWallet(address_from: string, pubKeys: string[], signatureCount: number, publicKeyCount: number, amount_tbc: number, utxos: Transaction.IUnspentOutput[], privateKey: PrivateKey): string;
+        static createMultiSigWallet(address_from: string, pubKeys: string[], signatureCount: number, publicKeyCount: number, utxos: Transaction.IUnspentOutput[], privateKey: PrivateKey): string;
         static p2pkhToMultiSig_sendTBC(address_from: string, address_to: string, amount_tbc: number, utxos: Transaction.IUnspentOutput[], privateKey: PrivateKey): string;
         static buildMultiSigTransaction_sendTBC(address_from: string, toAddress: string, amount_tbc: number, utxos: Transaction.IUnspentOutput[]): MultiSigTxRaw;
         static signMultiSigTransaction_sendTBC(address_from: string, multiSigTxraw: MultiSigTxRaw, privateKey: PrivateKey): string[];
