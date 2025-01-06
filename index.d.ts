@@ -127,7 +127,7 @@ declare module 'tbc-contract' {
         initCreate(ftContractTxid?: string): Promise<void>;
         initfromContractId(): Promise<void>;
         createPoolNFT(privateKey_from: PrivateKey, utxo: Transaction.IUnspentOutput): Promise<string[]>;
-        createPoolNftWithLock(privateKey_from: PrivateKey, utxo: Transaction.IUnspentOutput): Promise<string>;
+        createPoolNftWithLock(privateKey_from: PrivateKey, utxo: Transaction.IUnspentOutput): Promise<string[]>;
         initPoolNFT(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, tbc_amount?: number, ft_a?: number): Promise<string>;
         increaseLP(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_tbc: number): Promise<string>;
         consumeLP(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_lp: number): Promise<string>;
