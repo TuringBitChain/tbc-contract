@@ -484,7 +484,7 @@ class MultiSig {
      * @returns True if the address is valid, false otherwise
      */
     static verifyMultiSigAddress(pubKeys: string[], address: string): boolean {
-        const hash_from_pubkeys = MultiSig.getHash(pubKeys).toString();
+        const hash_from_pubkeys = MultiSig.getHash(pubKeys).toString("hex");
         const buf = Buffer.from(tbc.encoding.Base58.decode(address))
         const hash_from_address = buf.subarray(1, 21).toString("hex");
         return hash_from_pubkeys === hash_from_address;
