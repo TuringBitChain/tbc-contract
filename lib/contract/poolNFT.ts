@@ -118,12 +118,18 @@ class poolNFT {
         .from(utxo)
         .addOutput(new tbc.Transaction.Output({
             script: tbc.Script.fromASM(`OP_DUP OP_HASH160 ${publicKeyHash} OP_EQUALVERIFY OP_CHECKSIG OP_RETURN ${flagHex}`),
-            satoshis: 9900,
+            satoshis: 9800,
         }))
         .change(privateKey.toAddress())
-        .sign(privateKey)
+        const txSize = txSource.getEstimateSize();
+        if (txSize < 1000) {
+            txSource.fee(80);
+        } else {
+            txSource.feePerKb(100);
+        }
+        txSource.sign(privateKey)
         .seal();
-        const txSourceRaw = txSource.serialize();//Generate txraw
+        const txSourceRaw = txSource.uncheckedSerialize();//Generate txraw
 
         const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
@@ -197,12 +203,18 @@ class poolNFT {
         .from(utxo)
         .addOutput(new tbc.Transaction.Output({
             script: tbc.Script.fromASM(`OP_DUP OP_HASH160 ${publicKeyHash} OP_EQUALVERIFY OP_CHECKSIG OP_RETURN ${flagHex}`),
-            satoshis: 9900,
+            satoshis: 9800,
         }))
         .change(privateKey.toAddress())
-        .sign(privateKey)
+        const txSize = txSource.getEstimateSize();
+        if (txSize < 1000) {
+            txSource.fee(80);
+        } else {
+            txSource.feePerKb(100);
+        }
+        txSource.sign(privateKey)
         .seal();
-        const txSourceRaw = txSource.serialize();//Generate txraw
+        const txSourceRaw = txSource.uncheckedSerialize();//Generate txraw
 
         const FTA = new FT(this.ft_a_contractTxid);
         const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
