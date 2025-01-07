@@ -559,8 +559,8 @@ class MultiSig {
 
     private static buildTapeScript(address: string, pubKeys: string[]): tbc.Script {
         const data = {
-            address,
-            pubkeys
+            address: address,
+            pubkeys: pubKeys
         };
         const dataHex = Buffer.from(JSON.stringify(data)).toString("hex");
         return tbc.Script.fromASM('OP_FALSE OP_RETURN ' + dataHex + ' 4d54617065');
