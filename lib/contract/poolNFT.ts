@@ -322,7 +322,7 @@ class poolNFT {
         let fttxo_a: tbc.Transaction.IUnspentOutput;
         try {
             fttxo_a = await API.fetchFtUTXO(this.ft_a_contractTxid, privateKey.toAddress().toString(), this.ft_a_amount, ftutxo_codeScript, this.network);
-        } catch (error) {
+        } catch (error: any) {
             const errorMessage = error.message === "Insufficient FTbalance, please merge FT UTXOs"
                 ? 'Insufficient FT-A amount, please merge FT-A UTXOs'
                 : error.message;
@@ -464,7 +464,7 @@ class poolNFT {
         let fttxo_a: tbc.Transaction.IUnspentOutput;
         try {
             fttxo_a = await API.fetchFtUTXO(this.ft_a_contractTxid, privateKey.toAddress().toString(), changeDate.ft_a_difference, ftutxo_codeScript, this.network);
-        } catch (error) {
+        } catch (error: any) {
             const errorMessage = error.message === "Insufficient FTbalance, please merge FT UTXOs"
                 ? 'Insufficient FT-A amount, please merge FT-A UTXOs'
                 : error.message;
@@ -618,7 +618,7 @@ class poolNFT {
         let fttxo_lp: tbc.Transaction.IUnspentOutput;
         try {
             fttxo_lp = await this.fetchFtlpUTXO(ftlpCode.toBuffer().toString('hex'), changeDate.ft_lp_difference);
-        } catch (error) {
+        } catch (error: any) {
             throw new Error(error.message);
         }
         ftPreTX.push(await API.fetchTXraw(fttxo_lp.txId, this.network));
@@ -633,7 +633,7 @@ class poolNFT {
             if (fttxo_c.satoshis < Number(changeDate.tbc_amount_difference)) {
                 throw new Error('Insufficient PoolTbc, please merge FT UTXOs');
             }
-        } catch (error) {
+        } catch (error: any) {
             const errorMessage = error.message === "Insufficient FTbalance, please merge FT UTXOs"
                 ? 'Insufficient PoolTbc, please merge FT UTXOs'
                 : error.message;
@@ -815,7 +815,7 @@ class poolNFT {
         let fttxo_c: tbc.Transaction.IUnspentOutput;
         try {
             fttxo_c = await API.fetchFtUTXO(this.ft_a_contractTxid, poolnft_codehash160, amount_ftbn, ftutxo_codeScript, this.network);
-        } catch (error) {
+        } catch (error: any) {
             const errorMessage = error.message === "Insufficient FTbalance, please merge FT UTXOs"
                 ? 'Insufficient PoolFT, please merge FT UTXOs'
                 : error.message;
@@ -944,7 +944,7 @@ class poolNFT {
         let fttxo_c: tbc.Transaction.IUnspentOutput;
         try {
             fttxo_c = await API.fetchFtUTXO(this.ft_a_contractTxid, poolnft_codehash160, ft_a_amount_decrement, ftutxo_codeScript, this.network);
-        } catch (error) {
+        } catch (error: any) {
             const errorMessage = error.message === "Insufficient FTbalance, please merge FT UTXOs"
                 ? 'Insufficient PoolFT, please merge FT UTXOs'
                 : error.message;
@@ -1073,7 +1073,7 @@ class poolNFT {
         let fttxo_a: tbc.Transaction.IUnspentOutput;
         try {
             fttxo_a = await API.fetchFtUTXO(this.ft_a_contractTxid, privateKey.toAddress().toString(), ft_a_amount_increment, ftutxo_codeScript_a, this.network);
-        } catch (error) {
+        } catch (error: any) {
             const errorMessage = error.message === "Insufficient FTbalance, please merge FT UTXOs"
                 ? 'Insufficient FT-A amount, please merge FT-A UTXOs'
                 : error.message;
@@ -1093,7 +1093,7 @@ class poolNFT {
             if (fttxo_c.satoshis < Number(amount_tbcbn)) {
                 throw new Error('Insufficient PoolTbc, please merge FT UTXOs');
             }
-        } catch (error) {
+        } catch (error: any) {
 
             const errorMessage = error.message === "Insufficient FTbalance, please merge FT UTXOs"
                 ? 'Insufficient PoolTbc, please merge FT UTXOs'
@@ -1227,7 +1227,7 @@ class poolNFT {
         let fttxo_a: tbc.Transaction.IUnspentOutput;
         try {
             fttxo_a = await API.fetchFtUTXO(this.ft_a_contractTxid, privateKey.toAddress().toString(), amount_ftbn, ftutxo_codeScript_a, this.network);
-        } catch (error) {
+        } catch (error: any) {
             const errorMessage = error.message === "Insufficient FTbalance, please merge FT UTXOs"
                 ? 'Insufficient FT-A amount, please merge FT-A UTXOs'
                 : error.message;
@@ -1248,7 +1248,7 @@ class poolNFT {
             if (fttxo_c.satoshis < Number(tbc_amount_decrement)) {
                 throw new Error('Insufficient PoolTbc, please merge FT UTXOs');
             }
-        } catch (error) {
+        } catch (error: any) {
 
             const errorMessage = error.message === "Insufficient FTbalance, please merge FT UTXOs"
                 ? 'Insufficient PoolTbc, please merge FT UTXOs'
@@ -1380,7 +1380,7 @@ class poolNFT {
                 currentContractSatoshi: data.current_pool_nft_balance
             }
             return poolNftInfo;
-        } catch (error) {
+        } catch (error: any) {
             throw new Error("Failed to fetch PoolNFTInfo.");
         }
     }
@@ -1411,7 +1411,7 @@ class poolNFT {
                 satoshis: poolNftInfo.currentContractSatoshi
             }
             return poolnft;
-        } catch (error) {
+        } catch (error: any) {
             throw new Error("Failed to fetch PoolNFT UTXO.");
         }
     }
@@ -1471,7 +1471,7 @@ class poolNFT {
                 ftBalance: data.ftBalance
             }
             return ftlp;
-        } catch (error) {
+        } catch (error: any) {
             throw new Error(error.message);
         }
     }
@@ -1575,7 +1575,7 @@ class poolNFT {
             // await new Promise(resolve => setTimeout(resolve, 5000));
             // await this.mergeFTLP(privateKey);
             return txraw;
-        } catch (error) {
+        } catch (error: any) {
             throw new Error("Merge Faild!."+ error.message);
         }
     }
@@ -1707,7 +1707,7 @@ class poolNFT {
             // await new Promise(resolve => setTimeout(resolve, 5000));
             // await this.mergeFTinPool(privateKey);
             return txraw;
-        } catch (error) {
+        } catch (error: any) {
             console.log(error);
             throw new Error("Merge Faild!." + error.message);
         }

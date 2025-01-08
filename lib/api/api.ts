@@ -81,7 +81,7 @@ class API {
             const response = await (await fetch(url)).json();
             const ftBalance = response.ftBalance;
             return ftBalance;
-        } catch (error) {
+        } catch (error: any) {
             throw new Error(error.message);
         }
     }
@@ -154,7 +154,7 @@ class API {
                 ftBalance: data.ftBalance
             }
             return fttxo;
-        } catch (error) {
+        } catch (error: any) {
             throw new Error(error.message);
         }
     }
@@ -231,7 +231,7 @@ class API {
                 }
             }
             return ftutxos;
-        } catch (error) {
+        } catch (error: any) {
             throw new Error(error.message);
         }
     }
@@ -272,7 +272,7 @@ class API {
                 symbol: data.ftSymbol
             }
             return ftInfo;
-        } catch (error) {
+        } catch (error: any) {
             throw new Error(error.message);
         }
     }
@@ -323,7 +323,7 @@ class API {
         try {
             const response = await (await fetch(url)).json();
             return response.data.balance;
-        } catch (error) {
+        } catch (error: any) {
             throw new Error(error.message);
         }
     }
@@ -390,7 +390,7 @@ class API {
                 satoshis: data.value
             }
             return utxo;
-        } catch (error) {
+        } catch (error: any) {
             throw new Error(error.message);
         }
     }
@@ -446,7 +446,7 @@ class API {
             await new Promise(resolve => setTimeout(resolve, 3000));
             await API.mergeUTXO(privateKey, network);
             return true;
-        } catch (error) {
+        } catch (error: any) {
             throw new Error(error.message);
         }
     }
@@ -476,7 +476,7 @@ class API {
             const tx = new tbc.Transaction();
             tx.fromString(rawtx);
             return tx;
-        } catch (error) {
+        } catch (error: any) {
             throw new Error(error.message);
         }
     }
@@ -516,7 +516,7 @@ class API {
                 console.log('error:', data.error);
             }
             return data.result;
-        } catch (error) {
+        } catch (error: any) {
             throw new Error(error.message);
         }
     }
@@ -554,7 +554,7 @@ class API {
                 script: scriptPubKey,
                 satoshis: utxo.value
             }));
-        } catch (error) {
+        } catch (error: any) {
             throw new Error(error.message);
         }
     }
@@ -600,7 +600,7 @@ class API {
             }
 
             return selectedUTXOs;
-        } catch (error) {
+        } catch (error: any) {
             throw new Error(error.message);
         }
     }
@@ -657,7 +657,7 @@ class API {
                 }
             }
 
-        } catch (error) {
+        } catch (error: any) {
             throw new Error(error.message);
         }
     }
@@ -711,7 +711,7 @@ class API {
             }
 
             return nftInfo;
-        } catch (error) {
+        } catch (error: any) {
             throw new Error(error.message);
         }
     }
@@ -771,7 +771,7 @@ class API {
                 satoshis: selectedUTXO.value
             };
             return umtxo;
-        } catch (error) {
+        } catch (error: any) {
             throw new Error(error.message);
         }
     }
@@ -815,7 +815,7 @@ class API {
             });
 
             return umtxos;
-        } catch (error) {
+        } catch (error: any) {
             throw new Error(error.message);
         }
     }
@@ -861,7 +861,7 @@ class API {
             }
 
             return selectedUMTXOs;
-        } catch (error) {
+        } catch (error: any) {
             throw new Error(error.message);
         }
     }
@@ -1023,7 +1023,7 @@ class API {
                         throw new Error('Insufficient FT balance');
                     }
             }
-        } catch (error) {
+        } catch (error: any) {
             throw new Error(error.message);
         }
     }
