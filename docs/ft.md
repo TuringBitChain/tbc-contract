@@ -66,7 +66,7 @@ async function main() {
         } else {
             console.log("Merge success");
         }
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error:', error);
     }
 }

@@ -29,7 +29,7 @@ async function main() {
             .seal();
         const txraw = tx.serialize();//Generate txraw
         await API.broadcastTXraw(txraw, network);//Broadcast txraw
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error:', error);
     }
 }
@@ -171,7 +171,7 @@ async function main() {
         } else {
             console.log("Merge success");
         }
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error:', error);
     }
 }
@@ -298,7 +298,7 @@ async function main() {
                 }
             }
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error:', error); 
     }
 }
