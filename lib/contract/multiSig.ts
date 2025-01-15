@@ -55,7 +55,7 @@ class MultiSig {
      */
     static p2pkhToMultiSig_sendTBC(address_from: string, address_to: string, amount_tbc: number, utxos: tbc.Transaction.IUnspentOutput[], privateKey: tbc.PrivateKey): string {
         const script_asm = MultiSig.getMultiSigLockScript(address_to);
-        const amount_satoshis = Math.ceil(amount_tbc * Math.pow(10, 6));
+        const amount_satoshis = Math.floor(amount_tbc * Math.pow(10, 6));
         const tx = new tbc.Transaction()
             .from(utxos)
             .addOutput(new tbc.Transaction.Output({
@@ -80,7 +80,7 @@ class MultiSig {
      */
     static buildMultiSigTransaction_sendTBC(address_from: string, address_to: string, amount_tbc: number, utxos: tbc.Transaction.IUnspentOutput[]): MultiSigTxRaw {
         const script_asm_from = MultiSig.getMultiSigLockScript(address_from);
-        const amount_satoshis = Math.ceil(amount_tbc * Math.pow(10, 6));
+        const amount_satoshis = Math.floor(amount_tbc * Math.pow(10, 6));
         let count = 0;
         let amounts: number[] = [];
         for (let i = 0; i < utxos.length; i++) {
@@ -187,7 +187,7 @@ class MultiSig {
         if (ft_amount < 0) {
             throw new Error('Invalid amount');
         }
-        const amountbn = BigInt(Math.ceil(ft_amount * Math.pow(10, decimal)));
+        const amountbn = BigInt(Math.floor(ft_amount * Math.pow(10, decimal)));
 
         let tapeAmountSum = BigInt(0);
         for (let i = 0; i < ftutxos.length; i++) {
@@ -200,7 +200,7 @@ class MultiSig {
         if (decimal > 18) {
             throw new Error('The maximum value for decimal cannot exceed 18');
         }
-        const maxAmount = Math.ceil(Math.pow(10, 18 - decimal));
+        const maxAmount = Math.floor(Math.pow(10, 18 - decimal));
         if (ft_amount > maxAmount) {
             throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
         }
@@ -280,7 +280,7 @@ class MultiSig {
         const script_asm = MultiSig.getMultiSigLockScript(address_from);
         const hash_from = tbc.crypto.Hash.sha256ripemd160(tbc.crypto.Hash.sha256(tbc.Script.fromASM(script_asm).toBuffer())).toString("hex");
 
-        const amountbn = BigInt(Math.ceil(ft_amount * Math.pow(10, decimal)));
+        const amountbn = BigInt(Math.floor(ft_amount * Math.pow(10, decimal)));
 
         let tapeAmountSum = BigInt(0);
         for (let i = 0; i < ftutxos.length; i++) {
@@ -293,7 +293,7 @@ class MultiSig {
         if (decimal > 18) {
             throw new Error('The maximum value for decimal cannot exceed 18');
         }
-        const maxAmount = Math.ceil(Math.pow(10, 18 - decimal));
+        const maxAmount = Math.floor(Math.pow(10, 18 - decimal));
         if (ft_amount > maxAmount) {
             throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
         }
