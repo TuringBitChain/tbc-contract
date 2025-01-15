@@ -347,7 +347,7 @@ class API {
         const address = privateKey.toAddress().toString();
         const url = base_url + `address/${address}/unspent/`;
         const scriptPubKey = tbc.Script.buildPublicKeyHashOut(address).toBuffer().toString('hex');
-        const amount_bn = Math.ceil(amount * Math.pow(10, 6));
+        const amount_bn = Math.floor(amount * Math.pow(10, 6));
         try {
             const response = await (await fetch(url)).json();
             if (response.length === 0) {
