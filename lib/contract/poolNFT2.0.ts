@@ -584,7 +584,10 @@ class poolNFT2 {
         try {
             fttxo_c = await API.fetchFtUTXOsforPool(this.ft_a_contractTxid, poolnft_codehash160, changeDate.ft_a_difference, 3, ftutxo_codeScript, this.network);
         } catch (error: any) {
-            throw new Error(error.message);
+            const errorMessage = error.message === "Insufficient FTbalance, please merge FT UTXOs"
+                ? 'Insufficient PoolFT, please merge FT UTXOs'
+                : error.message;
+            throw new Error(errorMessage);
         }
 
         let tapeAmountSum = BigInt(0);
@@ -750,7 +753,10 @@ class poolNFT2 {
         try {
             fttxo_c = await API.fetchFtUTXOsforPool(this.ft_a_contractTxid, poolnft_codehash160, ft_a_amount_decrement, 4, ftutxo_codeScript, this.network);
         } catch (error: any) {
-            throw new Error(error.message);
+            const errorMessage = error.message === "Insufficient FTbalance, please merge FT UTXOs"
+                ? 'Insufficient PoolFT, please merge FT UTXOs'
+                : error.message;
+            throw new Error(errorMessage);
         }
         const ftPreTX: tbc.Transaction[] = [];
         const ftPrePreTxData: string[] = [];
