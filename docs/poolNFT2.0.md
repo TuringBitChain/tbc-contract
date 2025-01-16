@@ -15,7 +15,7 @@ async function main() {
     try {
         // Step 1: 创建 poolNFT，并初始化
         const pool = new poolNFT2({network: "testnet"});
-        await pool.initCreate(ftContractTxid);
+        pool.initCreate(ftContractTxid);
         const utxo = await API.fetchUTXO(privateKeyA, fee, network);
         const tx1 = await pool.createPoolNFT(privateKeyA, utxo, serviceRate);//设置池子swap手续费率
         await API.broadcastTXraw(tx1[0], network);
