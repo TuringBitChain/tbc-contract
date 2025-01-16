@@ -4,6 +4,7 @@ declare module 'tbc-contract' {
         static getFTbalance(contractTxid: string, addressOrHash: string, network?: "testnet" | "mainnet"): Promise<bigint>;
         static fetchFtUTXO(contractTxid: string, addressOrHash: string, amount: bigint, codeScript: string, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput>;
         static fetchFtUTXOs(contractTxid: string, addressOrHash: string, codeScript: string, network?: "testnet" | "mainnet", amount?: bigint): Promise<Transaction.IUnspentOutput[]>;
+        static fetchFtUTXOsforPool(contractTxid: string, addressOrHash: string, amount: bigint, number: number, codeScript: string, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput[]>;
         static fetchFtInfo(contractTxid: string, network?: "testnet" | "mainnet"): Promise<FtInfo>;
         static fetchFtPrePreTxData(preTX: Transaction, preTxVout: number, network?: "testnet" | "mainnet"): Promise<string>;
         static getTBCbalance(address: string, network?: "testnet" | "mainnet"): Promise<number>;
@@ -145,6 +146,42 @@ declare module 'tbc-contract' {
         getPoolNftCode(txid: string, vout: number): Script;
         getPoolNftCodeWithLock(txid: string, vout: number): Script;
         getFTLPcode(poolNftCodeHash: string, address: string, tapeSize: number): Script;
+    }
+
+    export class poolNFT2 {
+        ft_lp_amount: bigint;
+        ft_a_amount: bigint;
+        tbc_amount: bigint;
+        ft_lp_partialhash: string;
+        ft_a_partialhash: string;
+        ft_a_contractTxid: string;
+        poolnft_code: string;
+        contractTxid: string;
+        network: "testnet" | "mainnet";
+        service_rate: number;
+        private tbc_amount_full: bigint;
+        private ft_a_number: number;
+
+        constructor(config?: { txid?: string, network?: "testnet" | "mainnet" });
+        initCreate(ftContractTxid: string): void;
+        initfromContractId(): Promise<void>;
+        createPoolNFT(privateKey_from: PrivateKey, utxo: Transaction.IUnspentOutput, serviceFeeRate?: number): Promise<string[]>;
+        createPoolNftWithLock(privateKey_from: PrivateKey, utxo: Transaction.IUnspentOutput, serviceFeeRate?: number): Promise<string[]>;
+        initPoolNFT(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, tbc_amount: number, ft_a: number): Promise<string>;
+        increaseLP(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_tbc: number): Promise<string>;
+        consumeLP(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_lp: number): Promise<string>;
+        swaptoToken_baseTBC(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_tbc: number): Promise<string>;
+        swaptoTBC_baseToken(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_token: number): Promise<string>;
+        fetchPoolNftInfo(contractTxid: string): Promise<PoolNFTInfo>;
+        fetchPoolNftUTXO(contractTxid: string): Promise<Transaction.IUnspentOutput>;
+        fetchFtlpUTXO(ftlpCode: string, amount: bigint): Promise<Transaction.IUnspentOutput>;
+        mergeFTLP(privateKey_from: PrivateKey, utxo: Transaction.IUnspentOutput): Promise<boolean | string>;
+        mergeFTinPool(privateKey_from: PrivateKey, utxo: Transaction.IUnspentOutput): Promise<boolean | string>;
+        updatePoolNFT(increment: number, ft_a_decimal: number, option: 1 | 2 | 3): poolNFTDifference;
+        getPoolNftUnlock(privateKey_from: PrivateKey, currentTX: Transaction, currentUnlockIndex: number, preTxId: string, preVout: number, option: 1 | 2 | 3 | 4, swapOption?: 1 | 2): Promise<Script>;
+        getPoolNftCode(txid: string, vout: number): Script;
+        getPoolNftCodeWithLock(txid: string, vout: number): Script;
+        getFtlpCode(poolNftCodeHash: string, address: string, tapeSize: number): Script;
     }
 
     interface MultiSigTxRaw {
