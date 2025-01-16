@@ -444,7 +444,8 @@ class FT {
         //const preTX = await API.fetchTXraw(preTxId, this.network);
         const pretxdata = getPreTxdata(preTX, preTxVout);
         const currenttxdata = getCurrentTxdata(currentTX, currentUnlockIndex);
-        const sig = (currentTX.getSignature(currentUnlockIndex, privateKey).length / 2).toString(16).padStart(2, '0') + currentTX.getSignature(currentUnlockIndex, privateKey);
+        const signature = currentTX.getSignature(currentUnlockIndex, privateKey);
+        const sig = (signature.length / 2).toString(16).padStart(2, '0') + signature;
         const publicKey = (privateKey.toPublicKey().toString().length / 2).toString(16).padStart(2, '0') + privateKey.toPublicKey().toString();
         const unlockingScript = new tbc.Script(`${currenttxdata}${prepretxdata}${sig}${publicKey}${pretxdata}`);
         return unlockingScript;
@@ -468,7 +469,8 @@ class FT {
         const pretxdata = getPreTxdata(preTX, preTxVout);
         const currentinputsdata = getCurrentInputsdata(currentTX);
         const currenttxdata = getCurrentTxdata(currentTX, currentUnlockIndex);
-        const sig = (currentTX.getSignature(currentUnlockIndex, privateKey).length / 2).toString(16).padStart(2, '0') + currentTX.getSignature(currentUnlockIndex, privateKey);
+        const signature = currentTX.getSignature(currentUnlockIndex, privateKey);
+        const sig = (signature.length / 2).toString(16).padStart(2, '0') + signature;
         const publicKey = (privateKey.toPublicKey().toString().length / 2).toString(16).padStart(2, '0') + privateKey.toPublicKey().toString();
         const unlockingScript = new tbc.Script(`${currenttxdata}${prepretxdata}${sig}${publicKey}${currentinputsdata}${contracttxdata}${pretxdata}`);
         return unlockingScript;
