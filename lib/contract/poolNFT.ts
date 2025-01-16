@@ -5,7 +5,7 @@ import {
     getCurrentInputsdata,
     getInputsTxdataSwap,
     getInputsTxdata,
-    getCurrentTxOutputsdata,
+    getCurrentTxOutputsDataforPool1,
     getSize
 } from '../util/poolnftunlock';
 const API = require('../api/api');
@@ -1751,7 +1751,7 @@ class poolNFT {
         }
         currentinputstxdata = '51' + currentinputstxdata;
 
-        const currenttxoutputsdata = getCurrentTxOutputsdata(currentTX, option, swapOption);
+        const currenttxoutputsdata = getCurrentTxOutputsDataforPool1(currentTX, option, swapOption);
         const sig = (currentTX.getSignature(currentUnlockIndex, privateKey).length / 2).toString(16).padStart(2, '0') + currentTX.getSignature(currentUnlockIndex, privateKey);
         const publicKey = (privateKey.toPublicKey().toString().length / 2).toString(16).padStart(2, '0') + privateKey.toPublicKey().toString();
         let unlockingScript = new tbc.Script('');

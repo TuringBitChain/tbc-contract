@@ -159,6 +159,17 @@ class API {
         }
     }
 
+    /**
+     * Fetches FT UTXOs for a specified contract transaction ID and address or hash.
+     *
+     * @param {string} contractTxid - The contract transaction ID.
+     * @param {string} addressOrHash - The recipient's address or hash.
+     * @param {string} codeScript - The code script.
+     * @param {("testnet" | "mainnet")} [network] - The network type. Defaults to "mainnet" if not specified.
+     * @param {bigint} [amount] - The required amount. If not specified, fetches up to 5 UTXOs.
+     * @returns {Promise<tbc.Transaction.IUnspentOutput[]>} Returns a Promise that resolves to an array of FT UTXOs.
+     * @throws {Error} Throws an error if the request fails or if the FT balance is insufficient.
+     */
     static async fetchFtUTXOs(contractTxid: string, addressOrHash: string, codeScript: string, network?: "testnet" | "mainnet", amount?: bigint): Promise<tbc.Transaction.IUnspentOutput[]> {
         let base_url = "";
         if (network) {
@@ -228,6 +239,85 @@ class API {
                     } else {
                         throw new Error('FTbalance not enough!');
                     }
+                }
+            }
+            return ftutxos;
+        } catch (error: any) {
+            throw new Error(error.message);
+        }
+    }
+
+    /**
+     * Fetches a specified number of FT UTXOs that satisfy the required amount for a pool.
+     *
+     * @param {string} contractTxid - The contract transaction ID.
+     * @param {string} addressOrHash - The recipient's address or hash.
+     * @param {bigint} amount - The required amount.
+     * @param {number} number - The number of FT UTXOs to fetch.
+     * @param {string} codeScript - The code script.
+     * @param {("testnet" | "mainnet")} [network] - The network type.
+     * @returns {Promise<tbc.Transaction.IUnspentOutput[]>} Returns a Promise that resolves to an array of FT UTXOs.
+     * @throws {Error} Throws an error if the request fails or if the FT balance is insufficient.
+     */
+    static async fetchFtUTXOsforPool(contractTxid: string, addressOrHash: string, amount: bigint, number: number, codeScript: string, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput[]> {
+        if (number <= 0 || !Number.isInteger(number)) {
+            throw new Error('Number must be a positive integer greater than 0');
+        }
+        let base_url = "";
+        if (network) {
+            base_url = API.getBaseURL(network)
+        } else {
+            base_url = API.getBaseURL("mainnet")
+        }
+        let hash = '';
+        if (tbc.Address.isValid(addressOrHash)) {
+            // If the recipient is an address
+            const publicKeyHash = tbc.Address.fromString(addressOrHash).hashBuffer.toString('hex');
+            hash = publicKeyHash + '00';
+        } else {
+            // If the recipient is a hash
+            if (addressOrHash.length !== 40) {
+                throw new Error('Invalid address or hash');
+            }
+            hash = addressOrHash + '01';
+        }
+        const url = base_url + `ft/utxo/combine/script/${hash}/contract/${contractTxid}`;
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+            if (!response.ok) {
+                throw new Error(`Failed to fetch from URL: ${url}, status: ${response.status}`);
+            }
+            const responseData = await response.json();
+            if (responseData.ftUtxoList.length === 0) {
+                throw new Error('The ft balance in the account is zero.');
+            }
+            let sortedData: FTUnspentOutput[] = responseData.ftUtxoList.sort((a: FTUnspentOutput, b: FTUnspentOutput) => b.ftBalance - a.ftBalance);
+            let sumBalance = BigInt(0);
+            let ftutxos: tbc.Transaction.IUnspentOutput[] = [];
+            for (let i = 0; i < sortedData.length && i < number; i++) {
+                sumBalance += BigInt(sortedData[i].ftBalance);
+                ftutxos.push({
+                    txId: sortedData[i].utxoId,
+                    outputIndex: sortedData[i].utxoVout,
+                    script: codeScript,
+                    satoshis: sortedData[i].utxoBalance,
+                    ftBalance: sortedData[i].ftBalance
+                });
+                if (sumBalance >= amount) {
+                    break;
+                }
+            }
+            if (sumBalance < amount) {
+                const totalBalance = await API.getFTbalance(contractTxid, addressOrHash, network);
+                if (totalBalance >= amount) {
+                    throw new Error('Insufficient FTbalance, please merge FT UTXOs');
+                } else {
+                    throw new Error('FTbalance not enough!');
                 }
             }
             return ftutxos;
@@ -351,7 +441,7 @@ class API {
         try {
             const response = await (await fetch(url)).json();
             if (response.length === 0) {
-                throw new Error('The balance in the account is zero.');
+                throw new Error('The tbc balance in the account is zero.');
             }
             if (response.length === 1 && response[0].value > amount_bn) {
                 const utxo: tbc.Transaction.IUnspentOutput = {
@@ -376,7 +466,7 @@ class API {
                 if (totalBalance <= amount_bn) {
                     throw new Error('Insufficient balance');
                 } else {
-                    console.log('Please merge UTXO!');
+                    console.log('Merge UTXO');
                     await new Promise(resolve => setTimeout(resolve, 2000));
                     await API.mergeUTXO(privateKey, network);
                     await new Promise(resolve => setTimeout(resolve, 3000));
@@ -435,9 +525,16 @@ class API {
                 }
             }
             const tx = new tbc.Transaction()
-                .from(utxo)
-                .to(address, sumAmount - 500)
-                .fee(500)
+                .from(utxo);
+            const txSize = tx.getEstimateSize() + 100;
+            let fee = 0;
+            if (txSize <= 1000) {
+                fee = 80;
+            } else {
+                fee = Math.ceil(txSize / 10);
+            }
+            tx.to(address, sumAmount - fee)
+                .fee(fee)
                 .change(address)
                 .sign(privateKey)
                 .seal();

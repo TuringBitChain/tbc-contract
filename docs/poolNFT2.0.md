@@ -1,6 +1,6 @@
 ```ts
 import * as tbc from "tbc-lib-js";
-import { API, FT, poolNFT } from "tbc-contract";
+import { API, FT, poolNFT2 } from "tbc-contract";
 
 const network = "testnet";
 const privateKeyA = tbc.PrivateKey.fromString('');
@@ -9,20 +9,21 @@ const ftContractTxid = "";
 const poolNftContractId = "";
 
 const fee = 0.01;   //可能的交易手续费，根据需要取值
+const serviceRate = 25; //swap手续费率，默认万分之二十五
 
 async function main() {
     try {
         // Step 1: 创建 poolNFT，并初始化
-        const pool = new poolNFT({network: "testnet"});
+        const pool = new poolNFT2({network: "testnet"});
         await pool.initCreate(ftContractTxid);
         const utxo = await API.fetchUTXO(privateKeyA, fee, network);
-        const tx1 = await pool.createPoolNFT(privateKeyA, utxo);
+        const tx1 = await pool.createPoolNFT(privateKeyA, utxo, serviceRate);//设置池子swap手续费率
         await API.broadcastTXraw(tx1[0], network);
         console.log("poolNFT Contract ID:");
         await API.broadcastTXraw(tx1[1], network);
 
         // Step 2: 使用已创建的 poolNFT
-        const poolUse = new poolNFT({txidOrParams: poolNftContractId, network:"testnet"});
+        const poolUse = new poolNFT2({txid: poolNftContractId, network:"testnet"});
         await poolUse.initfromContractId();
 
             // Step 2.1: 为刚创建的 poolNFT 注入初始资金
@@ -37,7 +38,7 @@ async function main() {
 
             // Step 2.2: 为已完成初始资金注入的 poolNFT 添加流动性
             {
-                let tbcAmount = 0.1; // 至少添加0.1个TBC
+                let tbcAmount = 0.1;
                 // 准备 utxo
                 const utxo = await API.fetchUTXO(privateKeyA, tbcAmount + fee, network);
                 const tx3 = await poolUse.increaseLP(privateKeyA, addressA, utxo, tbcAmount);
@@ -46,7 +47,7 @@ async function main() {
 
             // Step 2.3: 花费拥有的 LP
             {
-                let lpAmount = 2; // 至少花费0.1个LP，若花费的LP高于池子LP的10%，必须满足池子LP与花费的LP比值没有余数（即被整除）
+                let lpAmount = 13;
                 // 准备 utxo
                 const utxo = await API.fetchUTXO(privateKeyA, fee, network);
                 const tx4 = await poolUse.consumeLP(privateKeyA, addressA, utxo, lpAmount);
@@ -55,7 +56,7 @@ async function main() {
 
             // Step 2.4: 用 TBC 兑换 Token
             {
-                let tbcAmount = 0.1; // 用于兑换的tbc数量，至少0.1tbc
+                let tbcAmount = 0.1;
                 // 准备 utxo
                 const utxo = await API.fetchUTXO(privateKeyA, tbcAmount + fee, network);
                 const tx6 = await poolUse.swaptoToken_baseTBC(privateKeyA, addressA, utxo, tbcAmount);
@@ -64,7 +65,7 @@ async function main() {
 
             // Step 2.5: 用 Token 兑换 TBC
             {
-                let ftAmount = 100; // 用于兑换的ft数量，至少兑换0.1个TBC
+                let ftAmount = 100;
                 // 准备 utxo
                 const utxo = await API.fetchUTXO(privateKeyA, fee, network);
                 const tx8 = await poolUse.swaptoTBC_baseToken(privateKeyA, addressA, utxo, ftAmount);
@@ -73,8 +74,8 @@ async function main() {
 
             // 获取 Pool NFT 信息和 UTXO
             {
-                const poolNFTInfo = await poolUse.fetchPoolNFTInfo(poolUse.contractTxid);
-                const poolnftUTXO = await poolUse.fetchPoolNftUTXO(poolUse.contractTxid);
+                const poolNftInfo = await poolUse.fetchPoolNftInfo(poolUse.contractTxid);
+                const poolNftUTXO = await poolUse.fetchPoolNftUTXO(poolUse.contractTxid);
             }
 
             // 获取 FT-LP UTXO
@@ -85,7 +86,7 @@ async function main() {
 
                 let amount = 0.1;
                 let lpAmountBN = BigInt(Math.floor(amount * Math.pow(10, 6)));
-                const ftlpCode = poolUse.getFTLPcode(
+                const ftlpCode = poolUse.getFtlpCode(
                     tbc.crypto.Hash.sha256(Buffer.from(poolUse.poolnft_code, 'hex')).toString('hex'),
                     addressA,
                     FTA.tapeScript.length / 2
