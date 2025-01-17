@@ -1,15 +1,19 @@
 import { PrivateKey, Transaction, Script } from "tbc-lib-js";
 declare module 'tbc-contract' {
     export class API {
+        static getTBCbalance(address: string, network?: "testnet" | "mainnet"): Promise<number>;
+        static fetchUTXO(privateKey: PrivateKey, amount: number, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput>;
+        static mergeUTXO(privateKey: PrivateKey, network?: "testnet" | "mainnet"): Promise<boolean>;
         static getFTbalance(contractTxid: string, addressOrHash: string, network?: "testnet" | "mainnet"): Promise<bigint>;
         static fetchFtUTXO(contractTxid: string, addressOrHash: string, amount: bigint, codeScript: string, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput>;
         static fetchFtUTXOs(contractTxid: string, addressOrHash: string, codeScript: string, network?: "testnet" | "mainnet", amount?: bigint): Promise<Transaction.IUnspentOutput[]>;
         static fetchFtUTXOsforPool(contractTxid: string, addressOrHash: string, amount: bigint, number: number, codeScript: string, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput[]>;
         static fetchFtInfo(contractTxid: string, network?: "testnet" | "mainnet"): Promise<FtInfo>;
         static fetchFtPrePreTxData(preTX: Transaction, preTxVout: number, network?: "testnet" | "mainnet"): Promise<string>;
-        static getTBCbalance(address: string, network?: "testnet" | "mainnet"): Promise<number>;
-        static fetchUTXO(privateKey: PrivateKey, amount: number, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput>;
-        static mergeUTXO(privateKey: PrivateKey, network?: "testnet" | "mainnet"): Promise<boolean>;
+        static fetchPoolNftInfo(contractTxid: string, network?: "testnet" | "mainnet"): Promise<PoolNFTInfo>;
+        static fetchPoolNftUTXO(contractTxid: string, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput>;
+        static fetchFtlpBalance(ftlpCode: string, network?: "testnet" | "mainnet"): Promise<bigint>;
+        static fetchFtlpUTXO(ftlpCode: string, amount: bigint, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput>;
         static fetchTXraw(txid: string, network?: "testnet" | "mainnet"): Promise<Transaction>;
         static broadcastTXraw(txraw: string, network?: "testnet" | "mainnet"): Promise<string>;
         static getUTXOs(address: string, amount_tbc: number, network?: "testnet" | "mainnet"): Promise<Transaction.IUnspentOutput[]>;

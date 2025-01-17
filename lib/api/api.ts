@@ -26,6 +26,20 @@ interface FtInfo {
     symbol: string;
 }
 
+interface PoolNFTInfo {
+    ft_lp_amount: bigint;
+    ft_a_amount: bigint;
+    tbc_amount: bigint;
+    ft_lp_partialhash: string;
+    ft_a_partialhash: string;
+    ft_a_contractTxid: string;
+    service_fee_rate: number;
+    poolnft_code: string;
+    currentContractTxid: string;
+    currentContractVout: number;
+    currentContractSatoshi: number;
+}
+
 interface FTUnspentOutput {
     utxoId: string;
     utxoVout: number;
@@ -48,6 +62,163 @@ class API {
         return base_url;
     }
 
+    /**
+     * Fetches the TBC balance for a given address.
+     *
+     * @param {string} address - The address to fetch the TBC balance for.
+     * @param {("testnet" | "mainnet")} [network] - The network type. Defaults to "mainnet" if not specified.
+     * @returns {Promise<number>} Returns a Promise that resolves to the TBC balance.
+     * @throws {Error} Throws an error if the request fails.
+     */
+    static async getTBCbalance(address: string, network?: "testnet" | "mainnet"): Promise<number> {
+        if (!tbc.Address.isValid(address)) {
+            throw new Error('Invalid address input');
+        }
+        let base_url = "";
+        if (network) {
+            base_url = API.getBaseURL(network)
+        } else {
+            base_url = API.getBaseURL("mainnet")
+        }
+        const url = base_url + `address/${address}/get/balance/`;
+        try {
+            const response = await (await fetch(url)).json();
+            return response.data.balance;
+        } catch (error: any) {
+            throw new Error(error.message);
+        }
+    }
+
+    /**
+     * Fetches a UTXO that satisfies the required amount.
+     *
+     * @param {tbc.PrivateKey} privateKey - The private key object.
+     * @param {number} amount - The required amount.
+     * @param {("testnet" | "mainnet")} [network] - The network type.
+     * @returns {Promise<tbc.Transaction.IUnspentOutput>} Returns a Promise that resolves to the UTXO.
+     * @throws {Error} Throws an error if the request fails or if the balance is insufficient.
+     */
+    static async fetchUTXO(privateKey: tbc.PrivateKey, amount: number, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput> {
+        let base_url = "";
+        if (network) {
+            base_url = API.getBaseURL(network)
+        } else {
+            base_url = API.getBaseURL("mainnet")
+        }
+        const address = privateKey.toAddress().toString();
+        const url = base_url + `address/${address}/unspent/`;
+        const scriptPubKey = tbc.Script.buildPublicKeyHashOut(address).toBuffer().toString('hex');
+        const amount_bn = Math.floor(amount * Math.pow(10, 6));
+        try {
+            const response = await (await fetch(url)).json();
+            if (response.length === 0) {
+                throw new Error('The tbc balance in the account is zero.');
+            }
+            if (response.length === 1 && response[0].value > amount_bn) {
+                const utxo: tbc.Transaction.IUnspentOutput = {
+                    txId: response[0].tx_hash,
+                    outputIndex: response[0].tx_pos,
+                    script: scriptPubKey,
+                    satoshis: response[0].value
+                }
+                return utxo;
+            } else if (response.length === 1 && response[0].value <= amount_bn) {
+                throw new Error('Insufficient balance');
+            }
+            let data = response[0];
+            for (let i = 0; i < response.length; i++) {
+                if (response[i].value > amount_bn) {
+                    data = response[i];
+                    break;
+                }
+            }
+            if (data.value < amount_bn) {
+                const totalBalance = await this.getTBCbalance(address, network);
+                if (totalBalance <= amount_bn) {
+                    throw new Error('Insufficient balance');
+                } else {
+                    console.log('Merge UTXO');
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    await API.mergeUTXO(privateKey, network);
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    return await API.fetchUTXO(privateKey, amount, network);
+                }
+            }
+            const utxo: tbc.Transaction.IUnspentOutput = {
+                txId: data.tx_hash,
+                outputIndex: data.tx_pos,
+                script: scriptPubKey,
+                satoshis: data.value
+            }
+            return utxo;
+        } catch (error: any) {
+            throw new Error(error.message);
+        }
+    }
+
+    /**
+     * Merges UTXOs for a given private key.
+     *
+     * @param {tbc.PrivateKey} privateKey - The private key object.
+     * @param {("testnet" | "mainnet")} [network] - The network type.
+     * @returns {Promise<boolean>} Returns a Promise that resolves to a boolean indicating whether the merge was successful.
+     * @throws {Error} Throws an error if the merge fails.
+     */
+    static async mergeUTXO(privateKey: tbc.PrivateKey, network?: "testnet" | "mainnet"): Promise<boolean> {
+        let base_url = "";
+        if (network) {
+            base_url = API.getBaseURL(network)
+        } else {
+            base_url = API.getBaseURL("mainnet")
+        }
+        const address = tbc.Address.fromPrivateKey(privateKey).toString();
+        const url = base_url + `address/${address}/unspent/`;
+        const scriptPubKey = tbc.Script.buildPublicKeyHashOut(address).toBuffer().toString('hex');
+        try {
+            const response = await (await fetch(url)).json();
+            let sumAmount = 0;
+            let utxo: tbc.Transaction.IUnspentOutput[] = [];
+            if (response.length === 0) {
+                throw new Error('No UTXO available');
+            }
+            if (response.length === 1) {
+                console.log('Merge Success!');
+                return true;
+            } else {
+                for (let i = 0; i < response.length; i++) {
+                    sumAmount += response[i].value;
+                    utxo.push({
+                        txId: response[i].tx_hash,
+                        outputIndex: response[i].tx_pos,
+                        script: scriptPubKey,
+                        satoshis: response[i].value
+                    });
+                }
+            }
+            const tx = new tbc.Transaction()
+                .from(utxo);
+            const txSize = tx.getEstimateSize() + 100;
+            let fee = 0;
+            if (txSize <= 1000) {
+                fee = 80;
+            } else {
+                fee = Math.ceil(txSize / 10);
+            }
+            tx.to(address, sumAmount - fee)
+                .fee(fee)
+                .change(address)
+                .sign(privateKey)
+                .seal();
+            const txraw = tx.uncheckedSerialize();
+            await API.broadcastTXraw(txraw, network);
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            await API.mergeUTXO(privateKey, network);
+            return true;
+        } catch (error: any) {
+            throw new Error(error.message);
+        }
+    }
+    
     /**
      * Get the FT balance for a specified contract transaction ID and address or hash.
      *
@@ -392,157 +563,141 @@ class API {
     }
 
     /**
-     * Fetches the TBC balance for a given address.
+     * Fetches the Pool NFT information for a given contract transaction ID.
      *
-     * @param {string} address - The address to fetch the TBC balance for.
+     * @param {string} contractTxid - The contract transaction ID.
      * @param {("testnet" | "mainnet")} [network] - The network type. Defaults to "mainnet" if not specified.
-     * @returns {Promise<number>} Returns a Promise that resolves to the TBC balance.
-     * @throws {Error} Throws an error if the request fails.
+     * @returns {Promise<PoolNFTInfo>} Returns a Promise that resolves to a PoolNFTInfo object containing the Pool NFT information.
+     * @throws {Error} Throws an error if the request to fetch Pool NFT information fails.
      */
-    static async getTBCbalance(address: string, network?: "testnet" | "mainnet"): Promise<number> {
-        if (!tbc.Address.isValid(address)) {
-            throw new Error('Invalid address input');
-        }
+    static async fetchPoolNftInfo(contractTxid: string, network?: "testnet" | "mainnet"): Promise<PoolNFTInfo> {
         let base_url = "";
         if (network) {
             base_url = API.getBaseURL(network)
         } else {
             base_url = API.getBaseURL("mainnet")
         }
-        const url = base_url + `address/${address}/get/balance/`;
+        const url = base_url + `ft/pool/nft/info/contract/id/${contractTxid}`;
         try {
             const response = await (await fetch(url)).json();
-            return response.data.balance;
+            let data = response;
+            const poolNftInfo: PoolNFTInfo = {
+                ft_lp_amount: data.ft_lp_balance,
+                ft_a_amount: data.ft_a_balance,
+                tbc_amount: data.tbc_balance,
+                ft_lp_partialhash: data.ft_lp_partial_hash,
+                ft_a_partialhash: data.ft_a_partial_hash,
+                ft_a_contractTxid: data.ft_a_contract_txid,
+                service_fee_rate: data.pool_service_fee_rate,
+                poolnft_code: data.pool_nft_code_script,
+                currentContractTxid: data.current_pool_nft_txid,
+                currentContractVout: data.current_pool_nft_vout,
+                currentContractSatoshi: data.current_pool_nft_balance
+            }
+            return poolNftInfo;
+        } catch (error: any) {
+            throw new Error("Failed to fetch PoolNFTInfo.");
+        }
+    }
+
+    /**
+     * Fetches the Pool NFT UTXO for a given contract transaction ID.
+     *
+     * @param {string} contractTxid - The contract transaction ID.
+     * @param {("testnet" | "mainnet")} [network] - The network type. Defaults to "mainnet" if not specified.
+     * @returns {Promise<tbc.Transaction.IUnspentOutput>} Returns a Promise that resolves to a Pool NFT UTXO.
+     * @throws {Error} Throws an error if the request to fetch Pool NFT UTXO fails.
+     */
+    static async fetchPoolNftUTXO(contractTxid: string, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput> {
+        try {
+            const poolNftInfo = await API.fetchPoolNftInfo(contractTxid, network);
+            const poolnft: tbc.Transaction.IUnspentOutput = {
+                txId: poolNftInfo.currentContractTxid,
+                outputIndex: poolNftInfo.currentContractVout,
+                script: poolNftInfo.poolnft_code,
+                satoshis: poolNftInfo.currentContractSatoshi
+            }
+            return poolnft;
+        } catch (error: any) {
+            throw new Error("Failed to fetch PoolNFT UTXO.");
+        }
+    }
+
+    /**
+     * Fetches the FT LP balance for a given FT LP code.
+     *
+     * @param {string} ftlpCode - The FT LP code.
+     * @param {("testnet" | "mainnet")} [network] - The network type. Defaults to "mainnet" if not specified.
+     * @returns {Promise<bigint>} Returns a Promise that resolves to the FT LP balance.
+     * @throws {Error} Throws an error if the request to fetch FT LP balance fails.
+     */
+    static async fetchFtlpBalance(ftlpCode: string, network?: "testnet" | "mainnet"): Promise<bigint> {
+        const ftlpHash = tbc.crypto.Hash.sha256(Buffer.from(ftlpCode, 'hex')).reverse().toString('hex');
+        let base_url = "";
+        if (network) {
+            base_url = API.getBaseURL(network)
+        } else {
+            base_url = API.getBaseURL("mainnet")
+        }
+        const url = base_url + `ft/lp/unspent/by/script/hash${ftlpHash}`;
+        try {
+            const response = await (await fetch(url)).json();
+            let ftlpBalance = BigInt(0);
+            for (let i = 0; i < response.ftUtxoList.length; i++) {
+                ftlpBalance += BigInt(response.ftUtxoList[i].ftBalance);
+            }
+            return ftlpBalance;
         } catch (error: any) {
             throw new Error(error.message);
         }
     }
 
     /**
-     * Fetches a UTXO that satisfies the required amount.
+     * Fetches an FT LP UTXO that satisfies the required amount for a given FT LP code.
      *
-     * @param {tbc.PrivateKey} privateKey - The private key object.
-     * @param {number} amount - The required amount.
-     * @param {("testnet" | "mainnet")} [network] - The network type.
-     * @returns {Promise<tbc.Transaction.IUnspentOutput>} Returns a Promise that resolves to the UTXO.
-     * @throws {Error} Throws an error if the request fails or if the balance is insufficient.
+     * @param {string} ftlpCode - The FT LP code.
+     * @param {bigint} amount - The required amount.
+     * @param {("testnet" | "mainnet")} [network] - The network type. Defaults to "mainnet" if not specified.
+     * @returns {Promise<tbc.Transaction.IUnspentOutput>} Returns a Promise that resolves to an FT LP UTXO.
+     * @throws {Error} Throws an error if the request to fetch FT LP UTXO fails or if no suitable UTXO is found.
      */
-    static async fetchUTXO(privateKey: tbc.PrivateKey, amount: number, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput> {
+    static async fetchFtlpUTXO(ftlpCode: string, amount: bigint, network?: "testnet" | "mainnet"): Promise<tbc.Transaction.IUnspentOutput> {
+        const ftlpHash = tbc.crypto.Hash.sha256(Buffer.from(ftlpCode, 'hex')).reverse().toString('hex');
         let base_url = "";
         if (network) {
             base_url = API.getBaseURL(network)
         } else {
             base_url = API.getBaseURL("mainnet")
         }
-        const address = privateKey.toAddress().toString();
-        const url = base_url + `address/${address}/unspent/`;
-        const scriptPubKey = tbc.Script.buildPublicKeyHashOut(address).toBuffer().toString('hex');
-        const amount_bn = Math.floor(amount * Math.pow(10, 6));
+        const url = base_url + `ft/lp/unspent/by/script/hash${ftlpHash}`;
         try {
             const response = await (await fetch(url)).json();
-            if (response.length === 0) {
-                throw new Error('The tbc balance in the account is zero.');
-            }
-            if (response.length === 1 && response[0].value > amount_bn) {
-                const utxo: tbc.Transaction.IUnspentOutput = {
-                    txId: response[0].tx_hash,
-                    outputIndex: response[0].tx_pos,
-                    script: scriptPubKey,
-                    satoshis: response[0].value
-                }
-                return utxo;
-            } else if (response.length === 1 && response[0].value <= amount_bn) {
-                throw new Error('Insufficient balance');
-            }
-            let data = response[0];
-            for (let i = 0; i < response.length; i++) {
-                if (response[i].value > amount_bn) {
-                    data = response[i];
+            let data = response.ftUtxoList[0];
+            for (let i = 0; i < response.ftUtxoList.length; i++) {
+                if (response.ftUtxoList[i].ftBalance >= amount) {
+                    data = response.ftUtxoList[i];
                     break;
                 }
             }
-            if (data.value < amount_bn) {
-                const totalBalance = await this.getTBCbalance(address, network);
-                if (totalBalance <= amount_bn) {
-                    throw new Error('Insufficient balance');
+            let ftlpBalance = BigInt(0);
+            if (data.ftBalance < amount) {
+                for (let i = 0; i < response.ftUtxoList.length; i++) {
+                    ftlpBalance += BigInt(response.ftUtxoList[i].ftBalance);
+                }
+                if (ftlpBalance < amount) {
+                    throw new Error('Insufficient FT-LP amount');
                 } else {
-                    console.log('Merge UTXO');
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                    await API.mergeUTXO(privateKey, network);
-                    await new Promise(resolve => setTimeout(resolve, 3000));
-                    return await API.fetchUTXO(privateKey, amount, network);
+                    throw new Error('Please merge FT-LP UTXOs');
                 }
             }
-            const utxo: tbc.Transaction.IUnspentOutput = {
-                txId: data.tx_hash,
-                outputIndex: data.tx_pos,
-                script: scriptPubKey,
-                satoshis: data.value
+            const ftlp: tbc.Transaction.IUnspentOutput = {
+                txId: data.utxoId,
+                outputIndex: data.utxoVout,
+                script: ftlpCode,
+                satoshis: data.utxoBalance,
+                ftBalance: data.ftBalance
             }
-            return utxo;
-        } catch (error: any) {
-            throw new Error(error.message);
-        }
-    }
-
-    /**
-     * Merges UTXOs for a given private key.
-     *
-     * @param {tbc.PrivateKey} privateKey - The private key object.
-     * @param {("testnet" | "mainnet")} [network] - The network type.
-     * @returns {Promise<boolean>} Returns a Promise that resolves to a boolean indicating whether the merge was successful.
-     * @throws {Error} Throws an error if the merge fails.
-     */
-    static async mergeUTXO(privateKey: tbc.PrivateKey, network?: "testnet" | "mainnet"): Promise<boolean> {
-        let base_url = "";
-        if (network) {
-            base_url = API.getBaseURL(network)
-        } else {
-            base_url = API.getBaseURL("mainnet")
-        }
-        const address = tbc.Address.fromPrivateKey(privateKey).toString();
-        const url = base_url + `address/${address}/unspent/`;
-        const scriptPubKey = tbc.Script.buildPublicKeyHashOut(address).toBuffer().toString('hex');
-        try {
-            const response = await (await fetch(url)).json();
-            let sumAmount = 0;
-            let utxo: tbc.Transaction.IUnspentOutput[] = [];
-            if (response.length === 0) {
-                throw new Error('No UTXO available');
-            }
-            if (response.length === 1) {
-                console.log('Merge Success!');
-                return true;
-            } else {
-                for (let i = 0; i < response.length; i++) {
-                    sumAmount += response[i].value;
-                    utxo.push({
-                        txId: response[i].tx_hash,
-                        outputIndex: response[i].tx_pos,
-                        script: scriptPubKey,
-                        satoshis: response[i].value
-                    });
-                }
-            }
-            const tx = new tbc.Transaction()
-                .from(utxo);
-            const txSize = tx.getEstimateSize() + 100;
-            let fee = 0;
-            if (txSize <= 1000) {
-                fee = 80;
-            } else {
-                fee = Math.ceil(txSize / 10);
-            }
-            tx.to(address, sumAmount - fee)
-                .fee(fee)
-                .change(address)
-                .sign(privateKey)
-                .seal();
-            const txraw = tx.uncheckedSerialize();
-            await API.broadcastTXraw(txraw, network);
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            await API.mergeUTXO(privateKey, network);
-            return true;
+            return ftlp;
         } catch (error: any) {
             throw new Error(error.message);
         }
