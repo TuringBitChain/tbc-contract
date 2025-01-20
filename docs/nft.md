@@ -24,10 +24,10 @@ const main = async ()=>{
     const utxos = await contract.API.getUTXOs(address,0.01,network);
     const content = await encodeByBase64(filePath);
     const collection_data = {
-      collectionName: "";
-      description: "";
-      supply: 10;
-      file: content;
+      collectionName: "",
+      description: "",
+      supply: 10,
+      file: content,
     };
     const txraw1 = contract.NFT.createCollection(address, privateKey, collection_data, utxos);//创建合集
     const collection_id = await contract.API.broadcastTXraw(txraw1);
@@ -35,11 +35,11 @@ const main = async ()=>{
     const utxos = await contract.API.getUTXOs(address,0.01,network);
     const content = await encodeByBase64(filePath);
     const nft_data = {
-        nftName: "";
-        symbol: "";
-        description: "";
-        attributes: "";
-        file?: content; //file可为空，为空引用合集的照片
+        nftName: "",
+        symbol: "",
+        description: "",
+        attributes: "",
+        file?: content,//file可为空，为空引用合集的照片
     }
     const nfttxo1 = await contract.API.fetchNFTTXO({ script: contract.NFT.buildMintScript(address).toBuffer().toString("hex"), tx_hash: collection_id, network });
     const txraw2 = contract.NFT.createNFT(collection_id,address,privateKey,nft_data, utxos, nfttxo1);//创建合集下的NFT
