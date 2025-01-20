@@ -218,7 +218,7 @@ class API {
             throw new Error(error.message);
         }
     }
-    
+
     /**
      * Get the FT balance for a specified contract transaction ID and address or hash.
      *
@@ -301,6 +301,18 @@ class API {
             const responseData = await response.json();
             if (responseData.ftUtxoList.length === 0) {
                 throw new Error('The ft balance in the account is zero.');
+            }
+            if (amount === BigInt(0)) {
+                responseData.ftUtxoList.sort((a: FTUnspentOutput, b: FTUnspentOutput) => Number(b.utxoBalance - a.utxoBalance));
+                const data = responseData.ftUtxoList[0];
+                const fttxo: tbc.Transaction.IUnspentOutput = {
+                    txId: data.utxoId,
+                    outputIndex: data.utxoVout,
+                    script: codeScript,
+                    satoshis: data.utxoBalance,
+                    ftBalance: data.ftBalance
+                };
+                return fttxo;
             }
             let data = responseData.ftUtxoList[0];
             for (let i = 0; i < responseData.ftUtxoList.length; i++) {
