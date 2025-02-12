@@ -1,6 +1,6 @@
 {
   "name": "tbc-contract",
-  "version": "1.1.15",
+  "version": "1.1.16",
   "main": "index.js",
   "types": "index.d.ts",
   "author": "Edmund <makinishikino4eva@gmail.com>",
