@@ -162,15 +162,13 @@ declare module 'tbc-contract' {
         poolnft_code: string;
         contractTxid: string;
         network: "testnet" | "mainnet";
-        service_rate: number;
-        private tbc_amount_full: bigint;
-        private ft_a_number: number;
+        service_fee_rate: number;
 
         constructor(config?: { txid?: string, network?: "testnet" | "mainnet" });
         initCreate(ftContractTxid: string): void;
         initfromContractId(): Promise<void>;
-        createPoolNFT(privateKey_from: PrivateKey, utxo: Transaction.IUnspentOutput, serviceFeeRate?: number): Promise<string[]>;
-        createPoolNftWithLock(privateKey_from: PrivateKey, utxo: Transaction.IUnspentOutput, serviceFeeRate?: number): Promise<string[]>;
+        createPoolNFT(privateKey_from: PrivateKey, utxo: Transaction.IUnspentOutput, tag: string, serviceFeeRate?: number): Promise<string[]>;
+        createPoolNftWithLock(privateKey_from: PrivateKey, utxo: Transaction.IUnspentOutput, tag: string, serviceFeeRate?: number): Promise<string[]>;
         initPoolNFT(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, tbc_amount: number, ft_a: number): Promise<string>;
         increaseLP(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_tbc: number): Promise<string>;
         consumeLP(privateKey_from: PrivateKey, address_to: string, utxo: Transaction.IUnspentOutput, amount_lp: number): Promise<string>;
@@ -183,8 +181,8 @@ declare module 'tbc-contract' {
         mergeFTinPool(privateKey_from: PrivateKey, utxo: Transaction.IUnspentOutput): Promise<boolean | string>;
         updatePoolNFT(increment: number, ft_a_decimal: number, option: 1 | 2 | 3): poolNFTDifference;
         getPoolNftUnlock(privateKey_from: PrivateKey, currentTX: Transaction, currentUnlockIndex: number, preTxId: string, preVout: number, option: 1 | 2 | 3 | 4, swapOption?: 1 | 2): Promise<Script>;
-        getPoolNftCode(txid: string, vout: number): Script;
-        getPoolNftCodeWithLock(txid: string, vout: number): Script;
+        getPoolNftCode(txid: string, vout: number, tag?: string): Script;
+        getPoolNftCodeWithLock(txid: string, vout: number, tag?: string): Script;
         getFtlpCode(poolNftCodeHash: string, address: string, tapeSize: number): Script;
     }
 
