@@ -9,7 +9,7 @@ const ftContractTxid = "";
 const poolNftContractId = "";
 
 const fee = 0.01;   //可能的交易手续费，根据需要取值
-const serviceRate = 25; //swap手续费率，默认万分之二十五
+const serviceRate = 25; //swap手续费率，默认千分之二点五
 const tag = "tbc"; //池子标签，用于区分创建者
 async function main() {
     try {
@@ -17,7 +17,7 @@ async function main() {
         const pool = new poolNFT2({network: "testnet"});
         pool.initCreate(ftContractTxid);
         const utxo = await API.fetchUTXO(privateKeyA, fee, network);
-        const tx1 = await pool.createPoolNFT(privateKeyA, utxo, tag, serviceRate);//设置池子swap手续费率
+        const tx1 = await pool.createPoolNFT(privateKeyA, utxo, tag, serviceRate);
         await API.broadcastTXraw(tx1[0], network);
         console.log("poolNFT Contract ID:");
         await API.broadcastTXraw(tx1[1], network);
