@@ -1192,7 +1192,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                     if (tx.outputs.length == 5) {
                         const lockingscript = tx.outputs[4].script.toBuffer();
                         const pubKeyHash = lockingscript.subarray(3, 23).toString('hex');
-                        if (pubKeyHash !== "56b3dc257a4f2f1e6d6c6bf1d9e828680ab44ea3") {
+                        if (pubKeyHash !== "1eacc275e83741a10d19f139e191d1fe360055e8") {
                             writer.write(Buffer.from('00', 'hex'));
                             writer.write(Buffer.from('00', 'hex'));
                             const size = getSize(lockingscript.length); // size小端序
@@ -1223,7 +1223,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                     } else if (tx.outputs.length == 6) {
                         let lockingscript = tx.outputs[4].script.toBuffer();
                         const pubKeyHash = lockingscript.subarray(3, 23).toString('hex');
-                        if (pubKeyHash !== "56b3dc257a4f2f1e6d6c6bf1d9e828680ab44ea3") {
+                        if (pubKeyHash !== "1eacc275e83741a10d19f139e191d1fe360055e8") {
                             writer.write(Buffer.from('00', 'hex'));
                             const size = getSize(lockingscript.length); // size小端序
                             const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, 1536));
@@ -1269,7 +1269,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                     } else if (tx.outputs.length == 7) {
                         let lockingscript = tx.outputs[4].script.toBuffer();
                         const pubKeyHash = lockingscript.subarray(3, 23).toString('hex');
-                        if (pubKeyHash !== "56b3dc257a4f2f1e6d6c6bf1d9e828680ab44ea3") {
+                        if (pubKeyHash !== "1eacc275e83741a10d19f139e191d1fe360055e8") {
                             writer.write(Buffer.from('00', 'hex'));
                             let size = getSize(lockingscript.length); // size小端序
                             let partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, 1536));
@@ -1420,7 +1420,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                         case 6:
                             lockingscript = tx.outputs[5].script.toBuffer();
                             pubKeyHash = lockingscript.subarray(3, 23).toString('hex');
-                            if (pubKeyHash !== "56b3dc257a4f2f1e6d6c6bf1d9e828680ab44ea3") {
+                            if (pubKeyHash !== "1eacc275e83741a10d19f139e191d1fe360055e8") {
                                 writer.write(Buffer.from('00', 'hex'));
                                 writer.write(Buffer.from('00', 'hex'));
                                 const size = getSize(lockingscript.length); // size小端序
@@ -1452,7 +1452,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                         case 7:
                             lockingscript = tx.outputs[5].script.toBuffer();
                             pubKeyHash = lockingscript.subarray(3, 23).toString('hex');
-                            if (pubKeyHash !== "56b3dc257a4f2f1e6d6c6bf1d9e828680ab44ea3") {
+                            if (pubKeyHash !== "1eacc275e83741a10d19f139e191d1fe360055e8") {
                                 writer.write(Buffer.from('00', 'hex'));
                                 const size = getSize(lockingscript.length); // size小端序
                                 const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, 1536));
@@ -1499,7 +1499,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                         case 8:
                             lockingscript = tx.outputs[5].script.toBuffer();
                             pubKeyHash = lockingscript.subarray(3, 23).toString('hex');
-                            if (pubKeyHash !== "56b3dc257a4f2f1e6d6c6bf1d9e828680ab44ea3") {
+                            if (pubKeyHash !== "1eacc275e83741a10d19f139e191d1fe360055e8") {
                                 writer.write(Buffer.from('00', 'hex'));
                                 let size = getSize(lockingscript.length); // size小端序
                                 let partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, 1536));
