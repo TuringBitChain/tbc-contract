@@ -20,13 +20,19 @@ const addressB = "1FhSD1YezTXbdRGWzNbNvUj6qeKQ6gZDMq";//The address to receive t
 async function main() {
     try {
         const tbcAmount = 10;//The number of tbc transferred to addressB
-        const utxo = await API.fetchUTXO(privateKeyA, tbcAmount + 0.0008, network);//Fetch UTXO for the transcation
+        const utxo = await API.fetchUTXO(privateKeyA, tbcAmount + 0.00008, network);//Fetch UTXO for the transcation
         const tx = new tbc.Transaction()//Build transcation
             .from(utxo)
             .to(addressB,tbcAmount)
             .change(addressA)
-            .sign(privateKeyA)
-            .seal();
+        const txSize = tx.getEstimateSize();
+        if (txSize < 1000) {
+            tx.fee(80);
+        } else {
+            tx.feePerKb(100);
+        }
+        tx.sign(privateKeyA);
+        tx.seal();
         const txraw = tx.serialize();//Generate txraw
         await API.broadcastTXraw(txraw, network);//Broadcast txraw
     } catch (error: any) {
@@ -462,7 +468,7 @@ await contract.API.broadcastTXraw(txraw, network);
 //多签地址向普通地址/多签地址转tbc
 const const amount_tbc = 10//转移的tbc数量
 const script_asm = contract.MultiSig.getMultiSigLockScript(multiSigAddress);
-const umtxos = await contract.API.getUMTXOs(script_asm, amount_tbc+0.0003, network);
+const umtxos = await contract.API.getUMTXOs(script_asm, amount_tbc + 0.0003, network);
 const multiTxraw = contract.MultiSig.buildMultiSigTransaction_sendTBC(multiSigAddress, address_to, amount_tbc, umtxos);
 const sig1 = contract.MultiSig.signMultiSigTransaction_sendTBC(multiSigAddress, multiTxraw, privateKeyA);
 const sig2 = contract.MultiSig.signMultiSigTransaction_sendTBC(multiSigAddress, multiTxraw, privateKeyB);
