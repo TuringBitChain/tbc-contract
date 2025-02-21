@@ -34,7 +34,9 @@ interface PoolNFTInfo {
     ft_a_partialhash: string;
     ft_a_contractTxid: string;
     service_fee_rate: number;
+    service_provider: string;
     poolnft_code: string;
+    pool_version: number;
     currentContractTxid: string;
     currentContractVout: number;
     currentContractSatoshi: number;
@@ -138,7 +140,6 @@ class API {
                     throw new Error('Insufficient balance');
                 } else {
                     console.log('Merge UTXO');
-                    await new Promise(resolve => setTimeout(resolve, 2000));
                     await API.mergeUTXO(privateKey, network);
                     await new Promise(resolve => setTimeout(resolve, 3000));
                     return await API.fetchUTXO(privateKey, amount, network);
@@ -211,7 +212,7 @@ class API {
                 .seal();
             const txraw = tx.uncheckedSerialize();
             await API.broadcastTXraw(txraw, network);
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            await new Promise(resolve => setTimeout(resolve, 5000));
             await API.mergeUTXO(privateKey, network);
             return true;
         } catch (error: any) {
@@ -601,7 +602,9 @@ class API {
                 ft_a_partialhash: data.ft_a_partial_hash,
                 ft_a_contractTxid: data.ft_a_contract_txid,
                 service_fee_rate: data.pool_service_fee_rate,
+                service_provider: data.pool_service_provider,
                 poolnft_code: data.pool_nft_code_script,
+                pool_version: data.pool_version,
                 currentContractTxid: data.current_pool_nft_txid,
                 currentContractVout: data.current_pool_nft_vout,
                 currentContractSatoshi: data.current_pool_nft_balance
