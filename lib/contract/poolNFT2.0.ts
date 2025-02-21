@@ -20,7 +20,9 @@ interface PoolNFTInfo {
     ft_a_partialhash: string;
     ft_a_contractTxid: string;
     service_fee_rate: number;
+    service_provider: string;
     poolnft_code: string;
+    pool_version: number;
     currentContractTxid: string;
     currentContractVout: number;
     currentContractSatoshi: number;
@@ -41,9 +43,11 @@ class poolNFT2 {
     ft_a_partialhash: string;
     ft_a_contractTxid: string;
     poolnft_code: string;
+    pool_version: number;
     contractTxid: string;
     network: "testnet" | "mainnet";
     service_fee_rate: number;
+    service_provider: string;
     private tbc_amount_full: bigint;
     private ft_a_number: number;
     private poolnft_code_dust = 1000;
@@ -55,10 +59,12 @@ class poolNFT2 {
         this.tbc_amount = BigInt(0);
         this.ft_a_number = 0;
         this.service_fee_rate = 25;//万分之25
+        this.service_provider = "";
         this.ft_a_contractTxid = "";
         this.ft_lp_partialhash = "";
         this.ft_a_partialhash = "";
         this.poolnft_code = "";
+        this.pool_version = 2;
         this.contractTxid = config?.txid ?? "";
         this.network = config?.network ?? "mainnet";
     }
@@ -80,7 +86,9 @@ class poolNFT2 {
         this.ft_a_partialhash = poolNFTInfo.ft_a_partialhash;
         this.ft_a_contractTxid = poolNFTInfo.ft_a_contractTxid;
         this.service_fee_rate = poolNFTInfo.service_fee_rate ?? this.service_fee_rate;
+        this.service_provider = poolNFTInfo.service_provider;
         this.poolnft_code = poolNFTInfo.poolnft_code;
+        this.pool_version = poolNFTInfo.pool_version;
         this.tbc_amount_full = BigInt(poolNFTInfo.currentContractSatoshi);
     }
 
@@ -1011,7 +1019,9 @@ class poolNFT2 {
                 ft_a_partialhash: data.ft_a_partial_hash,
                 ft_a_contractTxid: data.ft_a_contract_txid,
                 service_fee_rate: data.pool_service_fee_rate,
+                service_provider: data.pool_service_provider,
                 poolnft_code: data.pool_nft_code_script,
+                pool_version: data.pool_version,
                 currentContractTxid: data.current_pool_nft_txid,
                 currentContractVout: data.current_pool_nft_vout,
                 currentContractSatoshi: data.current_pool_nft_balance
@@ -1113,8 +1123,23 @@ class poolNFT2 {
         }
     }
 
-    async fetchFtlpBalance(ftlpCode: string): Promise<bigint> {
-        const ftlpHash = tbc.crypto.Hash.sha256(Buffer.from(ftlpCode, 'hex')).reverse().toString('hex');
+    /**
+     * 获取指定地址的FTLP余额。
+     *
+     * @param {string} address - 要计算 LP 余额的地址。
+     * @returns {Promise<bigint>} 返回一个Promise对象，解析为bigint类型的FTLP余额。
+     * @throws {Error} 如果请求失败，抛出错误信息。
+     */
+    async fetchFtlpBalance(address: string): Promise<bigint> {
+        const FTA = new FT(this.ft_a_contractTxid);
+        const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+        FTA.initialize(FTAInfo);
+        const ftlpCode = this.getFtlpCode(
+            tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex')).toString('hex'),
+            address,
+            FTA.tapeScript.length / 2
+        ).toBuffer();
+        const ftlpHash = tbc.crypto.Hash.sha256(ftlpCode).reverse().toString('hex');
         const url_testnet = `https://tbcdev.org/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpHash}`;
         const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpHash}`;
         let url = this.network == "testnet" ? url_testnet : url_mainnet;
@@ -1128,6 +1153,26 @@ class poolNFT2 {
         } catch (error: any) {
             throw new Error(error.message);
         }
+    }
+
+    /**
+     * 计算指定地址的 LP（流动性提供者）收入。
+     *
+     * 该方法获取 FT（可替代代币）信息，初始化后，根据提供的地址计算 LP 收入。
+     * 它使用池的 LP 数量、TBC（代币余额币）数量和其他参数来确定收入。
+     *
+     * @param {string} address - 要计算 LP 收入的地址。
+     * @returns {Promise<bigint>} 一个 Promise，解析为计算出的 LP 收入（bigint类型）。
+     */
+    async getLpIncome(address: string): Promise<bigint> {
+        const my_lp_amount = await this.fetchFtlpBalance(address);
+        const pool_lp_amount = BigInt(this.ft_lp_amount);
+        const pool_tbc_amount = BigInt(this.tbc_amount);
+        const pool_tbc_amount_full = BigInt(this.tbc_amount_full - BigInt(this.poolnft_code_dust));
+        const pool_tbc_amount_sub =  BigInt(pool_tbc_amount_full - pool_tbc_amount);
+        const ratio = (pool_lp_amount * BigInt(this.precision)) / BigInt(my_lp_amount);
+        const my_income = (pool_tbc_amount_sub * BigInt(this.precision)) / ratio;
+        return my_income;
     }
 
     /**

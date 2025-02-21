@@ -177,6 +177,8 @@ declare module 'tbc-contract' {
         fetchPoolNftInfo(contractTxid: string): Promise<PoolNFTInfo>;
         fetchPoolNftUTXO(contractTxid: string): Promise<Transaction.IUnspentOutput>;
         fetchFtlpUTXO(ftlpCode: string, amount: bigint): Promise<Transaction.IUnspentOutput>;
+        fetchFtlpBalance(address: string): Promise<bigint>;
+        getLpIncome(address: string): Promise<bigint>;
         mergeFTLP(privateKey_from: PrivateKey, utxo: Transaction.IUnspentOutput): Promise<boolean | string>;
         mergeFTinPool(privateKey_from: PrivateKey, utxo: Transaction.IUnspentOutput): Promise<boolean | string>;
         updatePoolNFT(increment: number, ft_a_decimal: number, option: 1 | 2 | 3): poolNFTDifference;
