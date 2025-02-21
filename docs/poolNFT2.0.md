@@ -82,7 +82,7 @@ async function main() {
             {
                 const FTA = new FT(poolUse.ft_a_contractTxid);
                 const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, network);
-                await FTA.initialize(FTAInfo);
+                FTA.initialize(FTAInfo);
 
                 let amount = 0.1;
                 let lpAmountBN = BigInt(Math.floor(amount * Math.pow(10, 6)));
@@ -93,6 +93,11 @@ async function main() {
                 );
                 
                 const ftutxo_lp = await poolUse.fetchFtlpUTXO(ftlpCode.toBuffer().toString('hex'), lpAmountBN);
+            }
+
+            // 获取指定地址 LP 收益数值
+            {
+                const lpIncome = await poolUse.getLpIncome(addressA);
             }
 
             // 合并 FT-LP 的操作，一次合并最多5合一
@@ -106,7 +111,7 @@ async function main() {
                 }
             }
 
-            //合并池子中的 FT、TBC，一次合并最多4合一
+            //合并池子中的 FT，一次合并最多4合一
             {
                 const utxo = await API.fetchUTXO(privateKeyA, fee, network); 
                 const tx10 = await poolUse.mergeFTinPool(privateKeyA, utxo);
