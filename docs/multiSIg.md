@@ -41,7 +41,7 @@ const Token = new contract.FT('ac3e93dff3460aab4956e092e4078e9b7c34c29fc160772ad
 const TokenInfo = await contract.API.fetchFtInfo(Token.contractTxid, network);
 Token.initialize(TokenInfo);
 const transferTokenAmount = 10000;//转移数量
-const transferTokenAmountBN = BigInt(Math.ceil(transferTokenAmount * Math.pow(10, Token.decimal)));
+const transferTokenAmountBN = BigInt(Math.floor(transferTokenAmount * Math.pow(10, Token.decimal)));
 const ftutxo_codeScript = contract.FT.buildFTtransferCode(Token.codeScript, address_from).toBuffer().toString('hex');
 const ftutxos = await contract.API.fetchFtUTXOs(Token.contractTxid, address_from, ftutxo_codeScript, network, transferTokenAmountBN);//准备ft utxo
 let preTXs: tbc.Transaction[] = [];
@@ -61,7 +61,7 @@ const Token = new contract.FT('ac3e93dff3460aab4956e092e4078e9b7c34c29fc160772ad
 const TokenInfo = await contract.API.fetchFtInfo(Token.contractTxid, network);
 Token.initialize(TokenInfo);
 const transferTokenAmount = 600;//转移数量
-const transferTokenAmountBN = BigInt(Math.ceil(transferTokenAmount * Math.pow(10, Token.decimal)));
+const transferTokenAmountBN = BigInt(Math.floor(transferTokenAmount * Math.pow(10, Token.decimal)));
 const hash_from = tbc.crypto.Hash.sha256ripemd160(tbc.crypto.Hash.sha256(tbc.Script.fromASM(script_asm).toBuffer())).toString("hex");
 const ftutxo_codeScript = contract.FT.buildFTtransferCode(Token.codeScript, hash_from).toBuffer().toString('hex');
 const ftutxos = await contract.API.fetchFtUTXOS_multiSig(Token.contractTxid, hash_from, ftutxo_codeScript, transferTokenAmountBN, network);//准备ft utxo
