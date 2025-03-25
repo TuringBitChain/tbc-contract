@@ -649,7 +649,7 @@ class MultiSig {
   static verifyMultiSigAddress(pubKeys: string[], address: string): boolean {
     const hash_from_pubkeys = MultiSig.getHash(pubKeys).toString("hex");
     const buf = Buffer.from(tbc.encoding.Base58.decode(address));
-    const hash_from_address = buf.subarray(1, 21).toString("hex");
+    const hash_from_address = Buffer.from(buf.subarray(1, 21)).toString("hex");
     return hash_from_pubkeys === hash_from_address;
   }
 
@@ -677,7 +677,7 @@ class MultiSig {
     } else if (signatureCount > publicKeyCount) {
       throw new Error("SignatureCount must be less than publicKeyCount.");
     }
-    const hash = buf.subarray(1, 21).toString("hex");
+    const hash = Buffer.from(buf.subarray(1, 21)).toString("hex");
     let lockScriptPrefix = "";
     for (let i = 0; i < publicKeyCount - 1; i++) {
       lockScriptPrefix = lockScriptPrefix + "21 OP_SPLIT ";
