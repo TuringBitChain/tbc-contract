@@ -53,8 +53,15 @@ class MultiSig {
         script: MultiSig.buildTapeScript(address, pubKeys),
         satoshis: 0,
       })
-    );
-    tx.feePerKb(100).change(address_from).sign(privateKey).seal();
+    ).change(address_from);
+
+    const txSize = tx.getEstimateSize();
+    if (txSize < 1000) {
+      tx.fee(80);
+    } else {
+      tx.feePerKb(100);
+    }
+    tx.sign(privateKey).seal();
     const raw = tx.uncheckedSerialize();
     return raw;
   }
@@ -85,10 +92,16 @@ class MultiSig {
           satoshis: amount_satoshis,
         })
       )
-      .feePerKb(100)
-      .change(address_from)
-      .sign(privateKey)
-      .seal();
+      .change(address_from);
+
+    const txSize = tx.getEstimateSize();
+    if (txSize < 1000) {
+      tx.fee(80);
+    } else {
+      tx.feePerKb(100);
+    }
+
+    tx.sign(privateKey).seal();
 
     const raw = tx.uncheckedSerialize();
     return raw;
@@ -311,7 +324,14 @@ class MultiSig {
       );
     }
 
-    tx.feePerKb(100).change(address_from);
+    tx.change(address_from);
+    const txSize = tx.getEstimateSize();
+
+    if (txSize < 1000) {
+      tx.fee(80);
+    } else {
+      tx.feePerKb(100);
+    }
 
     for (let i = 0; i < ftutxos.length; i++) {
       tx.setInputScript(
