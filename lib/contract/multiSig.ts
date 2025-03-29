@@ -248,7 +248,8 @@ class MultiSig {
     ftutxos: tbc.Transaction.IUnspentOutput[],
     preTXs: tbc.Transaction[],
     prepreTxDatas: string[],
-    privateKey: tbc.PrivateKey
+    privateKey: tbc.PrivateKey,
+    tbc_amount?: number
   ): string {
     const code = ft.codeScript;
     const tape = ft.tapeScript;
@@ -280,15 +281,11 @@ class MultiSig {
       amountbn,
       tapeAmountSetIn
     );
-
+    const script_asm = MultiSig.getMultiSigLockScript(address_to);
     const tx = new tbc.Transaction().from(ftutxos).from(utxo);
 
     const hash = tbc.crypto.Hash.sha256ripemd160(
-      tbc.crypto.Hash.sha256(
-        tbc.Script.fromASM(
-          MultiSig.getMultiSigLockScript(address_to)
-        ).toBuffer()
-      )
+      tbc.crypto.Hash.sha256(tbc.Script.fromASM(script_asm).toBuffer())
     ).toString("hex");
     const codeScript = FT.buildFTtransferCode(code, hash);
     tx.addOutput(
@@ -320,6 +317,16 @@ class MultiSig {
         new tbc.Transaction.Output({
           script: changeTapeScript,
           satoshis: 0,
+        })
+      );
+    }
+
+    if (tbc_amount) {
+      const amount_satoshis = Math.floor(tbc_amount * Math.pow(10, 6));
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: tbc.Script.fromASM(script_asm),
+          satoshis: amount_satoshis,
         })
       );
     }
@@ -379,7 +386,8 @@ class MultiSig {
     preTXs: tbc.Transaction[],
     prepreTxDatas: string[],
     contractTX: tbc.Transaction,
-    privateKey: tbc.PrivateKey
+    privateKey: tbc.PrivateKey,
+    tbc_amount?: number
   ): MultiSigTxRaw {
     const code = ft.codeScript;
     const tape = ft.tapeScript;
@@ -389,9 +397,10 @@ class MultiSig {
       throw new Error("Invalid amount");
     }
 
-    const script_asm = MultiSig.getMultiSigLockScript(address_from);
+    const script_asm_from = MultiSig.getMultiSigLockScript(address_from);
+    const script_asm_to = MultiSig.getMultiSigLockScript(address_to);
     const hash_from = tbc.crypto.Hash.sha256ripemd160(
-      tbc.crypto.Hash.sha256(tbc.Script.fromASM(script_asm).toBuffer())
+      tbc.crypto.Hash.sha256(tbc.Script.fromASM(script_asm_from).toBuffer())
     ).toString("hex");
 
     const amountbn = BigInt(Math.floor(ft_amount * Math.pow(10, decimal)));
@@ -426,11 +435,7 @@ class MultiSig {
       codeScript = FT.buildFTtransferCode(code, address_to);
     } else {
       const hash_to = tbc.crypto.Hash.sha256ripemd160(
-        tbc.crypto.Hash.sha256(
-          tbc.Script.fromASM(
-            MultiSig.getMultiSigLockScript(address_to)
-          ).toBuffer()
-        )
+        tbc.crypto.Hash.sha256(tbc.Script.fromASM(script_asm_to).toBuffer())
       ).toString("hex");
       codeScript = FT.buildFTtransferCode(code, hash_to);
     }
@@ -468,44 +473,64 @@ class MultiSig {
       );
     }
 
+    let amount_satoshis = 0;
+    if (tbc_amount) {
+      amount_satoshis = Math.floor(tbc_amount * Math.pow(10, 6));
+      if (address_to.startsWith("1")) {
+        tx.addOutput(
+          new tbc.Transaction.Output({
+            script: tbc.Script.buildPublicKeyHashOut(address_to),
+            satoshis: amount_satoshis,
+          })
+        );
+      } else {
+        tx.addOutput(
+          new tbc.Transaction.Output({
+            script: tbc.Script.fromASM(script_asm_to),
+            satoshis: amount_satoshis,
+          })
+        );
+      }
+    }
+
     switch (ftutxos.length) {
       case 1:
         tx.addOutput(
           new tbc.Transaction.Output({
-            script: tbc.Script.fromASM(script_asm),
-            satoshis: utxo.satoshis - 4000,
+            script: tbc.Script.fromASM(script_asm_from),
+            satoshis: utxo.satoshis - amount_satoshis - 4000,
           })
         );
         break;
       case 2:
         tx.addOutput(
           new tbc.Transaction.Output({
-            script: tbc.Script.fromASM(script_asm),
-            satoshis: utxo.satoshis - 5500,
+            script: tbc.Script.fromASM(script_asm_from),
+            satoshis: utxo.satoshis - amount_satoshis - 5500,
           })
         );
         break;
       case 3:
         tx.addOutput(
           new tbc.Transaction.Output({
-            script: tbc.Script.fromASM(script_asm),
-            satoshis: utxo.satoshis - 7000,
+            script: tbc.Script.fromASM(script_asm_from),
+            satoshis: utxo.satoshis - amount_satoshis - 7000,
           })
         );
         break;
       case 4:
         tx.addOutput(
           new tbc.Transaction.Output({
-            script: tbc.Script.fromASM(script_asm),
-            satoshis: utxo.satoshis - 8500,
+            script: tbc.Script.fromASM(script_asm_from),
+            satoshis: utxo.satoshis - amount_satoshis - 8500,
           })
         );
         break;
       case 5:
         tx.addOutput(
           new tbc.Transaction.Output({
-            script: tbc.Script.fromASM(script_asm),
-            satoshis: utxo.satoshis - 10000,
+            script: tbc.Script.fromASM(script_asm_from),
+            satoshis: utxo.satoshis - amount_satoshis - 10000,
           })
         );
         break;
@@ -543,30 +568,18 @@ class MultiSig {
    * @returns An array of signatures
    */
   static signMultiSigTransaction_transferFT(
-    address_from: string,
-    ft: any,
+    multiSig_address: string,
     multiSigTxraw: MultiSigTxRaw,
     privateKey: tbc.PrivateKey
   ): string[] {
-    const script_asm = MultiSig.getMultiSigLockScript(address_from);
-    const hash_from = tbc.crypto.Hash.sha256ripemd160(
-      tbc.crypto.Hash.sha256(tbc.Script.fromASM(script_asm).toBuffer())
-    ).toString("hex");
-    const ftutxo_codeScript = FT.buildFTtransferCode(ft.codeScript, hash_from)
-      .toBuffer()
-      .toString("hex");
+    const script_asm = MultiSig.getMultiSigLockScript(multiSig_address);
     const { txraw, amounts } = multiSigTxraw;
     const tx = new tbc.Transaction(txraw);
     tx.inputs[0].output = new tbc.Transaction.Output({
       script: tbc.Script.fromASM(script_asm),
       satoshis: amounts[0],
     });
-    for (let i = 1; i < tx.inputs.length; i++) {
-      tx.inputs[i].output = new tbc.Transaction.Output({
-        script: tbc.Script.fromString(ftutxo_codeScript),
-        satoshis: 2000,
-      });
-    }
+
     let sigs: string[] = [];
     sigs[0] = <string>tx.getSignature(0, privateKey);
     return sigs;
