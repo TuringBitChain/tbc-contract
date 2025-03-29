@@ -398,7 +398,7 @@ class MultiSig {
     }
 
     const script_asm_from = MultiSig.getMultiSigLockScript(address_from);
-    const script_asm_to = MultiSig.getMultiSigLockScript(address_to);
+
     const hash_from = tbc.crypto.Hash.sha256ripemd160(
       tbc.crypto.Hash.sha256(tbc.Script.fromASM(script_asm_from).toBuffer())
     ).toString("hex");
@@ -435,7 +435,11 @@ class MultiSig {
       codeScript = FT.buildFTtransferCode(code, address_to);
     } else {
       const hash_to = tbc.crypto.Hash.sha256ripemd160(
-        tbc.crypto.Hash.sha256(tbc.Script.fromASM(script_asm_to).toBuffer())
+        tbc.crypto.Hash.sha256(
+          tbc.Script.fromASM(
+            MultiSig.getMultiSigLockScript(address_to)
+          ).toBuffer()
+        )
       ).toString("hex");
       codeScript = FT.buildFTtransferCode(code, hash_to);
     }
@@ -486,7 +490,9 @@ class MultiSig {
       } else {
         tx.addOutput(
           new tbc.Transaction.Output({
-            script: tbc.Script.fromASM(script_asm_to),
+            script: tbc.Script.fromASM(
+              MultiSig.getMultiSigLockScript(address_to)
+            ),
             satoshis: amount_satoshis,
           })
         );
