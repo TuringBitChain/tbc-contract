@@ -1139,10 +1139,11 @@ class API {
    */
   static async fetchUMTXO(
     script_asm: string,
+    tbc_amount: number,
     network?: "testnet" | "mainnet"
   ): Promise<tbc.Transaction.IUnspentOutput> {
     const multiScript = tbc.Script.fromASM(script_asm).toHex();
-
+    const amount_satoshis = Math.floor(tbc_amount * Math.pow(10, 6));
     const script_hash = Buffer.from(
       tbc.crypto.Hash.sha256(Buffer.from(multiScript, "hex")).toString("hex"),
       "hex"
@@ -1167,18 +1168,18 @@ class API {
       }
       let selectedUTXO = data[0];
       for (let i = 0; i < data.length; i++) {
-        if (data[i].value > 10000 && data[i].value < 3200000000) {
+        if (data[i].value > amount_satoshis && data[i].value < 3200000000) {
           selectedUTXO = data[i];
           break;
         }
       }
 
-      if (selectedUTXO.value < 10000) {
+      if (selectedUTXO.value < amount_satoshis) {
         let balance = 0;
         for (let i = 0; i < data.length; i++) {
           balance += data[i].value;
         }
-        if (balance < 10000) {
+        if (balance < amount_satoshis) {
           throw new Error("Insufficient balance");
         } else {
           throw new Error("Please mergeUTXO");
