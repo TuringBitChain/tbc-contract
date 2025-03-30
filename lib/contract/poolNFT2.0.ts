@@ -1321,6 +1321,7 @@ class poolNFT2 {
                 console.log('Merge Success!');
                 return true;
             } else {
+                response.ftUtxoList.sort((a, b) => b.ftBalance - a.ftBalance);
                 for (let i = 0; i < response.ftUtxoList.length && i < 4; i++) {
                     fttxo.push({
                         txId: response.ftUtxoList[i].utxoId,
