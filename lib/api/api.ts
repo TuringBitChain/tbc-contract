@@ -84,12 +84,9 @@ class API {
     if (!tbc.Address.isValid(address)) {
       throw new Error("Invalid address input");
     }
-    let base_url = "";
-    if (network) {
-      base_url = API.getBaseURL(network);
-    } else {
-      base_url = API.getBaseURL("mainnet");
-    }
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
     const url = base_url + `address/${address}/get/balance/`;
     try {
       const response = await (await fetch(url)).json();
@@ -113,12 +110,9 @@ class API {
     amount: number,
     network?: "testnet" | "mainnet"
   ): Promise<tbc.Transaction.IUnspentOutput> {
-    let base_url = "";
-    if (network) {
-      base_url = API.getBaseURL(network);
-    } else {
-      base_url = API.getBaseURL("mainnet");
-    }
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
     const address = privateKey.toAddress().toString();
     const url = base_url + `address/${address}/unspent/`;
     const scriptPubKey = tbc.Script.buildPublicKeyHashOut(address)
@@ -183,12 +177,9 @@ class API {
     privateKey: tbc.PrivateKey,
     network?: "testnet" | "mainnet"
   ): Promise<boolean> {
-    let base_url = "";
-    if (network) {
-      base_url = API.getBaseURL(network);
-    } else {
-      base_url = API.getBaseURL("mainnet");
-    }
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
     const address = tbc.Address.fromPrivateKey(privateKey).toString();
     const url = base_url + `address/${address}/unspent/`;
     const scriptPubKey = tbc.Script.buildPublicKeyHashOut(address)
@@ -217,12 +208,7 @@ class API {
       }
       const tx = new tbc.Transaction().from(utxo);
       const txSize = tx.getEstimateSize() + 100;
-      let fee = 0;
-      if (txSize <= 1000) {
-        fee = 80;
-      } else {
-        fee = Math.ceil(txSize / 10);
-      }
+      const fee = txSize < 1000 ? 80 : Math.ceil(txSize / 1000) * 80;
       tx.to(address, sumAmount - fee)
         .fee(fee)
         .change(address)
@@ -252,12 +238,9 @@ class API {
     addressOrHash: string,
     network?: "testnet" | "mainnet"
   ): Promise<bigint> {
-    let base_url = "";
-    if (network) {
-      base_url = API.getBaseURL(network);
-    } else {
-      base_url = API.getBaseURL("mainnet");
-    }
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
     let hash = "";
     if (tbc.Address.isValid(addressOrHash)) {
       // If the recipient is an address
@@ -283,29 +266,24 @@ class API {
   }
 
   /**
-   * Fetches an FT UTXO that satisfies the required amount.
+   * Fetches a list of FT UTXOs for a specified contract transaction ID and address or hash.
    *
    * @param {string} contractTxid - The contract transaction ID.
    * @param {string} addressOrHash - The recipient's address or hash.
-   * @param {bigint} amount - The required amount.
    * @param {string} codeScript - The code script.
-   * @param {("testnet" | "mainnet")} [network] - The network type.
-   * @returns {Promise<tbc.Transaction.IUnspentOutput>} Returns a Promise that resolves to the FT UTXO.
-   * @throws {Error} Throws an error if the request fails or if the FT balance is insufficient.
+   * @param {("testnet" | "mainnet")} [network] - The network type. Defaults to "mainnet" if not specified.
+   * @returns {Promise<tbc.Transaction.IUnspentOutput[]>} Returns a Promise that resolves to an array of FT UTXOs.
+   * @throws {Error} Throws an error if the request fails or if no UTXOs are found.
    */
-  static async fetchFtUTXO(
+  static async fetchFtUTXOList(
     contractTxid: string,
     addressOrHash: string,
-    amount: bigint,
     codeScript: string,
     network?: "testnet" | "mainnet"
-  ): Promise<tbc.Transaction.IUnspentOutput> {
-    let base_url = "";
-    if (network) {
-      base_url = API.getBaseURL(network);
-    } else {
-      base_url = API.getBaseURL("mainnet");
-    }
+  ): Promise<tbc.Transaction.IUnspentOutput[]> {
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
     let hash = "";
     if (tbc.Address.isValid(addressOrHash)) {
       // If the recipient is an address
@@ -337,28 +315,55 @@ class API {
       if (responseData.ftUtxoList.length === 0) {
         throw new Error("The ft balance in the account is zero.");
       }
-      if (amount === BigInt(0)) {
-        responseData.ftUtxoList.sort((a: FTUnspentOutput, b: FTUnspentOutput) =>
-          Number(b.utxoBalance - a.utxoBalance)
-        );
-        const data = responseData.ftUtxoList[0];
-        const fttxo: tbc.Transaction.IUnspentOutput = {
+      let ftutxos: tbc.Transaction.IUnspentOutput[] = [];
+      for (let i = 0; i < responseData.ftUtxoList.length; i++) {
+        const data = responseData.ftUtxoList[i];
+        ftutxos.push({
           txId: data.utxoId,
           outputIndex: data.utxoVout,
           script: codeScript,
           satoshis: data.utxoBalance,
           ftBalance: data.ftBalance,
-        };
-        return fttxo;
+        });
       }
-      let data = responseData.ftUtxoList[0];
-      for (let i = 0; i < responseData.ftUtxoList.length; i++) {
-        if (responseData.ftUtxoList[i].ftBalance >= amount) {
-          data = responseData.ftUtxoList[i];
+      return ftutxos;
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  }
+  /**
+   * Fetches an FT UTXO that satisfies the required amount.
+   *
+   * @param {string} contractTxid - The contract transaction ID.
+   * @param {string} addressOrHash - The recipient's address or hash.
+   * @param {bigint} amount - The required amount.
+   * @param {string} codeScript - The code script.
+   * @param {("testnet" | "mainnet")} [network] - The network type.
+   * @returns {Promise<tbc.Transaction.IUnspentOutput>} Returns a Promise that resolves to the FT UTXO.
+   * @throws {Error} Throws an error if the request fails or if the FT balance is insufficient.
+   */
+  static async fetchFtUTXO(
+    contractTxid: string,
+    addressOrHash: string,
+    amount: bigint,
+    codeScript: string,
+    network?: "testnet" | "mainnet"
+  ): Promise<tbc.Transaction.IUnspentOutput> {
+    try {
+      const ftutxolist = await API.fetchFtUTXOList(
+        contractTxid,
+        addressOrHash,
+        codeScript,
+        network
+      );
+      let ftutxo = ftutxolist[0];
+      for (let i = 0; i < ftutxolist.length; i++) {
+        if (ftutxolist[i].ftBalance >= amount) {
+          ftutxo = ftutxolist[i];
           break;
         }
       }
-      if (data.ftBalance < amount) {
+      if (ftutxo.ftBalance < amount) {
         const totalBalance = await API.getFTbalance(
           contractTxid,
           addressOrHash,
@@ -370,14 +375,7 @@ class API {
           throw new Error("FTbalance not enough!");
         }
       }
-      const fttxo: tbc.Transaction.IUnspentOutput = {
-        txId: data.utxoId,
-        outputIndex: data.utxoVout,
-        script: codeScript,
-        satoshis: data.utxoBalance,
-        ftBalance: data.ftBalance,
-      };
-      return fttxo;
+      return ftutxo;
     } catch (error: any) {
       throw new Error(error.message);
     }
@@ -401,72 +399,25 @@ class API {
     network?: "testnet" | "mainnet",
     amount?: bigint
   ): Promise<tbc.Transaction.IUnspentOutput[]> {
-    let base_url = "";
-    if (network) {
-      base_url = API.getBaseURL(network);
-    } else {
-      base_url = API.getBaseURL("mainnet");
-    }
-    let hash = "";
-    if (tbc.Address.isValid(addressOrHash)) {
-      // If the recipient is an address
-      const publicKeyHash =
-        tbc.Address.fromString(addressOrHash).hashBuffer.toString("hex");
-      hash = publicKeyHash + "00";
-    } else {
-      // If the recipient is a hash
-      if (addressOrHash.length !== 40) {
-        throw new Error("Invalid address or hash");
-      }
-      hash = addressOrHash + "01";
-    }
-    const url =
-      base_url + `ft/utxo/combine/script/${hash}/contract/${contractTxid}`;
     try {
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      if (!response.ok) {
-        throw new Error(
-          `Failed to fetch from URL: ${url}, status: ${response.status}`
-        );
-      }
-      const responseData = await response.json();
-      if (responseData.ftUtxoList.length === 0) {
-        throw new Error("The ft balance in the account is zero.");
-      }
-      let sortedData: FTUnspentOutput[] = responseData.ftUtxoList.sort(
-        (a: FTUnspentOutput, b: FTUnspentOutput) => b.ftBalance - a.ftBalance
+      const ftutxolist = await API.fetchFtUTXOList(
+        contractTxid,
+        addressOrHash,
+        codeScript,
+        network
       );
+      ftutxolist.sort((a, b) => (b.ftBalance > a.ftBalance ? 1 : -1));
       let sumBalance = BigInt(0);
       let ftutxos: tbc.Transaction.IUnspentOutput[] = [];
       if (!amount) {
-        for (let i = 0; i < sortedData.length && i < 5; i++) {
-          sumBalance += BigInt(sortedData[i].ftBalance);
-          ftutxos.push({
-            txId: sortedData[i].utxoId,
-            outputIndex: sortedData[i].utxoVout,
-            script: codeScript,
-            satoshis: sortedData[i].utxoBalance,
-            ftBalance: sortedData[i].ftBalance,
-          });
+        for (let i = 0; i < ftutxolist.length && i < 5; i++) {
+          ftutxos.push(ftutxolist[i]);
         }
       } else {
-        for (let i = 0; i < sortedData.length && i < 5; i++) {
-          sumBalance += BigInt(sortedData[i].ftBalance);
-          ftutxos.push({
-            txId: sortedData[i].utxoId,
-            outputIndex: sortedData[i].utxoVout,
-            script: codeScript,
-            satoshis: sortedData[i].utxoBalance,
-            ftBalance: sortedData[i].ftBalance,
-          });
-          if (sumBalance >= amount) {
-            break;
-          }
+        for (let i = 0; i < ftutxolist.length && i < 5; i++) {
+          sumBalance += BigInt(ftutxolist[i].ftBalance);
+          ftutxos.push(ftutxolist[i]);
+          if (sumBalance >= amount) break;
         }
         if (sumBalance < amount) {
           const totalBalance = await API.getFTbalance(
@@ -474,7 +425,7 @@ class API {
             addressOrHash,
             network
           );
-          if (totalBalance >= amount!) {
+          if (totalBalance >= amount) {
             throw new Error("Insufficient FTbalance, please merge FT UTXOs");
           } else {
             throw new Error("FTbalance not enough!");
@@ -510,60 +461,20 @@ class API {
     if (number <= 0 || !Number.isInteger(number)) {
       throw new Error("Number must be a positive integer greater than 0");
     }
-    let base_url = "";
-    if (network) {
-      base_url = API.getBaseURL(network);
-    } else {
-      base_url = API.getBaseURL("mainnet");
-    }
-    let hash = "";
-    if (tbc.Address.isValid(addressOrHash)) {
-      // If the recipient is an address
-      const publicKeyHash =
-        tbc.Address.fromString(addressOrHash).hashBuffer.toString("hex");
-      hash = publicKeyHash + "00";
-    } else {
-      // If the recipient is a hash
-      if (addressOrHash.length !== 40) {
-        throw new Error("Invalid address or hash");
-      }
-      hash = addressOrHash + "01";
-    }
-    const url =
-      base_url + `ft/utxo/combine/script/${hash}/contract/${contractTxid}`;
     try {
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      if (!response.ok) {
-        throw new Error(
-          `Failed to fetch from URL: ${url}, status: ${response.status}`
-        );
-      }
-      const responseData = await response.json();
-      if (responseData.ftUtxoList.length === 0) {
-        throw new Error("The ft balance in the account is zero.");
-      }
-      let sortedData: FTUnspentOutput[] = responseData.ftUtxoList.sort(
-        (a: FTUnspentOutput, b: FTUnspentOutput) => b.ftBalance - a.ftBalance
+      const ftutxolist = await API.fetchFtUTXOList(
+        contractTxid,
+        addressOrHash,
+        codeScript,
+        network
       );
+      ftutxolist.sort((a, b) => (b.ftBalance > a.ftBalance ? 1 : -1));
       let sumBalance = BigInt(0);
       let ftutxos: tbc.Transaction.IUnspentOutput[] = [];
-      for (let i = 0; i < sortedData.length && i < number; i++) {
-        sumBalance += BigInt(sortedData[i].ftBalance);
-        ftutxos.push({
-          txId: sortedData[i].utxoId,
-          outputIndex: sortedData[i].utxoVout,
-          script: codeScript,
-          satoshis: sortedData[i].utxoBalance,
-          ftBalance: sortedData[i].ftBalance,
-        });
-        if (sumBalance >= amount) {
-          break;
-        }
+      for (let i = 0; i < ftutxolist.length && i < number; i++) {
+        sumBalance += BigInt(ftutxolist[i].ftBalance);
+        ftutxos.push(ftutxolist[i]);
+        if (sumBalance >= amount && i >= 1) break;
       }
       if (sumBalance < amount) {
         const totalBalance = await API.getFTbalance(
@@ -595,12 +506,9 @@ class API {
     contractTxid: string,
     network?: "testnet" | "mainnet"
   ): Promise<FtInfo> {
-    let base_url = "";
-    if (network) {
-      base_url = API.getBaseURL(network);
-    } else {
-      base_url = API.getBaseURL("mainnet");
-    }
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
     const url = base_url + `ft/info/contract/id/${contractTxid}`;
     try {
       const response = await fetch(url, {
@@ -676,12 +584,9 @@ class API {
     contractTxid: string,
     network?: "testnet" | "mainnet"
   ): Promise<PoolNFTInfo> {
-    let base_url = "";
-    if (network) {
-      base_url = API.getBaseURL(network);
-    } else {
-      base_url = API.getBaseURL("mainnet");
-    }
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
     const url = base_url + `ft/pool/nft/info/contract/id/${contractTxid}`;
     try {
       const response = await (await fetch(url)).json();
@@ -748,12 +653,9 @@ class API {
     const ftlpHash = tbc.crypto.Hash.sha256(Buffer.from(ftlpCode, "hex"))
       .reverse()
       .toString("hex");
-    let base_url = "";
-    if (network) {
-      base_url = API.getBaseURL(network);
-    } else {
-      base_url = API.getBaseURL("mainnet");
-    }
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
     const url = base_url + `ft/lp/unspent/by/script/hash${ftlpHash}`;
     try {
       const response = await (await fetch(url)).json();
@@ -784,12 +686,9 @@ class API {
     const ftlpHash = tbc.crypto.Hash.sha256(Buffer.from(ftlpCode, "hex"))
       .reverse()
       .toString("hex");
-    let base_url = "";
-    if (network) {
-      base_url = API.getBaseURL(network);
-    } else {
-      base_url = API.getBaseURL("mainnet");
-    }
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
     const url = base_url + `ft/lp/unspent/by/script/hash${ftlpHash}`;
     try {
       const response = await (await fetch(url)).json();
@@ -836,12 +735,9 @@ class API {
     txid: string,
     network?: "testnet" | "mainnet"
   ): Promise<tbc.Transaction> {
-    let base_url = "";
-    if (network) {
-      base_url = API.getBaseURL(network);
-    } else {
-      base_url = API.getBaseURL("mainnet");
-    }
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
     const url = base_url + `tx/hex/${txid}`;
     try {
       const response = await fetch(url);
@@ -869,12 +765,9 @@ class API {
     txraw: string,
     network?: "testnet" | "mainnet"
   ): Promise<string> {
-    let base_url = "";
-    if (network) {
-      base_url = API.getBaseURL(network);
-    } else {
-      base_url = API.getBaseURL("mainnet");
-    }
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
     const url = base_url + `broadcast/tx/raw`;
     try {
       const response = await fetch(url, {
@@ -901,6 +794,56 @@ class API {
   }
 
   /**
+   * Broadcast multiple raw transactions in batch.
+   *
+   * @param {Array<{ txHex: string }>} txrawList - An array containing multiple transactions in the format [{ txHex: "string" }].
+   * @param {("testnet" | "mainnet")} [network] - The network type, either "testnet" or "mainnet".
+   * @returns {Promise<string[]>} Returns a Promise that resolves to a list of successfully broadcasted transaction IDs.
+   * @throws {Error} Throws an error if the broadcast fails.
+   */
+  static async broadcastTXsraw(
+    txrawList: Array<{ txHex: string }>,
+    network?: "testnet" | "mainnet"
+  ): Promise<string> {
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
+    const url = base_url + `broadcast/txs/raw`;
+
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(txrawList),
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `Failed to broadcast transactions: ${response.statusText}`
+        );
+      }
+
+      const data = await response.json();
+      if (!data.result.invalid) {
+        console.log("Broadcast success!");
+      } else {
+        throw new Error(
+          `Broadcast failed!\n ${JSON.stringify(data.result.invalid)}`
+        );
+      }
+      // console.log("txid:", data.result);
+      if (data.error && data.error.message) {
+        throw new Error(data.error.message);
+      }
+      return data.result;
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  }
+
+  /**
    * Fetches the UTXOs for a given address.
    *
    * @param {string} address - The address to fetch UTXOs for.
@@ -912,12 +855,9 @@ class API {
     address: string,
     network?: "testnet" | "mainnet"
   ): Promise<tbc.Transaction.IUnspentOutput[]> {
-    let base_url = "";
-    if (network) {
-      base_url = API.getBaseURL(network);
-    } else {
-      base_url = API.getBaseURL("mainnet");
-    }
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
     const url = base_url + `address/${address}/unspent/`;
     try {
       const response = await fetch(url);
@@ -1016,12 +956,9 @@ class API {
     network?: "testnet" | "mainnet";
   }): Promise<tbc.Transaction.IUnspentOutput> {
     const { script, tx_hash, network } = params;
-    let base_url = "";
-    if (network) {
-      base_url = API.getBaseURL(network);
-    } else {
-      base_url = API.getBaseURL("mainnet");
-    }
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
     const script_hash = Buffer.from(
       tbc.crypto.Hash.sha256(Buffer.from(script, "hex")).toString("hex"),
       "hex"
@@ -1082,12 +1019,9 @@ class API {
     contract_id: string,
     network?: "testnet" | "mainnet"
   ): Promise<NFTInfo> {
-    let base_url = "";
-    if (network) {
-      base_url = API.getBaseURL(network);
-    } else {
-      base_url = API.getBaseURL("mainnet");
-    }
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
     const url = base_url + "nft/infos/contract_ids";
     try {
       const response = await fetch(url, {
@@ -1150,12 +1084,9 @@ class API {
     )
       .reverse()
       .toString("hex");
-    let base_url = "";
-    if (network) {
-      base_url = API.getBaseURL(network);
-    } else {
-      base_url = API.getBaseURL("mainnet");
-    }
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
     const url = base_url + `script/hash/${script_hash}/unspent/`;
     try {
       const response = await fetch(url);
@@ -1218,12 +1149,9 @@ class API {
     )
       .reverse()
       .toString("hex");
-    let base_url = "";
-    if (network) {
-      base_url = API.getBaseURL(network);
-    } else {
-      base_url = API.getBaseURL("mainnet");
-    }
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
     const url = base_url + `script/hash/${script_hash}/unspent/`;
 
     try {
@@ -1407,9 +1335,9 @@ class API {
         case 4:
           if (
             ftBalanceArray[0] +
-              ftBalanceArray[1] +
-              ftBalanceArray[2] +
-              ftBalanceArray[3] <
+            ftBalanceArray[1] +
+            ftBalanceArray[2] +
+            ftBalanceArray[3] <
             amount
           ) {
             throw new Error("Insufficient FT balance");
@@ -1453,10 +1381,10 @@ class API {
         case 5:
           if (
             ftBalanceArray[0] +
-              ftBalanceArray[1] +
-              ftBalanceArray[2] +
-              ftBalanceArray[3] +
-              ftBalanceArray[4] <
+            ftBalanceArray[1] +
+            ftBalanceArray[2] +
+            ftBalanceArray[3] +
+            ftBalanceArray[4] <
             amount
           ) {
             throw new Error("Insufficient FT balance");

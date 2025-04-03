@@ -590,6 +590,34 @@ class FT {
         return { amountHex, changeHex };
     }
 
+    /**
+     * Extracts and calculates the balance from a hexadecimal tape string.
+     *
+     * The function processes a hexadecimal string representing a tape,
+     * extracts a specific portion of the tape, and calculates the total
+     * balance by summing up six 64-bit unsigned integers from the extracted
+     * portion.
+     *
+     * @param tape - A hexadecimal string representing the tape data.
+     *               The string is expected to contain sufficient data
+     *               for processing (at least 51 bytes when decoded).
+     * @returns The total balance as a `bigint` calculated from the tape.
+     *
+     * @throws {RangeError} If the tape does not contain enough data to
+     *                      extract the required portion or read the
+     *                      64-bit integers.
+     */
+    static getBalanceFromTape(tape: string): bigint {
+        let tapeBuffer = Buffer.from(tape, 'hex');
+        tapeBuffer = Buffer.from(tapeBuffer.subarray(3, 3 + 48));
+        let balance: bigint = BigInt(0);
+        for (let i = 0; i < 6; i++) {
+            const amount = tapeBuffer.readBigUInt64LE(i * 8);
+            balance += amount;
+        }
+        return balance;
+    }
+
 }
 
 module.exports = FT;
