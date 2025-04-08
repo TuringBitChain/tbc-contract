@@ -147,7 +147,7 @@ class MultiSig {
         })
       ).addOutput(
         new tbc.Transaction.Output({
-          script: tbc.Script.fromASM(script_asm_to),
+          script: tbc.Script.fromASM(script_asm_from),
           satoshis: count - amount_satoshis - 300,
         })
       );
