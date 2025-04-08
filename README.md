@@ -427,15 +427,15 @@ async function main() {
                 }
             }
 
-            //合并池子中的 FT，一次合并最多4合一
+            //合并池子中的 FT，一次合并最多4合一，合并10次大约30s
             {
-                const utxo = await API.fetchUTXO(privateKeyA, fee, network); 
-                const tx10 = await poolUse.mergeFTinPool(privateKeyA, utxo);
-                if (typeof tx10 === 'string') {
-                    await API.broadcastTXraw(tx10, network); 
-                } else {
-                    console.log("Merge success");
-                }
+                const times = 10;
+                const mergeFee = 0.005 * times;
+                const utxo = await API.fetchUTXO(privateKeyA, mergeFee, network); 
+                const tx10 = await poolUse.mergeFTinPool(privateKeyA, utxo, times);
+                tx10.length > 0
+                  ? await API.broadcastTXsraw(tx10, network)
+                  : console.log("Merge success");
             }
 
     } catch (error: any) {
