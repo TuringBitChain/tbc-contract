@@ -133,7 +133,7 @@ class API {
         };
         return utxo;
       } else if (response.length === 1 && response[0].value <= amount_bn) {
-        throw new Error("Insufficient balance");
+        throw new Error("Insufficient tbc balance");
       }
       let data = response[0];
       for (let i = 0; i < response.length; i++) {
@@ -145,7 +145,7 @@ class API {
       if (data.value < amount_bn) {
         const totalBalance = await this.getTBCbalance(address, network);
         if (totalBalance <= amount_bn) {
-          throw new Error("Insufficient balance");
+          throw new Error("Insufficient tbc balance");
         } else {
           console.log("Merge UTXO");
           await API.mergeUTXO(privateKey, network);
@@ -931,7 +931,7 @@ class API {
       }
 
       if (totalAmount < amount_satoshis) {
-        throw new Error("Insufficient balance");
+        throw new Error("Insufficient tbc balance");
       }
 
       return selectedUTXOs;
@@ -1111,7 +1111,7 @@ class API {
           balance += data[i].value;
         }
         if (balance < amount_satoshis) {
-          throw new Error("Insufficient balance");
+          throw new Error("Insufficient tbc balance");
         } else {
           throw new Error("Please mergeUTXO");
         }
@@ -1221,7 +1221,7 @@ class API {
       }
 
       if (totalSatoshis < amount_satoshis) {
-        throw new Error("Insufficient balance");
+        throw new Error("Insufficient tbc balance");
       }
 
       return selectedUMTXOs;
