@@ -1282,7 +1282,11 @@ class API {
         throw new Error("The ft balance in the account is zero.");
       }
       let sortedData: FTUnspentOutput[] = responseData.ftUtxoList.sort(
-        (a: FTUnspentOutput, b: FTUnspentOutput) => a.ftBalance - b.ftBalance
+        (a: FTUnspentOutput, b: FTUnspentOutput) => {
+          if (a.ftBalance < b.ftBalance) return 1;
+          if (a.ftBalance > b.ftBalance) return -1;
+          return 0;
+        }
       );
       let ftutxos: tbc.Transaction.IUnspentOutput[] = [];
       for (let i = 0; i < sortedData.length; i++) {
@@ -1335,9 +1339,9 @@ class API {
         case 4:
           if (
             ftBalanceArray[0] +
-            ftBalanceArray[1] +
-            ftBalanceArray[2] +
-            ftBalanceArray[3] <
+              ftBalanceArray[1] +
+              ftBalanceArray[2] +
+              ftBalanceArray[3] <
             amount
           ) {
             throw new Error("Insufficient FT balance");
@@ -1381,10 +1385,10 @@ class API {
         case 5:
           if (
             ftBalanceArray[0] +
-            ftBalanceArray[1] +
-            ftBalanceArray[2] +
-            ftBalanceArray[3] +
-            ftBalanceArray[4] <
+              ftBalanceArray[1] +
+              ftBalanceArray[2] +
+              ftBalanceArray[3] +
+              ftBalanceArray[4] <
             amount
           ) {
             throw new Error("Insufficient FT balance");

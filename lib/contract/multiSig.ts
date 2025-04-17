@@ -23,6 +23,7 @@ class MultiSig {
     pubKeys: string[],
     signatureCount: number,
     publicKeyCount: number,
+    tbc_amount: number,
     utxos: tbc.Transaction.IUnspentOutput[],
     privateKey: tbc.PrivateKey
   ): string {
@@ -37,7 +38,7 @@ class MultiSig {
     tx.addOutput(
       new tbc.Transaction.Output({
         script: tbc.Script.fromASM(script_asm),
-        satoshis: 5000,
+        satoshis: Math.floor(tbc_amount * 1e6),
       })
     );
     for (let i = 0; i < publicKeyCount; i++) {
