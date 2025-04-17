@@ -299,8 +299,8 @@ declare module "tbc-contract" {
 
     constructor(config?: {
       txidOrParams?:
-      | string
-      | { ftContractTxid: string; tbc_amount: number; ft_a: number };
+        | string
+        | { ftContractTxid: string; tbc_amount: number; ft_a: number };
       network?: "testnet" | "mainnet";
     });
     initCreate(ftContractTxid?: string): Promise<void>;
@@ -512,6 +512,7 @@ declare module "tbc-contract" {
       pubKeys: string[],
       signatureCount: number,
       publicKeyCount: number,
+      tbc_amount: number,
       utxos: Transaction.IUnspentOutput[],
       privateKey: PrivateKey
     ): string;
