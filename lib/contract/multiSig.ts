@@ -130,15 +130,10 @@ class MultiSig {
       count += utxos[i].satoshis;
       amounts.push(utxos[i].satoshis);
     }
-    const tx = new tbc.Transaction().from(utxos).fee(300);
+    const tx = new tbc.Transaction().from(utxos);
 
     if (address_to.startsWith("1")) {
-      tx.to(address_to, amount_satoshis).addOutput(
-        new tbc.Transaction.Output({
-          script: tbc.Script.fromASM(script_asm_from),
-          satoshis: count - amount_satoshis - 300,
-        })
-      );
+      tx.to(address_to, amount_satoshis);
     } else {
       const script_asm_to = MultiSig.getMultiSigLockScript(address_to);
       tx.addOutput(
@@ -146,13 +141,15 @@ class MultiSig {
           script: tbc.Script.fromASM(script_asm_to),
           satoshis: amount_satoshis,
         })
-      ).addOutput(
-        new tbc.Transaction.Output({
-          script: tbc.Script.fromASM(script_asm_from),
-          satoshis: count - amount_satoshis - 300,
-        })
       );
     }
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: tbc.Script.fromASM(script_asm_from),
+        satoshis: count - amount_satoshis - 1000,
+      })
+    ).fee(1000);
+
     const txraw = tx.uncheckedSerialize();
     return { txraw, amounts };
   }

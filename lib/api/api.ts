@@ -5,6 +5,7 @@ import {
   findMinFourSum,
   findMinThreeSum,
   findMinTwoSum,
+  initialUtxoArray,
 } from "../util/utxoSelect";
 
 interface NFTInfo {
@@ -851,7 +852,7 @@ class API {
    * @returns {Promise<tbc.Transaction.IUnspentOutput[]>} Returns a Promise that resolves to an array of UTXOs.
    * @throws {Error} Throws an error if the request fails.
    */
-  private static async fetchUTXOs(
+  static async fetchUTXOs(
     address: string,
     network?: "testnet" | "mainnet"
   ): Promise<tbc.Transaction.IUnspentOutput[]> {
@@ -1137,7 +1138,7 @@ class API {
    * @returns {Promise<tbc.Transaction.IUnspentOutput[]>} Returns a Promise that resolves to an array of UMTXOs.
    * @throws {Error} Throws an error if the request fails.
    */
-  private static async fetchUMTXOs(
+  static async fetchUMTXOs(
     script_asm: string,
     network?: "testnet" | "mainnet"
   ): Promise<tbc.Transaction.IUnspentOutput[]> {
@@ -1231,7 +1232,79 @@ class API {
   }
 
   /**
-   * Fetches the UMTXOs for a given contract and address.
+   * Fetches the FT UTXOs for a given contract and multiSig address.
+   *
+   * @param {string} contractTxid - The contract TXID.
+   * @param {string} addressOrHash - The address or hash to fetch UMTXOs for.
+   * @param {string} codeScript - The code script.
+   * @param {("testnet" | "mainnet")} [network] - The network type.
+   * @returns {Promise<tbc.Transaction.IUnspentOutput[]>} Returns a Promise that resolves to an array of UMTXOs.
+   * @throws {Error} Throws an error if the request fails.
+   */
+  static async fetchFtUTXOS_multiSig(
+    contractTxid: string,
+    addressOrHash: string,
+    codeScript: string,
+    network?: "testnet" | "mainnet"
+  ): Promise<tbc.Transaction.IUnspentOutput[]> {
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
+    let hash = "";
+    if (tbc.Address.isValid(addressOrHash)) {
+      const publicKeyHash =
+        tbc.Address.fromString(addressOrHash).hashBuffer.toString("hex");
+      hash = publicKeyHash + "00";
+    } else {
+      if (addressOrHash.length !== 40) {
+        throw new Error("Invalid address or hash");
+      }
+      hash = addressOrHash + "01";
+    }
+    try {
+      const url =
+        base_url + `ft/utxo/combine/script/${hash}/contract/${contractTxid}`;
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch from URL: ${url}, status: ${response.status}`
+        );
+      }
+      const responseData = await response.json();
+      if (responseData.ftUtxoList.length === 0) {
+        throw new Error("The ft balance in the account is zero.");
+      }
+      let sortedData: FTUnspentOutput[] = responseData.ftUtxoList.sort(
+        (a: FTUnspentOutput, b: FTUnspentOutput) => {
+          if (a.ftBalance < b.ftBalance) return -1;
+          if (a.ftBalance > b.ftBalance) return 1;
+          return 0;
+        }
+      );
+      let ftutxos: tbc.Transaction.IUnspentOutput[] = [];
+      for (let i = 0; i < sortedData.length; i++) {
+        ftutxos.push({
+          txId: sortedData[i].utxoId,
+          outputIndex: sortedData[i].utxoVout,
+          script: codeScript,
+          satoshis: sortedData[i].utxoBalance,
+          ftBalance: sortedData[i].ftBalance,
+        });
+      }
+      return ftutxos;
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  }
+
+  /**
+   * Fetches the FT UTXOs for a given contract and multiSig address.
    *
    * @param {string} contractTxid - The contract TXID.
    * @param {string} addressOrHash - The address or hash to fetch UMTXOs for.
@@ -1241,7 +1314,7 @@ class API {
    * @returns {Promise<tbc.Transaction.IUnspentOutput[]>} Returns a Promise that resolves to an array of UMTXOs.
    * @throws {Error} Throws an error if the request fails.
    */
-  static async fetchFtUTXOS_multiSig(
+  static async getFtUTXOS_multiSig(
     contractTxid: string,
     addressOrHash: string,
     codeScript: string,
@@ -1283,8 +1356,8 @@ class API {
       }
       let sortedData: FTUnspentOutput[] = responseData.ftUtxoList.sort(
         (a: FTUnspentOutput, b: FTUnspentOutput) => {
-          if (a.ftBalance < b.ftBalance) return 1;
-          if (a.ftBalance > b.ftBalance) return -1;
+          if (a.ftBalance < b.ftBalance) return -1;
+          if (a.ftBalance > b.ftBalance) return 1;
           return 0;
         }
       );
@@ -1347,24 +1420,12 @@ class API {
             throw new Error("Insufficient FT balance");
           } else if (findMinThreeSum(ftBalanceArray, amount)) {
             const result_three = findMinThreeSum(ftBalanceArray, amount);
-            if (
-              findMinTwoSum(
-                [
-                  ftBalanceArray[result_three[0]],
-                  ftBalanceArray[result_three[1]],
-                  ftBalanceArray[result_three[2]],
-                ],
-                amount
-              )
-            ) {
-              const result_two = findMinTwoSum(
-                [
-                  ftBalanceArray[result_three[0]],
-                  ftBalanceArray[result_three[1]],
-                  ftBalanceArray[result_three[2]],
-                ],
-                amount
-              );
+            const ftBalanceArray_three = initialUtxoArray(
+              ftBalanceArray,
+              result_three
+            );
+            if (findMinTwoSum(ftBalanceArray_three, amount)) {
+              const result_two = findMinTwoSum(ftBalanceArray_three, amount);
               if (ftBalanceArray[result_two[0]] >= amount) {
                 return [ftutxos[result_two[0]]];
               } else if (ftBalanceArray[result_two[1]] >= amount) {
@@ -1394,44 +1455,18 @@ class API {
             throw new Error("Insufficient FT balance");
           } else if (findMinFourSum(ftBalanceArray, amount)) {
             const result_four = findMinFourSum(ftBalanceArray, amount);
-            if (
-              findMinThreeSum(
-                [
-                  ftBalanceArray[result_four[0]],
-                  ftBalanceArray[result_four[1]],
-                  ftBalanceArray[result_four[2]],
-                  ftBalanceArray[result_four[3]],
-                ],
-                amount
-              )
-            ) {
-              const result_three = findMinThreeSum(
-                [
-                  ftBalanceArray[result_four[0]],
-                  ftBalanceArray[result_four[1]],
-                  ftBalanceArray[result_four[2]],
-                  ftBalanceArray[result_four[3]],
-                ],
-                amount
+            const ftBalanceArray_four = initialUtxoArray(
+              ftBalanceArray,
+              result_four
+            );
+            if (findMinThreeSum(ftBalanceArray_four, amount)) {
+              const result_three = findMinThreeSum(ftBalanceArray_four, amount);
+              const ftBalanceArray_three = initialUtxoArray(
+                ftBalanceArray,
+                result_three
               );
-              if (
-                findMinTwoSum(
-                  [
-                    ftBalanceArray[result_three[0]],
-                    ftBalanceArray[result_three[1]],
-                    ftBalanceArray[result_three[2]],
-                  ],
-                  amount
-                )
-              ) {
-                const result_two = findMinTwoSum(
-                  [
-                    ftBalanceArray[result_three[0]],
-                    ftBalanceArray[result_three[1]],
-                    ftBalanceArray[result_three[2]],
-                  ],
-                  amount
-                );
+              if (findMinTwoSum(ftBalanceArray_three, amount)) {
+                const result_two = findMinTwoSum(ftBalanceArray_three, amount);
                 if (ftBalanceArray[result_two[0]] >= amount) {
                   return [ftutxos[result_two[0]]];
                 } else if (ftBalanceArray[result_two[1]] >= amount) {
@@ -1460,64 +1495,28 @@ class API {
         default:
           if (findMinFiveSum(ftBalanceArray, amount)) {
             const result_five = findMinFiveSum(ftBalanceArray, amount);
-            if (
-              findMinFourSum(
-                [
-                  ftBalanceArray[result_five[0]],
-                  ftBalanceArray[result_five[1]],
-                  ftBalanceArray[result_five[2]],
-                  ftBalanceArray[result_five[3]],
-                  ftBalanceArray[result_five[4]],
-                ],
-                amount
-              )
-            ) {
-              const result_four = findMinFourSum(
-                [
-                  ftBalanceArray[result_five[0]],
-                  ftBalanceArray[result_five[1]],
-                  ftBalanceArray[result_five[2]],
-                  ftBalanceArray[result_five[3]],
-                  ftBalanceArray[result_five[4]],
-                ],
-                amount
+            const ftBalanceArray_five = initialUtxoArray(
+              ftBalanceArray,
+              result_five
+            );
+            if (findMinFourSum(ftBalanceArray_five, amount)) {
+              const result_four = findMinFourSum(ftBalanceArray_five, amount);
+              const ftBalanceArray_four = initialUtxoArray(
+                ftBalanceArray,
+                result_four
               );
-              if (
-                findMinThreeSum(
-                  [
-                    ftBalanceArray[result_four[0]],
-                    ftBalanceArray[result_four[1]],
-                    ftBalanceArray[result_four[2]],
-                    ftBalanceArray[result_four[3]],
-                  ],
-                  amount
-                )
-              ) {
+              if (findMinThreeSum(ftBalanceArray_four, amount)) {
                 const result_three = findMinThreeSum(
-                  [
-                    ftBalanceArray[result_four[0]],
-                    ftBalanceArray[result_four[1]],
-                    ftBalanceArray[result_four[2]],
-                    ftBalanceArray[result_four[3]],
-                  ],
+                  ftBalanceArray_four,
                   amount
                 );
-                if (
-                  findMinTwoSum(
-                    [
-                      ftBalanceArray[result_three[0]],
-                      ftBalanceArray[result_three[1]],
-                      ftBalanceArray[result_three[2]],
-                    ],
-                    amount
-                  )
-                ) {
+                const ftBalanceArray_three = initialUtxoArray(
+                  ftBalanceArray,
+                  result_three
+                );
+                if (findMinTwoSum(ftBalanceArray_three, amount)) {
                   const result_two = findMinTwoSum(
-                    [
-                      ftBalanceArray[result_three[0]],
-                      ftBalanceArray[result_three[1]],
-                      ftBalanceArray[result_three[2]],
-                    ],
+                    ftBalanceArray_three,
                     amount
                   );
                   if (ftBalanceArray[result_two[0]] >= amount) {

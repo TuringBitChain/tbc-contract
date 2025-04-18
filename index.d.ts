@@ -24,7 +24,7 @@ declare module "tbc-contract" {
       addressOrHash: string,
       codeScript: string,
       network?: "testnet" | "mainnet"
-    ): Promise<tbc.Transaction.IUnspentOutput[]>;
+    ): Promise<Transaction.IUnspentOutput[]>;
     static fetchFtUTXO(
       contractTxid: string,
       addressOrHash: string,
@@ -85,6 +85,10 @@ declare module "tbc-contract" {
       txrawList: Array<{ txHex: string }>,
       network?: "testnet" | "mainnet"
     ): Promise<string>;
+    static fetchUTXOs(
+      address: string,
+      network?: "testnet" | "mainnet"
+    ): Promise<Transaction.IUnspentOutput[]>;
     static getUTXOs(
       address: string,
       amount_tbc: number,
@@ -104,12 +108,22 @@ declare module "tbc-contract" {
       tbc_amount: number,
       network?: "testnet" | "mainnet"
     ): Promise<Transaction.IUnspentOutput>;
+    static fetchUMTXOs(
+      script_asm: string,
+      network?: "testnet" | "mainnet"
+    ): Promise<Transaction.IUnspentOutput[]>;
     static getUMTXOs(
       script_asm: string,
       amount_tbc: number,
       network?: "testnet" | "mainnet"
     ): Promise<Transaction.IUnspentOutput[]>;
     static fetchFtUTXOS_multiSig(
+      contractTxid: string,
+      addressOrHash: string,
+      codeScript: string,
+      network?: "testnet" | "mainnet"
+    ): Promise<Transaction.IUnspentOutput[]>;
+    static getFtUTXOS_multiSig(
       contractTxid: string,
       addressOrHash: string,
       codeScript: string,
@@ -474,15 +488,15 @@ declare module "tbc-contract" {
       option: 1 | 2 | 3
     ): poolNFTDifference;
     getPoolNftUnlockOffLine(
-      privateKey_from: tbc.PrivateKey,
-      currentTX: tbc.Transaction,
+      privateKey_from: PrivateKey,
+      currentTX: Transaction,
       currentUnlockIndex: number,
-      poolnftPreTX: tbc.Transaction,
-      poolnftPrePreTX: tbc.Transaction,
-      inputsTXs: tbc.Transaction[],
+      poolnftPreTX: Transaction,
+      poolnftPrePreTX: Transaction,
+      inputsTXs: Transaction[],
       option: 1 | 2 | 3 | 4,
       swapOption?: 1 | 2
-    ): tbc.Script;
+    ): Script;
     getPoolNftUnlock(
       privateKey_from: PrivateKey,
       currentTX: Transaction,

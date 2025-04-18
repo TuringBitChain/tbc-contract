@@ -4,24 +4,37 @@
  * @param target - The target value.
  * @returns The indices of the five numbers that form the minimum sum.
  */
-export function findMinFiveSum(balances: bigint[], target: bigint): number[] | null {
-    balances.sort((a, b) => Number(a - b));
-    const n = balances.length;
-    let minFive: number[] = [];
-    let minSum: bigint = BigInt(Number.MAX_SAFE_INTEGER);
-    for (let i = 0; i <= n - 5; i++) {
-        for (let j = i + 1; j <= n - 4; j++) {
-            let left = j + 1;
-            let right = n - 1;
-            while (left < right - 1) {
-                const sum = balances[i] + balances[j] + balances[left] + balances[right] + balances[right - 1];
-                if (sum >= target && sum < minSum) { minSum = sum; minFive = [i, j, left, right - 1, right]; }
-                if (sum < target) { left++; }
-                else { right--; }
-            }
+export function findMinFiveSum(
+  balances: bigint[],
+  target: bigint
+): number[] | null {
+  const n = balances.length;
+  let minFive: number[] = [];
+  let minSum: bigint = BigInt(Number.MAX_SAFE_INTEGER);
+  for (let i = 0; i <= n - 5; i++) {
+    for (let j = i + 1; j <= n - 4; j++) {
+      let left = j + 1;
+      let right = n - 1;
+      while (left < right - 1) {
+        const sum =
+          balances[i] +
+          balances[j] +
+          balances[left] +
+          balances[right] +
+          balances[right - 1];
+        if (sum >= target && sum < minSum) {
+          minSum = sum;
+          minFive = [i, j, left, right - 1, right];
         }
+        if (sum < target) {
+          left++;
+        } else {
+          right--;
+        }
+      }
     }
-    return minFive.length === 5 ? minFive : null;
+  }
+  return minFive.length === 5 ? minFive : null;
 }
 
 /**
@@ -30,24 +43,33 @@ export function findMinFiveSum(balances: bigint[], target: bigint): number[] | n
  * @param target - The target value.
  * @returns The indices of the four numbers that form the minimum sum.
  */
-export function findMinFourSum(balances: bigint[], target: bigint): number[] | null {
-    balances.sort((a, b) => Number(a - b));
-    const n = balances.length;
-    let minFour: number[] = [];
-    let minSum: bigint = BigInt(Number.MAX_SAFE_INTEGER);
-    for (let i = 0; i <= n - 4; i++) {
-        for (let j = i + 1; j <= n - 3; j++) {
-            let left = j + 1;
-            let right = n - 1;
-            while (left < right) {
-                const sum = balances[i] + balances[j] + balances[left] + balances[right];
-                if (sum >= target && sum < minSum) { minSum = sum; minFour = [i, j, left, right]; }
-                if (sum < target) { left++; }
-                else { right--; }
-            }
+export function findMinFourSum(
+  balances: bigint[],
+  target: bigint
+): number[] | null {
+  const n = balances.length;
+  let minFour: number[] = [];
+  let minSum: bigint = BigInt(Number.MAX_SAFE_INTEGER);
+  for (let i = 0; i <= n - 4; i++) {
+    for (let j = i + 1; j <= n - 3; j++) {
+      let left = j + 1;
+      let right = n - 1;
+      while (left < right) {
+        const sum =
+          balances[i] + balances[j] + balances[left] + balances[right];
+        if (sum >= target && sum < minSum) {
+          minSum = sum;
+          minFour = [i, j, left, right];
         }
+        if (sum < target) {
+          left++;
+        } else {
+          right--;
+        }
+      }
     }
-    return minFour.length === 4 ? minFour : null;
+  }
+  return minFour.length === 4 ? minFour : null;
 }
 
 /**
@@ -56,23 +78,30 @@ export function findMinFourSum(balances: bigint[], target: bigint): number[] | n
  * @param target - The target value.
  * @returns The indices of the three numbers that form the minimum sum.
  */
-export function findMinThreeSum(balances: bigint[], target: bigint): number[] | null {
-    balances.sort((a, b) => Number(a - b));
-    const n = balances.length;
-    let minThree: number[] = [];
-    let minSum: bigint = BigInt(Number.MAX_SAFE_INTEGER);
-    for (let i = 0; i <= n - 3; i++) {
-        let left = i + 1;
-        let right = n - 1;
-        while (left < right) {
-            const sum = balances[i] + balances[left] + balances[right];
-            if (sum >= target && sum < minSum) { minSum = sum; minThree = [i, left, right]; }
-            if (sum < target) { left++; }
-            else { right--; }
-        }
-
+export function findMinThreeSum(
+  balances: bigint[],
+  target: bigint
+): number[] | null {
+  const n = balances.length;
+  let minThree: number[] = [];
+  let minSum: bigint = BigInt(Number.MAX_SAFE_INTEGER);
+  for (let i = 0; i <= n - 3; i++) {
+    let left = i + 1;
+    let right = n - 1;
+    while (left < right) {
+      const sum = balances[i] + balances[left] + balances[right];
+      if (sum >= target && sum < minSum) {
+        minSum = sum;
+        minThree = [i, left, right];
+      }
+      if (sum < target) {
+        left++;
+      } else {
+        right--;
+      }
     }
-    return minThree.length === 3 ? minThree : null;
+  }
+  return minThree.length === 3 ? minThree : null;
 }
 
 /**
@@ -81,18 +110,49 @@ export function findMinThreeSum(balances: bigint[], target: bigint): number[] | 
  * @param target - The target value.
  * @returns The indices of the two numbers that form the minimum sum.
  */
-export function findMinTwoSum(balances: bigint[], target: bigint): number[] | null {
-    balances.sort((a, b) => Number(a - b));
-    const n = balances.length;
-    let minTwo: number[] = [];
-    let minSum: bigint = BigInt(Number.MAX_SAFE_INTEGER);
-    let left = 0;
-    let right = n - 1;
-    while (left < right) {
-        const sum = balances[left] + balances[right];
-        if (sum >= target && sum < minSum) { minSum = sum; minTwo = [left, right]; }
-        if (sum < target) { left++; }
-        else { right--; }
+export function findMinTwoSum(
+  balances: bigint[],
+  target: bigint
+): number[] | null {
+  const n = balances.length;
+  let minTwo: number[] = [];
+  let minSum: bigint = BigInt(Number.MAX_SAFE_INTEGER);
+  let left = 0;
+  let right = n - 1;
+  while (left < right) {
+    const sum = balances[left] + balances[right];
+    if (sum >= target && sum < minSum) {
+      minSum = sum;
+      minTwo = [left, right];
     }
-    return minTwo.length === 2 ? minTwo : null;
+    if (sum < target) {
+      left++;
+    } else {
+      right--;
+    }
+  }
+  return minTwo.length === 2 ? minTwo : null;
+}
+
+/**
+ * Sets all elements in the balances array to zero except for those at positions specified in the index array.
+ * This is useful for filtering UTXOs, keeping only the ones at specified indices.
+ * 
+ * @param balances - The array of UTXO balances to be filtered.
+ * @param index - Array of indices whose corresponding balances should be preserved.
+ * @returns The modified balances array with non-indexed positions set to zero.
+ */
+export function initialUtxoArray(
+  balances: bigint[],
+  index: number[]
+): bigint[] {
+  const indexSet = new Set(index);
+  
+  for (let i = 0; i < balances.length; i++) {
+    if (!indexSet.has(i)) {
+      balances[i] = BigInt(0);
+    }
+  }
+  
+  return balances;
 }
