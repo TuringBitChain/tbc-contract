@@ -10,20 +10,21 @@ const poolNftContractId = "";
 
 const fee = 0.01;   //可能的交易手续费，根据需要取值
 const serviceRate = 25; //swap手续费率，默认千分之二点五
+const lpPlan = 2;  //lp手续费方案, 方案1: LP 0.25%  swap服务商 0.09%  协议0.01%; 方案2: LP 0.05%  swap服务商 0.29%  协议0.01%
 const tag = "tbc"; //池子标签，用于区分创建者
 async function main() {
     try {
         // Step 1: 创建 poolNFT，并初始化
-        const pool = new poolNFT2({network: "testnet"});
+        const pool = new poolNFT2({network: network});
         pool.initCreate(ftContractTxid);
         const utxo = await API.fetchUTXO(privateKeyA, fee, network);
-        const tx1 = await pool.createPoolNFT(privateKeyA, utxo, tag, serviceRate);
+        const tx1 = await pool.createPoolNFT(privateKeyA, utxo, tag, serviceRate, lpPlan);
         await API.broadcastTXraw(tx1[0], network);
         console.log("poolNFT Contract ID:");
         await API.broadcastTXraw(tx1[1], network);
 
         // Step 2: 使用已创建的 poolNFT
-        const poolUse = new poolNFT2({txid: poolNftContractId, network:"testnet"});
+        const poolUse = new poolNFT2({txid: poolNftContractId, network: network});
         await poolUse.initfromContractId();
 
             // Step 2.1: 为刚创建的 poolNFT 注入初始资金
@@ -59,7 +60,7 @@ async function main() {
                 let tbcAmount = 0.1;
                 // 准备 utxo
                 const utxo = await API.fetchUTXO(privateKeyA, tbcAmount + fee, network);
-                const tx6 = await poolUse.swaptoToken_baseTBC(privateKeyA, addressA, utxo, tbcAmount);
+                const tx6 = await poolUse.swaptoToken_baseTBC(privateKeyA, addressA, utxo, tbcAmount, lpPlan);
                 await API.broadcastTXraw(tx6, network);
             }
 
@@ -68,7 +69,7 @@ async function main() {
                 let ftAmount = 100;
                 // 准备 utxo
                 const utxo = await API.fetchUTXO(privateKeyA, fee, network);
-                const tx8 = await poolUse.swaptoTBC_baseToken(privateKeyA, addressA, utxo, ftAmount);
+                const tx8 = await poolUse.swaptoTBC_baseToken(privateKeyA, addressA, utxo, ftAmount, lpPlan);
                 await API.broadcastTXraw(tx8, network);
             }
 
