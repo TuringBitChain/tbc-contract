@@ -426,13 +426,15 @@ declare module "tbc-contract" {
       privateKey_from: PrivateKey,
       utxo: Transaction.IUnspentOutput,
       tag: string,
-      serviceFeeRate?: number
+      serviceFeeRate?: number,
+      lpPlan?: 1 | 2
     ): Promise<string[]>;
     createPoolNftWithLock(
       privateKey_from: PrivateKey,
       utxo: Transaction.IUnspentOutput,
       tag: string,
-      serviceFeeRate?: number
+      serviceFeeRate?: number,
+      lpPlan?: 1 | 2
     ): Promise<string[]>;
     initPoolNFT(
       privateKey_from: PrivateKey,
@@ -457,13 +459,15 @@ declare module "tbc-contract" {
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
-      amount_tbc: number
+      amount_tbc: number,
+      lpPlan: 1 | 2
     ): Promise<string>;
     swaptoTBC_baseToken(
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
-      amount_token: number
+      amount_token: number,
+      lpPlan: 1 | 2
     ): Promise<string>;
     fetchPoolNftInfo(contractTxid: string): Promise<PoolNFTInfo>;
     fetchPoolNftUTXO(contractTxid: string): Promise<Transaction.IUnspentOutput>;
@@ -506,8 +510,8 @@ declare module "tbc-contract" {
       option: 1 | 2 | 3 | 4,
       swapOption?: 1 | 2
     ): Promise<Script>;
-    getPoolNftCode(txid: string, vout: number, tag?: string): Script;
-    getPoolNftCodeWithLock(txid: string, vout: number, tag?: string): Script;
+    getPoolNftCode(txid: string, vout: number, lpPlan: 1 | 2, tag?: string): Script;
+    getPoolNftCodeWithLock(txid: string, vout: number, lpPlan: 1 | 2, tag?: string): Script;
     getFtlpCode(
       poolNftCodeHash: string,
       address: string,
