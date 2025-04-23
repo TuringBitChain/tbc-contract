@@ -235,6 +235,10 @@ class FT {
             script: tapeScript,
             satoshis: 0
         }));
+        if (tbc_amount) {
+            const amount_satoshis = Math.floor(tbc_amount * Math.pow(10, 6));
+            tx.to(address_to, amount_satoshis);
+        }
         // If there's change, add outputs for the change
         if (amountbn < tapeAmountSum) {
             const changeCodeScript = FT.buildFTtransferCode(code, address_from);
@@ -248,15 +252,6 @@ class FT {
                 script: changeTapeScript,
                 satoshis: 0
             }));
-        }
-        if (tbc_amount) {
-            const amount_satoshis = Math.floor(tbc_amount * Math.pow(10, 6));
-            tx.addOutput(
-                new tbc.Transaction.Output({
-                    script: tbc.Script.buildPublicKeyHashOut(address_to),
-                    satoshis: amount_satoshis,
-                })
-            );
         }
         tx.feePerKb(100)
         tx.change(address_from);
