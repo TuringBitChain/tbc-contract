@@ -46,7 +46,7 @@ async function main() {
             prepreTxDatas.push(await API.fetchFtPrePreTxData(preTXs[i], ftutxos[i].outputIndex, network));//获取每个ft输入的爷交易
         }
         const transferTX = Token.transfer(privateKeyA, addressA, transferTokenAmount, ftutxos, utxo, preTXs, prepreTxDatas);//组装交易
-        //const transferTX = Token.transfer(privateKeyA, addressA, transferTokenAmount, ftutxos, utxo, preTXs, prepreTxDatas，tbc_amount); 同时转ft和tbc交易
+        //const transferTX = Token.transfer(privateKeyA, addressA, transferTokenAmount, ftutxos, utxo, preTXs, prepreTxDatas, tbc_amount); 同时转ft和tbc交易
         await API.broadcastTXraw(transferTX, network);
 
         //Merge
