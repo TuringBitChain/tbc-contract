@@ -224,11 +224,12 @@ declare module "tbc-contract" {
     transfer(
       privateKey_from: PrivateKey,
       address_to: string,
-      amount: number,
+      ft_amount: number,
       ftutxo_a: Transaction.IUnspentOutput[],
       utxo: Transaction.IUnspentOutput,
       preTX: Transaction[],
-      prepreTxData: string[]
+      prepreTxData: string[],
+      tbc_amount?: number,
     ): string;
     transferWithAdditionalInfo(
       privateKey_from: PrivateKey,
@@ -313,8 +314,8 @@ declare module "tbc-contract" {
 
     constructor(config?: {
       txidOrParams?:
-        | string
-        | { ftContractTxid: string; tbc_amount: number; ft_a: number };
+      | string
+      | { ftContractTxid: string; tbc_amount: number; ft_a: number };
       network?: "testnet" | "mainnet";
     });
     initCreate(ftContractTxid?: string): Promise<void>;
