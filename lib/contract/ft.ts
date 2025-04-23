@@ -1,11 +1,11 @@
 import * as tbc from 'tbc-lib-js';
-import { 
-        getPreTxdata, 
-        getCurrentTxdata, 
-        getCurrentInputsdata, 
-        getContractTxdata, 
-        getSize 
-    } from '../util/ftunlock';
+import {
+    getPreTxdata,
+    getCurrentTxdata,
+    getCurrentInputsdata,
+    getContractTxdata,
+    getSize
+} from '../util/ftunlock';
 
 interface FtInfo {
     contractTxid?: string;
@@ -118,16 +118,16 @@ class FT {
         const publicKeyHash = tbc.Address.fromPrivateKey(privateKey).hashBuffer.toString('hex');
         const flagHex = Buffer.from('for ft mint', 'utf8').toString('hex');
         const txSource = new tbc.Transaction()//Build transcation
-        .from(utxo)
-        .addOutput(new tbc.Transaction.Output({
-            script: tbc.Script.fromASM(`OP_DUP OP_HASH160 ${publicKeyHash} OP_EQUALVERIFY OP_CHECKSIG OP_RETURN ${flagHex}`),
-            satoshis: 9900,
-        }))
-        .addOutput(new tbc.Transaction.Output({
-            script: tapeScript,
-            satoshis: 0
-        }))
-        .change(privateKey.toAddress());
+            .from(utxo)
+            .addOutput(new tbc.Transaction.Output({
+                script: tbc.Script.fromASM(`OP_DUP OP_HASH160 ${publicKeyHash} OP_EQUALVERIFY OP_CHECKSIG OP_RETURN ${flagHex}`),
+                satoshis: 9900,
+            }))
+            .addOutput(new tbc.Transaction.Output({
+                script: tapeScript,
+                satoshis: 0
+            }))
+            .change(privateKey.toAddress());
         const txSize = txSource.getEstimateSize();
         if (txSize < 1000) {
             txSource.fee(80);
@@ -135,7 +135,7 @@ class FT {
             txSource.feePerKb(100);
         }
         txSource.sign(privateKey)
-        .seal();
+            .seal();
         const txSourceRaw = txSource.uncheckedSerialize();//Generate txraw
 
         // Build the code script for minting
@@ -182,20 +182,20 @@ class FT {
      * @param amount - The amount to transfer.
      * @returns The raw transaction hex string.
      */
-    transfer(privateKey_from: tbc.PrivateKey, address_to: string, amount: number, ftutxo_a: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[]): string {
+    transfer(privateKey_from: tbc.PrivateKey, address_to: string, ft_amount: number, ftutxo_a: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[], tbc_amount?: number): string {
         const privateKey = privateKey_from;
         const address_from = privateKey.toAddress().toString();
         const code = this.codeScript;
         const tape = this.tapeScript;
         const decimal = this.decimal;
         const tapeAmountSetIn: bigint[] = [];
-        if (amount < 0) {
+        if (ft_amount < 0) {
             throw new Error('Invalid amount input');
         }
-        const amountbn = BigInt(Math.floor(amount * Math.pow(10, decimal)));
+        const amountbn = BigInt(Math.floor(ft_amount * Math.pow(10, decimal)));
         // Fetch FT UTXO for the transfer
         //const ftutxo_a = await this.fetchFtTXO(this.contractTxid, address_from, amountbn);
-        
+
         // Calculate the total available balance
         let tapeAmountSum = BigInt(0);
         for (let i = 0; i < ftutxo_a.length; i++) {
@@ -211,7 +211,7 @@ class FT {
             throw new Error('The maximum value for decimal cannot exceed 18');
         }
         const maxAmount = Math.floor(Math.pow(10, 18 - decimal));
-        if (amount > maxAmount) {
+        if (ft_amount > maxAmount) {
             throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
         }
         // Build the amount and change hex strings for the tape
@@ -249,6 +249,15 @@ class FT {
                 satoshis: 0
             }));
         }
+        if (tbc_amount) {
+            const amount_satoshis = Math.floor(tbc_amount * Math.pow(10, 6));
+            tx.addOutput(
+                new tbc.Transaction.Output({
+                    script: tbc.Script.buildPublicKeyHashOut(address_to),
+                    satoshis: amount_satoshis,
+                })
+            );
+        }
         tx.feePerKb(100)
         tx.change(address_from);
         // Set the input script asynchronously for the FT UTXO
@@ -279,7 +288,7 @@ class FT {
         const amountbn = BigInt(Math.floor(amount * Math.pow(10, decimal)));
         // Fetch FT UTXO for the transfer
         //const ftutxo_a = await this.fetchFtTXO(this.contractTxid, address_from, amountbn);
-        
+
         // Calculate the total available balance
         let tapeAmountSum = BigInt(0);
         for (let i = 0; i < ftutxo_a.length; i++) {

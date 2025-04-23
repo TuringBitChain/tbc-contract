@@ -34,7 +34,8 @@ async function main() {
         const Token = new FT('ae9107b33ba2ef5a4077396557915957942d2b25353e728f941561dfa0db5300');
         const TokenInfo = await API.fetchFtInfo(Token.contractTxid, network);//获取FT信息
         Token.initialize(TokenInfo);
-        const utxo = await API.fetchUTXO(privateKeyA, 0.01, network);//准备utxo
+        const tbc_amount = 0;  //如果同时转tbc和ft可设置此值,只转ft可忽略
+        const utxo = await API.fetchUTXO(privateKeyA, tbc_amount + 0.01, network);//准备utxo 不转tbc可忽略 tbc_amount
         const transferTokenAmountBN = BigInt(Math.ceil(transferTokenAmount * Math.pow(10, Token.decimal)));
         const ftutxo_codeScript = FT.buildFTtransferCode(Token.codeScript, addressA).toBuffer().toString('hex');
         const ftutxos = await API.fetchFtUTXOs(Token.contractTxid, addressA, ftutxo_codeScript, network, transferTokenAmountBN);//准备ft utxo
@@ -45,6 +46,7 @@ async function main() {
             prepreTxDatas.push(await API.fetchFtPrePreTxData(preTXs[i], ftutxos[i].outputIndex, network));//获取每个ft输入的爷交易
         }
         const transferTX = Token.transfer(privateKeyA, addressA, transferTokenAmount, ftutxos, utxo, preTXs, prepreTxDatas);//组装交易
+        //const transferTX = Token.transfer(privateKeyA, addressA, transferTokenAmount, ftutxos, utxo, preTXs, prepreTxDatas，tbc_amount); 同时转ft和tbc交易
         await API.broadcastTXraw(transferTX, network);
 
         //Merge
