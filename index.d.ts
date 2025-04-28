@@ -1,6 +1,8 @@
 import { PrivateKey, Transaction, Script } from "tbc-lib-js";
 declare module "tbc-contract" {
   export class API {
+    static setMainnetURL(url: string): void;
+    static setTestnetURL(url: string): void;
     static getTBCbalance(
       address: string,
       network?: "testnet" | "mainnet"
