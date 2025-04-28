@@ -57,6 +57,31 @@ interface FTUnspentOutput {
 }
 
 class API {
+  private static mainnetURL: string = 'https://turingwallet.xyz/v1/tbc/main/';
+  private static testnetURL: string = 'https://tbcdev.org/v1/tbc/main/';
+
+  /**
+   * Set the mainnet URL
+   * @param url The mainnet URL to use
+   */
+  static setMainnetURL(url: string): void {
+    if (!url.endsWith('/')) {
+      url += '/';
+    }
+    this.mainnetURL = url;
+  }
+
+  /**
+   * Set the testnet URL
+   * @param url The testnet URL to use
+   */
+  static setTestnetURL(url: string): void {
+    if (!url.endsWith('/')) {
+      url += '/';
+    }
+    this.testnetURL = url;
+  }
+
   /**
    * Get the base URL for the specified network.
    *
@@ -64,10 +89,7 @@ class API {
    * @returns {string} The base URL for the specified network.
    */
   private static getBaseURL(network: "testnet" | "mainnet"): string {
-    const url_testnet = `https://tbcdev.org/v1/tbc/main/`;
-    const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/`;
-    const base_url = network == "testnet" ? url_testnet : url_mainnet;
-    return base_url;
+    return network === "testnet" ? this.testnetURL : this.mainnetURL;
   }
 
   /**
