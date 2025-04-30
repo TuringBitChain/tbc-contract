@@ -549,17 +549,27 @@ declare module "tbc-contract" {
       toAddress: string,
       amount_tbc: number,
       utxos: Transaction.IUnspentOutput[]
-    ): MultiSigTxRaw;
+    ): MultiSigTxRaw | MultiSigTxRaw[];
     static signMultiSigTransaction_sendTBC(
       address_from: string,
       multiSigTxraw: MultiSigTxRaw,
       privateKey: PrivateKey
     ): string[];
+    static batchSignMultiSigTransaction_sendTBC(
+      address_from: string,
+      multiSigTxraws: MultiSigTxRaw[],
+      privateKey: PrivateKey
+    ): string[][];
     static finishMultiSigTransaction_sendTBC(
       txraw: string,
       sigs: string[][],
       pubKeys: string[]
     ): string;
+    static batchFinishMultiSigTransaction_sendTBC(
+      txraws: string[],
+      sigs: string[][][],
+      pubKeys: string[]
+    ): string[];
     static p2pkhToMultiSig_transferFT(
       address_from: string,
       address_to: string,
@@ -583,18 +593,27 @@ declare module "tbc-contract" {
       prepreTxDatas: string[],
       contractTX: Transaction,
       privateKey: PrivateKey,
-      tbc_amount?: number
     ): MultiSigTxRaw;
     static signMultiSigTransaction_transferFT(
       address_from: string,
       multiSigTxraw: MultiSigTxRaw,
       privateKey: PrivateKey
     ): string[];
+    static batchSignMultiSigTransaction_transferFT(
+      multiSig_address: string,
+      multiSigTxraws: MultiSigTxRaw[],
+      privateKey: PrivateKey
+    ): string[][];
     static finishMultiSigTransaction_transferFT(
       txraw: string,
       sigs: string[][],
       pubKeys: string[]
     ): string;
+    static batchFinishMultiSigTransaction_transferFT(
+      txraws: string[],
+      sigs: string[][][],
+      pubKeys: string[]
+    ): string[];
     static getMultiSigAddress(
       pubKeys: string[],
       signatureCount: number,
