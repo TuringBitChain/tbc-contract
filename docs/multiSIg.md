@@ -26,7 +26,7 @@ const const amount_tbc = 10//转移的tbc数量
 const script_asm = contract.MultiSig.getMultiSigLockScript(multiSigAddress);
 const umtxos = await contract.API.getUMTXOs(script_asm, amount_tbc+0.001, network);
 //多签转普通地址
-const multiTxraw = contract.MultiSig.buildMultiSigTransaction_sendTBC(multiSigAddress, address_to, amount_tbc, umtxos);
+const multiTxraw = contract.MultiSig.buildMultiSigTransaction_sendTBCToP2pkh(multiSigAddress, address_to, amount_tbc, umtxos);
 const sig1 = contract.MultiSig.signMultiSigTransaction_sendTBC(multiSigAddress, multiTxraw, privateKeyA);
 const sig2 = contract.MultiSig.signMultiSigTransaction_sendTBC(multiSigAddress, multiTxraw, privateKeyB);
 const sig3 = contract.MultiSig.signMultiSigTransaction_sendTBC(multiSigAddress, multiTxraw, privateKeyC);
@@ -37,7 +37,7 @@ for (let i = 0; i < sig1.length; i++) {
 const txraw =contract.MultiSig.finishMultiSigTransaction_sendTBC(multiTxraw.txraw, sigs, pubKeys);
 await contract.API.broadcastTXraw(txraw, network);
 //多签转多签地址
-const multiTxraws = contract.MultiSig.buildMultiSigTransaction_sendTBC(multiSigAddress, address_to, amount_tbc, umtxos);
+const multiTxraws = contract.MultiSig.buildMultiSigTransaction_sendTBCToMultisig(multiSigAddress, address_to, amount_tbc, umtxos);
 const sig1 = contract.MultiSig.signMultiSigTransaction_sendTBC(multiSigAddress, multiTxraws[0], privateKeyA);
 const sig2 = contract.MultiSig.signMultiSigTransaction_sendTBC(multiSigAddress, multiTxraws[0], privateKeyB);
 const sig3 = contract.MultiSig.signMultiSigTransaction_sendTBC(multiSigAddress, multiTxraws[0], privateKeyC);
