@@ -544,12 +544,18 @@ declare module "tbc-contract" {
       utxos: Transaction.IUnspentOutput[],
       privateKey: PrivateKey
     ): string;
-    static buildMultiSigTransaction_sendTBC(
+    static buildMultiSigTransaction_sendTBCToP2pkh(
       address_from: string,
-      toAddress: string,
+      address_to: string,
       amount_tbc: number,
       utxos: Transaction.IUnspentOutput[]
-    ): MultiSigTxRaw | MultiSigTxRaw[];
+    ): MultiSigTxRaw;
+    static buildMultiSigTransaction_sendTBCToMultiSig(
+      address_from: string,
+      address_to: string,
+      amount_tbc: number,
+      utxos: Transaction.IUnspentOutput[]
+    ): MultiSigTxRaw[];
     static signMultiSigTransaction_sendTBC(
       address_from: string,
       multiSigTxraw: MultiSigTxRaw,
