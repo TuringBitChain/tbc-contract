@@ -1,13 +1,13 @@
 {
   "name": "tbc-contract",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "main": "index.js",
   "types": "index.d.ts",
   "author": "Edmund <makinishikino4eva@gmail.com>",
   "repository": "https://github.com/TuringBitChain/tbc-contract.git",
   "dependencies": {
-    "@types/node": "^22.10.1",
-    "tbc-lib-js": "^1.0.26"
+    "@types/node": "22.10.1",
+    "tbc-lib-js": "1.0.27"
   },
   "license": "OpenTBC",
   "description": "A TBC smart contract SDK."
