@@ -5,25 +5,6 @@ To get started, install the library using the following command:
 ```shell
 npm i tbc-contract
 ```
-
-## Configuration
-
-You can customize the mainnet and testnet URLs:
-
-```ts
-import { API } from "tbc-contract"
-
-// Set custom mainnet URL
-API.setMainnetURL('https://your-custom-url.com/');
-
-// Set custom testnet URL
-API.setTestnetURL('https://your-custom-testnet-url.com/');
-```
-
-By default, the URLs are:
-- Mainnet: `https://turingwallet.xyz/v1/tbc/main/`
-- Testnet: `https://tbcdev.org/v1/tbc/main/`
-
 ## Build Transcation
 
 ```ts

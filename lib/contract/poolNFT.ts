@@ -42,9 +42,9 @@ class poolNFT {
     contractTxid: string;
     private ft_a_number: number;
     private precision = BigInt(1000000);
-    network: "testnet" | "mainnet"
+    network: "testnet" | "mainnet" | string
 
-    constructor(config?: { txidOrParams?: string | { ftContractTxid: string, tbc_amount: number, ft_a: number }, network?: "testnet" | "mainnet" }) {
+    constructor(config?: { txidOrParams?: string | { ftContractTxid: string, tbc_amount: number, ft_a: number }, network?: "testnet" | "mainnet" | string }) {
         this.ft_lp_amount = BigInt(0);
         this.ft_a_amount = BigInt(0);
         this.tbc_amount = BigInt(0);
@@ -115,12 +115,12 @@ class poolNFT {
         const publicKeyHash = tbc.Address.fromPrivateKey(privateKey).hashBuffer.toString('hex');
         const flagHex = Buffer.from('for poolnft mint', 'utf8').toString('hex');
         const txSource = new tbc.Transaction()//Build transcation
-        .from(utxo)
-        .addOutput(new tbc.Transaction.Output({
-            script: tbc.Script.fromASM(`OP_DUP OP_HASH160 ${publicKeyHash} OP_EQUALVERIFY OP_CHECKSIG OP_RETURN ${flagHex}`),
-            satoshis: 9800,
-        }))
-        .change(privateKey.toAddress())
+            .from(utxo)
+            .addOutput(new tbc.Transaction.Output({
+                script: tbc.Script.fromASM(`OP_DUP OP_HASH160 ${publicKeyHash} OP_EQUALVERIFY OP_CHECKSIG OP_RETURN ${flagHex}`),
+                satoshis: 9800,
+            }))
+            .change(privateKey.toAddress())
         const txSize = txSource.getEstimateSize();
         if (txSize < 1000) {
             txSource.fee(80);
@@ -128,7 +128,7 @@ class poolNFT {
             txSource.feePerKb(100);
         }
         txSource.sign(privateKey)
-        .seal();
+            .seal();
         const txSourceRaw = txSource.uncheckedSerialize();//Generate txraw
 
         const FTA = new FT(this.ft_a_contractTxid);
@@ -200,12 +200,12 @@ class poolNFT {
         const publicKeyHash = tbc.Address.fromPrivateKey(privateKey).hashBuffer.toString('hex');
         const flagHex = Buffer.from('for poolnft mint', 'utf8').toString('hex');
         const txSource = new tbc.Transaction()//Build transcation
-        .from(utxo)
-        .addOutput(new tbc.Transaction.Output({
-            script: tbc.Script.fromASM(`OP_DUP OP_HASH160 ${publicKeyHash} OP_EQUALVERIFY OP_CHECKSIG OP_RETURN ${flagHex}`),
-            satoshis: 9800,
-        }))
-        .change(privateKey.toAddress())
+            .from(utxo)
+            .addOutput(new tbc.Transaction.Output({
+                script: tbc.Script.fromASM(`OP_DUP OP_HASH160 ${publicKeyHash} OP_EQUALVERIFY OP_CHECKSIG OP_RETURN ${flagHex}`),
+                satoshis: 9800,
+            }))
+            .change(privateKey.toAddress())
         const txSize = txSource.getEstimateSize();
         if (txSize < 1000) {
             txSource.fee(80);
@@ -213,7 +213,7 @@ class poolNFT {
             txSource.feePerKb(100);
         }
         txSource.sign(privateKey)
-        .seal();
+            .seal();
         const txSourceRaw = txSource.uncheckedSerialize();//Generate txraw
 
         const FTA = new FT(this.ft_a_contractTxid);
@@ -1363,7 +1363,14 @@ class poolNFT {
     async fetchPoolNFTInfo(contractTxid: string): Promise<PoolNFTInfo> {
         const url_testnet = `https://tbcdev.org/v1/tbc/main/ft/pool/nft/info/contract/id/${contractTxid}`;
         const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/pool/nft/info/contract/id/${contractTxid}`;
-        let url = this.network == "testnet" ? url_testnet : url_mainnet;
+        let url = "";
+        if (this.network == "testnet") {
+            url = url_testnet;
+        } else if (this.network == "mainnet") {
+            url = url_mainnet;
+        } else {
+            url = this.network.endsWith('/') ? this.network : (this.network + '/') + 'ft/pool/nft/info/contract/id/' + contractTxid;
+        }
         try {
             const response = await (await fetch(url)).json();
             let data = response;
@@ -1442,7 +1449,14 @@ class poolNFT {
         const ftlpHash = tbc.crypto.Hash.sha256(Buffer.from(ftlpCode, 'hex')).reverse().toString('hex');
         const url_testnet = `https://tbcdev.org/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpHash}`;
         const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpHash}`;
-        let url = this.network == "testnet" ? url_testnet : url_mainnet;
+        let url = "";
+        if (this.network == "testnet") {
+            url = url_testnet;
+        } else if (this.network == "mainnet") {
+            url = url_mainnet;
+        } else {
+            url = this.network.endsWith('/') ? this.network : (this.network + '/') + 'ft/lp/unspent/by/script/hash' + ftlpHash;
+        }
         try {
             const response = await (await fetch(url)).json();
             let data = response.ftUtxoList[0];
@@ -1506,7 +1520,14 @@ class poolNFT {
         const ftlpCodeHash = tbc.crypto.Hash.sha256(ftlpCodeScript.toBuffer()).reverse().toString('hex');
         const url_testnet = `https://tbcdev.org/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpCodeHash}`;
         const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpCodeHash}`;
-        let url = this.network == "testnet" ? url_testnet : url_mainnet;
+        let url = "";
+        if (this.network == "testnet") {
+            url = url_testnet;
+        } else if (this.network == "mainnet") {
+            url = url_mainnet;
+        } else {
+            url = this.network.endsWith('/') ? this.network : (this.network + '/') + 'ft/lp/unspent/by/script/hash' + ftlpCodeHash;
+        }
         const fttxo_codeScript = ftlpCodeScript.toBuffer().toString('hex');
         try {
             const response = await (await fetch(url)).json();
@@ -1576,7 +1597,7 @@ class poolNFT {
             // await this.mergeFTLP(privateKey);
             return txraw;
         } catch (error: any) {
-            throw new Error("Merge Faild!."+ error.message);
+            throw new Error("Merge Faild!." + error.message);
         }
     }
 
@@ -1611,7 +1632,14 @@ class poolNFT {
         const contractTxid = this.ft_a_contractTxid;
         const url_testnet = `https://tbcdev.org/v1/tbc/main/ft/utxo/combine/script/${hash}/contract/${contractTxid}`;
         const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/utxo/combine/script/${hash}/contract/${contractTxid}`;
-        let url = this.network == "testnet" ? url_testnet : url_mainnet;
+        let url = "";
+        if (this.network == "testnet") {
+            url = url_testnet;
+        } else if (this.network == "mainnet") {
+            url = url_mainnet;
+        } else {
+            url = this.network.endsWith('/') ? this.network : (this.network + '/') + 'ft/utxo/combine/script/' + hash + '/contract/' + contractTxid;
+        }
         const fttxo_codeScript = FT.buildFTtransferCode(FTA.codeScript, poolnft_codehash160).toBuffer().toString('hex');
         try {
             const response = await (await fetch(url)).json();
