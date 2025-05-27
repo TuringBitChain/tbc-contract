@@ -1,44 +1,42 @@
 import { PrivateKey, Transaction, Script } from "tbc-lib-js";
 declare module "tbc-contract" {
   export class API {
-    static setMainnetURL(url: string): void;
-    static setTestnetURL(url: string): void;
     static getTBCbalance(
       address: string,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<number>;
     static fetchUTXO(
       privateKey: PrivateKey,
       amount: number,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<Transaction.IUnspentOutput>;
     static mergeUTXO(
       privateKey: PrivateKey,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<boolean>;
     static getFTbalance(
       contractTxid: string,
       addressOrHash: string,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<bigint>;
     static fetchFtUTXOList(
       contractTxid: string,
       addressOrHash: string,
       codeScript: string,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<Transaction.IUnspentOutput[]>;
     static fetchFtUTXO(
       contractTxid: string,
       addressOrHash: string,
       amount: bigint,
       codeScript: string,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<Transaction.IUnspentOutput>;
     static fetchFtUTXOs(
       contractTxid: string,
       addressOrHash: string,
       codeScript: string,
-      network?: "testnet" | "mainnet",
+      network?: "testnet" | "mainnet" | string,
       amount?: bigint
     ): Promise<Transaction.IUnspentOutput[]>;
     static fetchFtUTXOsforPool(
@@ -47,90 +45,90 @@ declare module "tbc-contract" {
       amount: bigint,
       number: number,
       codeScript: string,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<Transaction.IUnspentOutput[]>;
     static fetchFtInfo(
       contractTxid: string,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<FtInfo>;
     static fetchFtPrePreTxData(
       preTX: Transaction,
       preTxVout: number,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<string>;
     static fetchPoolNftInfo(
       contractTxid: string,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<PoolNFTInfo>;
     static fetchPoolNftUTXO(
       contractTxid: string,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<Transaction.IUnspentOutput>;
     static fetchFtlpBalance(
       ftlpCode: string,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<bigint>;
     static fetchFtlpUTXO(
       ftlpCode: string,
       amount: bigint,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<Transaction.IUnspentOutput>;
     static fetchTXraw(
       txid: string,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<Transaction>;
     static broadcastTXraw(
       txraw: string,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<string>;
     static broadcastTXsraw(
       txrawList: Array<{ txHex: string }>,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<string>;
     static fetchUTXOs(
       address: string,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<Transaction.IUnspentOutput[]>;
     static getUTXOs(
       address: string,
       amount_tbc: number,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<Transaction.IUnspentOutput[]>;
     static fetchNFTTXO(params: {
       script: string;
       tx_hash?: string;
-      network?: "testnet" | "mainnet";
+      network?: "testnet" | "mainnet" | string;
     }): Promise<Transaction.IUnspentOutput>;
     static fetchNFTInfo(
       contract_id: string,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<NFTInfo>;
     static fetchUMTXO(
       script_asm: string,
       tbc_amount: number,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<Transaction.IUnspentOutput>;
     static fetchUMTXOs(
       script_asm: string,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<Transaction.IUnspentOutput[]>;
     static getUMTXOs(
       script_asm: string,
       amount_tbc: number,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<Transaction.IUnspentOutput[]>;
     static fetchFtUTXOS_multiSig(
       contractTxid: string,
       addressOrHash: string,
       codeScript: string,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<Transaction.IUnspentOutput[]>;
     static getFtUTXOS_multiSig(
       contractTxid: string,
       addressOrHash: string,
       codeScript: string,
       amount: bigint,
-      network?: "testnet" | "mainnet"
+      network?: "testnet" | "mainnet" | string
     ): Promise<Transaction.IUnspentOutput[]>;
   }
 
@@ -231,7 +229,7 @@ declare module "tbc-contract" {
       utxo: Transaction.IUnspentOutput,
       preTX: Transaction[],
       prepreTxData: string[],
-      tbc_amount?: number
+      tbc_amount?: number,
     ): string;
     transferWithAdditionalInfo(
       privateKey_from: PrivateKey,
@@ -243,22 +241,13 @@ declare module "tbc-contract" {
       prepreTxData: string[],
       additionalInfo: Buffer
     ): string;
-    batchTransfer(
-      privateKey_from: tbc.PrivateKey,
-      receiveAddressAmount: Map<string, number>,
-      ftutxo: tbc.Transaction.IUnspentOutput[],
-      utxo: tbc.Transaction.IUnspentOutput,
-      preTX: tbc.Transaction[],
-      prepreTxData: string[]
-    ): Array<{ txHex: string }>;
     mergeFT(
-      privateKey_from: tbc.PrivateKey,
-      ftutxo: tbc.Transaction.IUnspentOutput[],
-      utxo: tbc.Transaction.IUnspentOutput,
-      preTX: tbc.Transaction[],
-      prepreTxData: string[],
-      times?: number
-    ): Array<{ txHex: string }>;
+      privateKey_from: PrivateKey,
+      ftutxo: Transaction.IUnspentOutput[],
+      utxo: Transaction.IUnspentOutput,
+      preTX: Transaction[],
+      prepreTxData: string[]
+    ): string | true;
     getFTunlock(
       privateKey_from: PrivateKey,
       currentTX: Transaction,
@@ -321,13 +310,13 @@ declare module "tbc-contract" {
     poolnft_code: string;
     contractTxid: string;
     private ft_a_number: number;
-    network: "testnet" | "mainnet";
+    network: "testnet" | "mainnet" | string;
 
     constructor(config?: {
       txidOrParams?:
-        | string
-        | { ftContractTxid: string; tbc_amount: number; ft_a: number };
-      network?: "testnet" | "mainnet";
+      | string
+      | { ftContractTxid: string; tbc_amount: number; ft_a: number };
+      network?: "testnet" | "mainnet" | string;
     });
     initCreate(ftContractTxid?: string): Promise<void>;
     initfromContractId(): Promise<void>;
@@ -428,10 +417,10 @@ declare module "tbc-contract" {
     ft_a_contractTxid: string;
     poolnft_code: string;
     contractTxid: string;
-    network: "testnet" | "mainnet";
+    network: "testnet" | "mainnet" | string;
     service_fee_rate: number;
 
-    constructor(config?: { txid?: string; network?: "testnet" | "mainnet" });
+    constructor(config?: { txid?: string; network?: "testnet" | "mainnet" | string });
     initCreate(ftContractTxid: string): void;
     initfromContractId(): Promise<void>;
     createPoolNFT(
@@ -522,18 +511,8 @@ declare module "tbc-contract" {
       option: 1 | 2 | 3 | 4,
       swapOption?: 1 | 2
     ): Promise<Script>;
-    getPoolNftCode(
-      txid: string,
-      vout: number,
-      lpPlan: 1 | 2,
-      tag?: string
-    ): Script;
-    getPoolNftCodeWithLock(
-      txid: string,
-      vout: number,
-      lpPlan: 1 | 2,
-      tag?: string
-    ): Script;
+    getPoolNftCode(txid: string, vout: number, lpPlan: 1 | 2, tag?: string): Script;
+    getPoolNftCodeWithLock(txid: string, vout: number, lpPlan: 1 | 2, tag?: string): Script;
     getFtlpCode(
       poolNftCodeHash: string,
       address: string,
@@ -617,7 +596,7 @@ declare module "tbc-contract" {
       preTXs: Transaction[],
       prepreTxDatas: string[],
       contractTX: Transaction,
-      privateKey: PrivateKey
+      privateKey: PrivateKey,
     ): MultiSigTxRaw;
     static signMultiSigTransaction_transferFT(
       address_from: string,
