@@ -455,8 +455,8 @@ class FT {
         tx.seal();
         const txraw = tx.uncheckedSerialize();
         txsraw.push({txHex: txraw});
-        console.log(tx.toObject());
-        console.log(tx.verify());
+        // console.log(tx.toObject());
+        // console.log(tx.verify());
         return tx;
     }
 
