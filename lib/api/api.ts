@@ -1,11 +1,7 @@
 import * as tbc from "tbc-lib-js";
 import { getPrePreTxdata } from "../util/ftunlock";
 import {
-  findMinFiveSum,
-  findMinFourSum,
-  findMinThreeSum,
-  findMinTwoSum,
-  initialUtxoArray,
+  findMinFiveSum
 } from "../util/utxoSelect";
 
 interface NFTInfo {
@@ -914,32 +910,20 @@ class API {
       } else {
         utxos = await this.fetchUTXOs(address);
       }
-      utxos.sort((a, b) => a.satoshis - b.satoshis);
+
       const amount_satoshis = amount_tbc * Math.pow(10, 6);
-      const closestUTXO = utxos.find(
-        (utxo) => utxo.satoshis >= amount_satoshis + 100000
-      );
-      if (closestUTXO) {
-        return [closestUTXO];
-      }
 
       let totalAmount = 0;
-      const selectedUTXOs: tbc.Transaction.IUnspentOutput[] = [];
 
       for (const utxo of utxos) {
         totalAmount += utxo.satoshis;
-        selectedUTXOs.push(utxo);
-
-        if (totalAmount >= amount_satoshis) {
-          break;
-        }
       }
 
       if (totalAmount < amount_satoshis) {
         throw new Error("Insufficient tbc balance");
       }
 
-      return selectedUTXOs;
+      return utxos;
     } catch (error: any) {
       throw new Error(error.message);
     }
@@ -1204,32 +1188,19 @@ class API {
       } else {
         umtxos = await this.fetchUMTXOs(script_asm);
       }
-      umtxos.sort((a, b) => a.satoshis - b.satoshis);
       const amount_satoshis = amount_tbc * Math.pow(10, 6);
-      const closestUMTXO = umtxos.find(
-        (umtxo) => umtxo.satoshis >= amount_satoshis + 100000
-      );
-      if (closestUMTXO) {
-        return [closestUMTXO];
-      }
 
       let totalSatoshis = 0;
-      let selectedUMTXOs: tbc.Transaction.IUnspentOutput[] = [];
 
       for (const umtxo of umtxos) {
         totalSatoshis += umtxo.satoshis;
-        selectedUMTXOs.push(umtxo);
-
-        if (totalSatoshis >= amount_satoshis) {
-          break;
-        }
       }
 
       if (totalSatoshis < amount_satoshis) {
         throw new Error("Insufficient tbc balance");
       }
 
-      return selectedUMTXOs;
+      return umtxos;
     } catch (error: any) {
       throw new Error(error.message);
     }
@@ -1378,185 +1349,27 @@ class API {
       const ftBalanceArray: bigint[] = ftutxos.map((item) =>
         BigInt(item.ftBalance)
       );
-      switch (ftBalanceArray.length) {
-        case 1:
-          if (ftBalanceArray[0] >= amount) {
-            return [ftutxos[0]];
-          } else {
-            throw new Error("Insufficient FT balance");
-          }
-        case 2:
-          if (ftBalanceArray[0] + ftBalanceArray[1] < amount) {
-            throw new Error("Insufficient FT balance");
-          } else if (ftBalanceArray[0] >= amount) {
-            return [ftutxos[0]];
-          } else if (ftBalanceArray[1] >= amount) {
-            return [ftutxos[1]];
-          } else {
-            return [ftutxos[0], ftutxos[1]];
-          }
-        case 3:
-          if (
-            ftBalanceArray[0] + ftBalanceArray[1] + ftBalanceArray[2] <
-            amount
-          ) {
-            throw new Error("Insufficient FT balance");
-          } else if (findMinTwoSum(ftBalanceArray, amount)) {
-            const result = findMinTwoSum(ftBalanceArray, amount);
-            if (ftBalanceArray[result[0]] >= amount) {
-              return [ftutxos[result[0]]];
-            } else if (ftBalanceArray[result[1]] >= amount) {
-              return [ftutxos[result[1]]];
-            } else {
-              return [ftutxos[result[0]], ftutxos[result[1]]];
-            }
-          } else {
-            return [ftutxos[0], ftutxos[1], ftutxos[2]];
-          }
-        case 4:
-          if (
-            ftBalanceArray[0] +
-            ftBalanceArray[1] +
-            ftBalanceArray[2] +
-            ftBalanceArray[3] <
-            amount
-          ) {
-            throw new Error("Insufficient FT balance");
-          } else if (findMinThreeSum(ftBalanceArray, amount)) {
-            const result_three = findMinThreeSum(ftBalanceArray, amount);
-            const ftBalanceArray_three = initialUtxoArray(
-              ftBalanceArray,
-              result_three
-            );
-            if (findMinTwoSum(ftBalanceArray_three, amount)) {
-              const result_two = findMinTwoSum(ftBalanceArray_three, amount);
-              if (ftBalanceArray[result_two[0]] >= amount) {
-                return [ftutxos[result_two[0]]];
-              } else if (ftBalanceArray[result_two[1]] >= amount) {
-                return [ftutxos[result_two[1]]];
-              } else {
-                return [ftutxos[result_two[0]], ftutxos[result_two[1]]];
-              }
-            } else {
-              return [
-                ftutxos[result_three[0]],
-                ftutxos[result_three[1]],
-                ftutxos[result_three[2]],
-              ];
-            }
-          } else {
-            return [ftutxos[0], ftutxos[1], ftutxos[2], ftutxos[3]];
-          }
-        case 5:
-          if (
-            ftBalanceArray[0] +
-            ftBalanceArray[1] +
-            ftBalanceArray[2] +
-            ftBalanceArray[3] +
-            ftBalanceArray[4] <
-            amount
-          ) {
-            throw new Error("Insufficient FT balance");
-          } else if (findMinFourSum(ftBalanceArray, amount)) {
-            const result_four = findMinFourSum(ftBalanceArray, amount);
-            const ftBalanceArray_four = initialUtxoArray(
-              ftBalanceArray,
-              result_four
-            );
-            if (findMinThreeSum(ftBalanceArray_four, amount)) {
-              const result_three = findMinThreeSum(ftBalanceArray_four, amount);
-              const ftBalanceArray_three = initialUtxoArray(
-                ftBalanceArray,
-                result_three
-              );
-              if (findMinTwoSum(ftBalanceArray_three, amount)) {
-                const result_two = findMinTwoSum(ftBalanceArray_three, amount);
-                if (ftBalanceArray[result_two[0]] >= amount) {
-                  return [ftutxos[result_two[0]]];
-                } else if (ftBalanceArray[result_two[1]] >= amount) {
-                  return [ftutxos[result_two[1]]];
-                } else {
-                  return [ftutxos[result_two[0]], ftutxos[result_two[1]]];
-                }
-              } else {
-                return [
-                  ftutxos[result_three[0]],
-                  ftutxos[result_three[1]],
-                  ftutxos[result_three[2]],
-                ];
-              }
-            } else {
-              return [
-                ftutxos[result_four[0]],
-                ftutxos[result_four[1]],
-                ftutxos[result_four[2]],
-                ftutxos[result_four[3]],
-              ];
-            }
-          } else {
-            return [ftutxos[0], ftutxos[1], ftutxos[2], ftutxos[3], ftutxos[4]];
-          }
-        default:
-          if (findMinFiveSum(ftBalanceArray, amount)) {
-            const result_five = findMinFiveSum(ftBalanceArray, amount);
-            const ftBalanceArray_five = initialUtxoArray(
-              ftBalanceArray,
-              result_five
-            );
-            if (findMinFourSum(ftBalanceArray_five, amount)) {
-              const result_four = findMinFourSum(ftBalanceArray_five, amount);
-              const ftBalanceArray_four = initialUtxoArray(
-                ftBalanceArray,
-                result_four
-              );
-              if (findMinThreeSum(ftBalanceArray_four, amount)) {
-                const result_three = findMinThreeSum(
-                  ftBalanceArray_four,
-                  amount
-                );
-                const ftBalanceArray_three = initialUtxoArray(
-                  ftBalanceArray,
-                  result_three
-                );
-                if (findMinTwoSum(ftBalanceArray_three, amount)) {
-                  const result_two = findMinTwoSum(
-                    ftBalanceArray_three,
-                    amount
-                  );
-                  if (ftBalanceArray[result_two[0]] >= amount) {
-                    return [ftutxos[result_two[0]]];
-                  } else if (ftBalanceArray[result_two[1]] >= amount) {
-                    return [ftutxos[result_two[1]]];
-                  } else {
-                    return [ftutxos[result_two[0]], ftutxos[result_two[1]]];
-                  }
-                } else {
-                  return [
-                    ftutxos[result_three[0]],
-                    ftutxos[result_three[1]],
-                    ftutxos[result_three[2]],
-                  ];
-                }
-              } else {
-                return [
-                  ftutxos[result_four[0]],
-                  ftutxos[result_four[1]],
-                  ftutxos[result_four[2]],
-                  ftutxos[result_four[3]],
-                ];
-              }
-            } else {
-              return [
-                ftutxos[result_five[0]],
-                ftutxos[result_five[1]],
-                ftutxos[result_five[2]],
-                ftutxos[result_five[3]],
-                ftutxos[result_five[4]],
-              ];
-            }
-          } else {
-            throw new Error("Insufficient FT balance");
-          }
+
+      const totalBalance = ftBalanceArray.reduce((sum, balance) => sum + balance, 0n);
+      if (totalBalance < amount) {
+        throw new Error("Insufficient FT balance");
+      }
+
+      if (ftutxos.length <= 5) {
+        return ftutxos;
+      }
+
+      const result_five = findMinFiveSum(ftBalanceArray, amount);
+      if (result_five) {
+        return [
+          ftutxos[result_five[0]],
+          ftutxos[result_five[1]],
+          ftutxos[result_five[2]],
+          ftutxos[result_five[3]],
+          ftutxos[result_five[4]],
+        ];
+      } else {
+        throw new Error("Please merge MultiSig UTXO");
       }
     } catch (error: any) {
       throw new Error(error.message);
