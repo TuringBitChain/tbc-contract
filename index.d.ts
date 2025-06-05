@@ -229,7 +229,7 @@ declare module "tbc-contract" {
       utxo: Transaction.IUnspentOutput,
       preTX: Transaction[],
       prepreTxData: string[],
-      tbc_amount?: number,
+      tbc_amount?: number
     ): string;
     transferWithAdditionalInfo(
       privateKey_from: PrivateKey,
@@ -241,13 +241,22 @@ declare module "tbc-contract" {
       prepreTxData: string[],
       additionalInfo: Buffer
     ): string;
-    mergeFT(
-      privateKey_from: PrivateKey,
-      ftutxo: Transaction.IUnspentOutput[],
-      utxo: Transaction.IUnspentOutput,
-      preTX: Transaction[],
+    batchTransfer(
+      privateKey_from: tbc.PrivateKey,
+      receiveAddressAmount: Map<string, number>,
+      ftutxo: tbc.Transaction.IUnspentOutput[],
+      utxo: tbc.Transaction.IUnspentOutput,
+      preTX: tbc.Transaction[],
       prepreTxData: string[]
-    ): string | true;
+    ): Array<{ txHex: string }>;
+    mergeFT(
+      privateKey_from: tbc.PrivateKey,
+      ftutxo: tbc.Transaction.IUnspentOutput[],
+      utxo: tbc.Transaction.IUnspentOutput,
+      preTX: tbc.Transaction[],
+      prepreTxData: string[],
+      times?: number
+    ): Array<{ txHex: string }>;
     getFTunlock(
       privateKey_from: PrivateKey,
       currentTX: Transaction,
@@ -317,8 +326,8 @@ declare module "tbc-contract" {
 
     constructor(config?: {
       txidOrParams?:
-      | string
-      | { ftContractTxid: string; tbc_amount: number; ft_a: number };
+        | string
+        | { ftContractTxid: string; tbc_amount: number; ft_a: number };
       network?: "testnet" | "mainnet" | string;
     });
     initCreate(ftContractTxid?: string): Promise<void>;
@@ -423,7 +432,10 @@ declare module "tbc-contract" {
     network: "testnet" | "mainnet" | string;
     service_fee_rate: number;
 
-    constructor(config?: { txid?: string; network?: "testnet" | "mainnet" | string });
+    constructor(config?: {
+      txid?: string;
+      network?: "testnet" | "mainnet" | string;
+    });
     initCreate(ftContractTxid: string): void;
     initfromContractId(): Promise<void>;
     createPoolNFT(
@@ -514,8 +526,18 @@ declare module "tbc-contract" {
       option: 1 | 2 | 3 | 4,
       swapOption?: 1 | 2
     ): Promise<Script>;
-    getPoolNftCode(txid: string, vout: number, lpPlan: 1 | 2, tag?: string): Script;
-    getPoolNftCodeWithLock(txid: string, vout: number, lpPlan: 1 | 2, tag?: string): Script;
+    getPoolNftCode(
+      txid: string,
+      vout: number,
+      lpPlan: 1 | 2,
+      tag?: string
+    ): Script;
+    getPoolNftCodeWithLock(
+      txid: string,
+      vout: number,
+      lpPlan: 1 | 2,
+      tag?: string
+    ): Script;
     getFtlpCode(
       poolNftCodeHash: string,
       address: string,
@@ -599,7 +621,7 @@ declare module "tbc-contract" {
       preTXs: Transaction[],
       prepreTxDatas: string[],
       contractTX: Transaction,
-      privateKey: PrivateKey,
+      privateKey: PrivateKey
     ): MultiSigTxRaw;
     static signMultiSigTransaction_transferFT(
       address_from: string,
