@@ -1,6 +1,7 @@
 import * as tbc from 'tbc-lib-js';
 import {
     getPreTxdata,
+    getPrePreTxdata,
     getCurrentTxdata,
     getCurrentInputsdata,
     getContractTxdata,
@@ -112,7 +113,6 @@ class FT {
 
         // Build the tape script
         const tapeScript = tbc.Script.fromASM(`OP_FALSE OP_RETURN ${tapeAmount} ${decimalHex} ${nameHex} ${symbolHex} 4654617065`);
-        //console.log('tape:', tape.toBuffer().toString('hex'));
         const tapeSize = tapeScript.toBuffer().length;
 
         const publicKeyHash = tbc.Address.fromPrivateKey(privateKey).hashBuffer.toString('hex');
@@ -132,7 +132,7 @@ class FT {
         if (txSize < 1000) {
             txSource.fee(80);
         } else {
-            txSource.feePerKb(100);
+            txSource.feePerKb(80);
         }
         txSource.sign(privateKey)
             .seal();
@@ -155,7 +155,7 @@ class FT {
                 script: tapeScript,
                 satoshis: 0
             }))
-            .feePerKb(100)
+            .feePerKb(80)
             .change(privateKey.toAddress())
             .setInputScript({
                 inputIndex: 0,
@@ -193,8 +193,6 @@ class FT {
             throw new Error('Invalid amount input');
         }
         const amountbn = BigInt(Math.floor(ft_amount * Math.pow(10, decimal)));
-        // Fetch FT UTXO for the transfer
-        //const ftutxo_a = await this.fetchFtTXO(this.contractTxid, address_from, amountbn);
 
         // Calculate the total available balance
         let tapeAmountSum = BigInt(0);
@@ -216,8 +214,6 @@ class FT {
         }
         // Build the amount and change hex strings for the tape
         const { amountHex, changeHex } = FT.buildTapeAmount(amountbn, tapeAmountSetIn);
-        // Fetch UTXO for the sender's address
-        //const utxo = await API.fetchUTXO(privateKey, 0.1, this.network);
         // Construct the transaction
         const tx = new tbc.Transaction()
             .from(ftutxo_a)
@@ -253,7 +249,7 @@ class FT {
                 satoshis: 0
             }));
         }
-        tx.feePerKb(100)
+        tx.feePerKb(80)
         tx.change(address_from);
         // Set the input script asynchronously for the FT UTXO
         for (let i = 0; i < ftutxo_a.length; i++) {
@@ -281,10 +277,6 @@ class FT {
             throw new Error('Invalid amount input');
         }
         const amountbn = BigInt(Math.floor(amount * Math.pow(10, decimal)));
-        // Fetch FT UTXO for the transfer
-        //const ftutxo_a = await this.fetchFtTXO(this.contractTxid, address_from, amountbn);
-
-        // Calculate the total available balance
         let tapeAmountSum = BigInt(0);
         for (let i = 0; i < ftutxo_a.length; i++) {
             tapeAmountSetIn.push(ftutxo_a[i].ftBalance!);
@@ -304,8 +296,6 @@ class FT {
         }
         // Build the amount and change hex strings for the tape
         const { amountHex, changeHex } = FT.buildTapeAmount(amountbn, tapeAmountSetIn);
-        // Fetch UTXO for the sender's address
-        //const utxo = await API.fetchUTXO(privateKey, 0.1, this.network);
         // Construct the transaction
         const tx = new tbc.Transaction()
             .from(ftutxo_a)
@@ -344,7 +334,7 @@ class FT {
             script: additionalInfoScript,
             satoshis: 0
         }));
-        tx.feePerKb(100)
+        tx.feePerKb(80)
         tx.change(address_from);
         // Set the input script asynchronously for the FT UTXO
         for (let i = 0; i < ftutxo_a.length; i++) {
@@ -361,6 +351,116 @@ class FT {
         return txraw;
     }
 
+    batchTransfer(privateKey_from: tbc.PrivateKey, receiveAddressAmount: Map<string, number>, ftutxo: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[]): Array<{ txHex: string }> {
+        const privateKey = privateKey_from;
+        let txsraw: Array<{ txHex: string }> = [];
+        let tx = new tbc.Transaction();
+        let ftutxoBalance = 0n;
+        for (const utxo of ftutxo) {
+            ftutxoBalance += BigInt(utxo.ftBalance!);
+            console.log("ftutxoBalance", ftutxoBalance);
+        }
+        let i = 0;
+        for (const [address_to, amount] of receiveAddressAmount) {
+            if (i === 0) {
+                tx = this._batchTransfer(privateKey, address_to, amount, preTX, prepreTxData, txsraw, ftutxoBalance, ftutxo, utxo);
+                let prepretxdata = "";
+                for (let j = 0; j < preTX.length; j++) {
+                    prepretxdata = getPrePreTxdata(preTX[j], tx.inputs[j].outputIndex) + prepretxdata;
+                }
+                prepretxdata = "57" + prepretxdata;
+                prepreTxData = [prepretxdata];
+            } else {
+                tx = this._batchTransfer(privateKey, address_to, amount, preTX, prepreTxData, txsraw, ftutxoBalance);
+                prepreTxData = ["57" + getPrePreTxdata(preTX[0], tx.inputs[0].outputIndex)];
+            }
+            preTX = [tx];
+            ftutxoBalance -= BigInt(amount * Math.pow(10, this.decimal));
+            i++;
+            console.log("ftutxoBalance", ftutxoBalance);
+        }
+        return txsraw;
+    }
+
+    _batchTransfer(privateKey_from: tbc.PrivateKey, address_to: string, amount: number, preTX: tbc.Transaction[], prepreTxData: string[], txsraw: Array<{ txHex: string }>, ftutxoBalance: bigint, ftutxo?: tbc.Transaction.IUnspentOutput[], utxo?: tbc.Transaction.IUnspentOutput): tbc.Transaction {
+        const privateKey = privateKey_from;
+        const address_from = privateKey.toAddress().toString();
+        const code = this.codeScript;
+        const tape = this.tapeScript;
+        const decimal = this.decimal;
+        const tapeAmountSetIn: bigint[] = [];
+        let tapeAmountSum = ftutxoBalance;
+        if (amount < 0) {
+            throw new Error('Invalid amount input');
+        }
+        const amountbn = BigInt(Math.floor(amount * Math.pow(10, decimal)));
+        
+        if (ftutxo) {
+            for (let i = 0; i < ftutxo.length; i++) {
+                tapeAmountSetIn.push(ftutxo[i].ftBalance!);
+            }
+        } else {
+            tapeAmountSetIn.push(tapeAmountSum);
+        }
+        const { amountHex, changeHex } = FT.buildTapeAmount(amountbn, tapeAmountSetIn);
+        const tx = new tbc.Transaction()
+        ftutxo ? tx.from(ftutxo) : tx.addInputFromPrevTx(preTX[0], 2);
+        utxo ? tx.from(utxo) : tx.addInputFromPrevTx(preTX[0], 4);
+
+        const codeScript = FT.buildFTtransferCode(code, address_to);
+        tx.addOutput(new tbc.Transaction.Output({
+            script: codeScript,
+            satoshis: 500
+        }));
+        const tapeScript = FT.buildFTtransferTape(tape, amountHex);
+        tx.addOutput(new tbc.Transaction.Output({
+            script: tapeScript,
+            satoshis: 0
+        }));
+
+        if (amountbn < tapeAmountSum) {
+            const changeCodeScript = FT.buildFTtransferCode(code, address_from);
+            tx.addOutput(new tbc.Transaction.Output({
+                script: changeCodeScript,
+                satoshis: 500
+            }));
+
+            const changeTapeScript = FT.buildFTtransferTape(tape, changeHex);
+            tx.addOutput(new tbc.Transaction.Output({
+                script: changeTapeScript,
+                satoshis: 0
+            }));
+        }
+        tx.feePerKb(80)
+        tx.change(address_from);
+        if(ftutxo) {
+            for (let i = 0; i < ftutxo.length; i++) {
+                tx.setInputScript({
+                    inputIndex: i,
+                }, (tx) => {
+                    const unlockingScript = this.getFTunlock(privateKey, tx, preTX[i], prepreTxData[i], i, ftutxo[i].outputIndex);
+                    return unlockingScript;
+                });
+            }
+        } else {
+            tx.setInputScript({
+                    inputIndex: 0,
+                }, (tx) => {
+                    const unlockingScript = this.getFTunlock(privateKey, tx, preTX[0], prepreTxData[0], 0, 2);
+                    return unlockingScript;
+                });
+        }
+
+        tx.sign(privateKey);
+        tx.seal();
+        const txraw = tx.uncheckedSerialize();
+        txsraw.push({txHex: txraw});
+        // console.log(tx.toObject());
+        // console.log(tx.verify());
+        return tx;
+    }
+
+
     /**
      * Merges FT UTXOs.
      *
@@ -369,30 +469,53 @@ class FT {
      * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
      * @param {tbc.Transaction[]} preTX - 之前的交易列表。
      * @param {string[]} prepreTxData - 之前交易的数据列表。
-     * @returns {string | true} 返回一个 Promise，解析为字符串形式的未检查交易数据或成功标志。
-     * @memberof FT
-    */
-    mergeFT(privateKey_from: tbc.PrivateKey, ftutxo: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[]): string | true {
+     * @param {number} times - merge执行次数。
+     * @returns {Array<{ txHex: string }>} 返回一个 txHex 数组。
+     */
+    mergeFT(privateKey_from: tbc.PrivateKey, ftutxo: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[], times?: number): Array<{ txHex: string }> {
+        const privateKey = privateKey_from;
+        let ftutxos = ftutxo.slice(0, 5);
+        let preTXs = preTX.slice(0, 5);
+        let prepreTxDatas = prepreTxData.slice(0, 5);
+        let txsraw: Array<{ txHex: string }> = [];
+        let tx = new tbc.Transaction();
+
+        for (let i = 0; i < (times ?? 1) && ftutxos.length > 1; i++) {
+            if (i === 0) {
+                tx = this._mergeFT(privateKey, ftutxos, preTXs, prepreTxDatas, txsraw, utxo);
+            } else {
+                tx = this._mergeFT(privateKey, ftutxos, preTXs, prepreTxDatas, txsraw);
+            }
+            let index = (i + 1) * 5;
+            preTXs = preTX.slice(index, index + 5);
+            preTXs.push(tx);
+            prepreTxDatas = prepreTxData.slice(index, index + 5);
+            ftutxos = ftutxo.slice(index, index + 5);
+        }
+
+        return txsraw;
+    }
+
+    /**
+     * _mergeFT
+     *
+     * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
+     * @param {tbc.Transaction.IUnspentOutput[]} ftutxo - 要合并的 FT UTXO 列表。
+     * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
+     * @param {tbc.Transaction[]} preTX - 之前的交易列表。
+     * @param {string[]} prepreTxData - 之前交易的数据列表。
+     * @param {Array<{ txHex: string }>} txsraw - 之前交易的 txHex 列表。
+     * @param {tbc.Transaction.IUnspentOutput} utxo - 首次merge的utxo。
+     * @returns {tbc.Transaction} 返回一个交易。
+     */
+    _mergeFT(privateKey_from: tbc.PrivateKey, ftutxo: tbc.Transaction.IUnspentOutput[], preTX: tbc.Transaction[], prepreTxData: string[], txsraw: Array<{ txHex: string }>, utxo?: tbc.Transaction.IUnspentOutput): tbc.Transaction {
         const privateKey = privateKey_from;
         const address = privateKey.toAddress().toString();
-        const fttxo_codeScript = FT.buildFTtransferCode(this.codeScript, address).toBuffer().toString('hex');
-        let ftutxos: tbc.Transaction.IUnspentOutput[] = [];
-        if (ftutxo.length === 0) {
+        const ftutxos = ftutxo;
+        if (ftutxos.length === 0) {
             throw new Error('No FT UTXO available');
-        }
-        if (ftutxo.length === 1) {
-            console.log('Merge Success!');
-            return true;
-        } else {
-            for (let i = 0; i < ftutxo.length && i < 5; i++) {
-                ftutxos.push({
-                    txId: ftutxo[i].txId,
-                    outputIndex: ftutxo[i].outputIndex,
-                    script: fttxo_codeScript,
-                    satoshis: ftutxo[i].satoshis,
-                    ftBalance: ftutxo[i].ftBalance
-                });
-            }
+        } else if (ftutxos.length === 1) {
+            return null;
         }
         const tapeAmountSetIn: bigint[] = [];
         let tapeAmountSum = BigInt(0);
@@ -405,8 +528,8 @@ class FT {
             throw new Error('Change amount is not zero');
         }
         const tx = new tbc.Transaction()
-            .from(ftutxos)
-            .from(utxo);
+            .from(ftutxos);
+        utxo ? tx.from(utxo) : tx.addInputFromPrevTx(preTX[preTX.length - 1], 2);
         const codeScript = FT.buildFTtransferCode(this.codeScript, address);
         tx.addOutput(new tbc.Transaction.Output({
             script: codeScript,
@@ -417,9 +540,9 @@ class FT {
             script: tapeScript,
             satoshis: 0
         }));
-        tx.feePerKb(100)
+        tx.feePerKb(80)
         tx.change(privateKey.toAddress());
-        for (let i = 0; i < ftutxos.length; i++) {
+        for (let i = 0; i < ftutxos.length && i < 5; i++) {
             tx.setInputScript({
                 inputIndex: i,
             }, (tx) => {
@@ -430,7 +553,8 @@ class FT {
         tx.sign(privateKey);
         tx.seal();
         const txraw = tx.uncheckedSerialize();
-        return txraw;
+        txsraw.push({txHex: txraw});
+        return tx;
     }
 
     /**
@@ -445,7 +569,6 @@ class FT {
     getFTunlock(privateKey_from: tbc.PrivateKey, currentTX: tbc.Transaction, preTX: tbc.Transaction, prepreTxData: string, currentUnlockIndex: number, preTxVout: number): tbc.Script {
         const privateKey = privateKey_from;
         const prepretxdata = prepreTxData;
-        //const preTX = await API.fetchTXraw(preTxId, this.network);
         const pretxdata = getPreTxdata(preTX, preTxVout);
         const currenttxdata = getCurrentTxdata(currentTX, currentUnlockIndex);
         const signature = currentTX.getSignature(currentUnlockIndex, privateKey);
@@ -467,9 +590,7 @@ class FT {
     getFTunlockSwap(privateKey_from: tbc.PrivateKey, currentTX: tbc.Transaction, preTX: tbc.Transaction, prepreTxData: string, contractTX: tbc.Transaction, currentUnlockIndex: number, preTxVout: number): tbc.Script {
         const privateKey = privateKey_from;
         const prepretxdata = prepreTxData;
-        //const contractTX = await API.fetchTXraw(currentTX.inputs[0].prevTxId.toString('hex'), this.network);
         const contracttxdata = getContractTxdata(contractTX, currentTX.inputs[0].outputIndex);
-        //const preTX = await API.fetchTXraw(preTxId, this.network);
         const pretxdata = getPreTxdata(preTX, preTxVout);
         const currentinputsdata = getCurrentInputsdata(currentTX);
         const currenttxdata = getCurrentTxdata(currentTX, currentUnlockIndex);
