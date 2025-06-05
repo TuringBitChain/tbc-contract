@@ -288,7 +288,10 @@ declare module "tbc-contract" {
     ft_lp_partialhash: string;
     ft_a_partialhash: string;
     ft_a_contractTxid: string;
+    service_fee_rate: number;
+    service_provider: string;
     poolnft_code: string;
+    pool_version: number;
     currentContractTxid: string;
     currentContractVout: number;
     currentContractSatoshi: number;
