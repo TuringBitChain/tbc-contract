@@ -485,6 +485,14 @@ declare module "tbc-contract" {
       amount_token: number,
       lpPlan: 1 | 2
     ): Promise<string>;
+    swaptoTBC_baseToken_local(
+      privateKey_from: tbc.PrivateKey,
+      address_to: string,
+      utxo: tbc.Transaction.IUnspentOutput,
+      ftutxo: tbc.Transaction.IUnspentOutput,
+      amount_token: number,
+      lpPlan?: 1 | 2
+    ): Promise<string>;
     fetchPoolNftInfo(contractTxid: string): Promise<PoolNFTInfo>;
     fetchPoolNftUTXO(contractTxid: string): Promise<Transaction.IUnspentOutput>;
     fetchFtlpUTXO(
