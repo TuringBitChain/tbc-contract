@@ -64,7 +64,7 @@ async function main() {
                 await API.broadcastTXraw(tx6, network);
             }
 
-            // Step 2.5: 用 Token 兑换 TBC
+            // Step 2.5.1: 用 Token 兑换 TBC
             {
                 let ftAmount = 100;
                 // 准备 utxo
@@ -72,6 +72,17 @@ async function main() {
                 const tx8 = await poolUse.swaptoTBC_baseToken(privateKeyA, addressA, utxo, ftAmount, lpPlan);
                 await API.broadcastTXraw(tx8, network);
             }
+
+            // Step 2.5.2: 用 Token 兑换 TBC(本地输入ft utxo)
+            {
+                let ftAmount = 100;
+                // 准备 utxo
+                const utxo = await API.fetchUTXO(privateKeyA, fee, network);
+                const ftutxo = ftutxo_local;
+                const tx8 = await poolUse.swaptoTBC_baseToken_local(privateKeyA, addressA, utxo, ftutxo, ftAmount, lpPlan);
+                await API.broadcastTXraw(tx8, network);
+            }
+            
 
             // 获取 Pool NFT 信息和 UTXO
             {
