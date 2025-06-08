@@ -1369,7 +1369,7 @@ class poolNFT {
         } else if (this.network == "mainnet") {
             url = url_mainnet;
         } else {
-            url = this.network.endsWith('/') ? this.network : (this.network + '/') + 'ft/pool/nft/info/contract/id/' + contractTxid;
+            url = (this.network.endsWith('/') ? this.network : (this.network + '/')) + 'ft/pool/nft/info/contract/id/' + contractTxid;
         }
         try {
             const response = await (await fetch(url)).json();
@@ -1455,7 +1455,7 @@ class poolNFT {
         } else if (this.network == "mainnet") {
             url = url_mainnet;
         } else {
-            url = this.network.endsWith('/') ? this.network : (this.network + '/') + 'ft/lp/unspent/by/script/hash' + ftlpHash;
+            url = (this.network.endsWith('/') ? this.network : (this.network + '/')) + 'ft/lp/unspent/by/script/hash' + ftlpHash;
         }
         try {
             const response = await (await fetch(url)).json();
@@ -1526,7 +1526,7 @@ class poolNFT {
         } else if (this.network == "mainnet") {
             url = url_mainnet;
         } else {
-            url = this.network.endsWith('/') ? this.network : (this.network + '/') + 'ft/lp/unspent/by/script/hash' + ftlpCodeHash;
+            url = (this.network.endsWith('/') ? this.network : (this.network + '/')) + 'ft/lp/unspent/by/script/hash' + ftlpCodeHash;
         }
         const fttxo_codeScript = ftlpCodeScript.toBuffer().toString('hex');
         try {
@@ -1638,7 +1638,7 @@ class poolNFT {
         } else if (this.network == "mainnet") {
             url = url_mainnet;
         } else {
-            url = this.network.endsWith('/') ? this.network : (this.network + '/') + 'ft/utxo/combine/script/' + hash + '/contract/' + contractTxid;
+            url = (this.network.endsWith('/') ? this.network : (this.network + '/')) + 'ft/utxo/combine/script/' + hash + '/contract/' + contractTxid;
         }
         const fttxo_codeScript = FT.buildFTtransferCode(FTA.codeScript, poolnft_codehash160).toBuffer().toString('hex');
         try {
