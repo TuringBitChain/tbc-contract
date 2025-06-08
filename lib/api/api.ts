@@ -68,7 +68,7 @@ class API {
     } else if (network === "mainnet") {
       return this.mainnetURL;
     } else {
-      return network.endsWith('/') ? network : network + '/';
+      return network.endsWith('/') ? network : (network + '/');
     }
   }
 

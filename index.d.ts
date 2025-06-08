@@ -242,18 +242,18 @@ declare module "tbc-contract" {
       additionalInfo: Buffer
     ): string;
     batchTransfer(
-      privateKey_from: tbc.PrivateKey,
+      privateKey_from: PrivateKey,
       receiveAddressAmount: Map<string, number>,
-      ftutxo: tbc.Transaction.IUnspentOutput[],
-      utxo: tbc.Transaction.IUnspentOutput,
-      preTX: tbc.Transaction[],
+      ftutxo: Transaction.IUnspentOutput[],
+      utxo: Transaction.IUnspentOutput,
+      preTX: Transaction[],
       prepreTxData: string[]
     ): Array<{ txHex: string }>;
     mergeFT(
-      privateKey_from: tbc.PrivateKey,
-      ftutxo: tbc.Transaction.IUnspentOutput[],
-      utxo: tbc.Transaction.IUnspentOutput,
-      preTX: tbc.Transaction[],
+      privateKey_from: PrivateKey,
+      ftutxo: Transaction.IUnspentOutput[],
+      utxo: Transaction.IUnspentOutput,
+      preTX: Transaction[],
       prepreTxData: string[],
       times?: number
     ): Array<{ txHex: string }>;
@@ -486,10 +486,10 @@ declare module "tbc-contract" {
       lpPlan: 1 | 2
     ): Promise<string>;
     swaptoTBC_baseToken_local(
-      privateKey_from: tbc.PrivateKey,
+      privateKey_from: PrivateKey,
       address_to: string,
-      utxo: tbc.Transaction.IUnspentOutput,
-      ftutxo: tbc.Transaction.IUnspentOutput,
+      utxo: Transaction.IUnspentOutput,
+      ftutxo: Transaction.IUnspentOutput,
       amount_token: number,
       lpPlan?: 1 | 2
     ): Promise<string>;
