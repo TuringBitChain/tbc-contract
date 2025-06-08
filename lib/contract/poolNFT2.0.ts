@@ -1122,7 +1122,7 @@ class poolNFT2 {
         } else if (this.network == "mainnet") {
             url = url_mainnet;
         } else {
-            url = this.network.endsWith('/') ? this.network : (this.network + '/') + 'ft/pool/nft/info/contract/id/' + contractTxid;
+            url = (this.network.endsWith('/') ? this.network : (this.network + '/')) + 'ft/pool/nft/info/contract/id/' + contractTxid;
         }
         try {
             const response = await (await fetch(url)).json();
@@ -1211,7 +1211,7 @@ class poolNFT2 {
         } else if (this.network == "mainnet") {
             url = url_mainnet;
         } else {
-            url = this.network.endsWith('/') ? this.network : (this.network + '/') + 'ft/lp/unspent/by/script/hash' + ftlpHash;
+            url = (this.network.endsWith('/') ? this.network : (this.network + '/')) + 'ft/lp/unspent/by/script/hash' + ftlpHash;
         }
         try {
             const response = await (await fetch(url)).json();
@@ -1271,7 +1271,7 @@ class poolNFT2 {
         } else if (this.network == "mainnet") {
             url = url_mainnet;
         } else {
-            url = this.network.endsWith('/') ? this.network : (this.network + '/') + 'ft/lp/unspent/by/script/hash' + ftlpHash;
+            url = (this.network.endsWith('/') ? this.network : (this.network + '/')) + 'ft/lp/unspent/by/script/hash' + ftlpHash;
         }
         try {
             const response = await (await fetch(url)).json();
@@ -1343,7 +1343,7 @@ class poolNFT2 {
         } else if (this.network == "mainnet") {
             url = url_mainnet;
         } else {
-            url = this.network.endsWith('/') ? this.network : (this.network + '/') + 'ft/lp/unspent/by/script/hash' + ftlpCodeHash;
+            url = (this.network.endsWith('/') ? this.network : (this.network + '/')) + 'ft/lp/unspent/by/script/hash' + ftlpCodeHash;
         }
         const fttxo_codeScript = ftlpCodeScript.toBuffer().toString('hex');
         try {
