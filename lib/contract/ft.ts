@@ -375,7 +375,7 @@ class FT {
                 prepreTxData = ["57" + getPrePreTxdata(preTX[0], tx.inputs[0].outputIndex)];
             }
             preTX = [tx];
-            ftutxoBalance -= BigInt(amount * Math.pow(10, this.decimal));
+            ftutxoBalance -= BigInt(Math.floor(amount * Math.pow(10, this.decimal)));
             i++;
             console.log("ftutxoBalance", ftutxoBalance);
         }
