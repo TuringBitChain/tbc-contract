@@ -73,16 +73,30 @@ async function main() {
                 await API.broadcastTXraw(tx8, network);
             }
 
-            // Step 2.5.2: 用 Token 兑换 TBC(本地输入ft utxo)
+            // Step 2.5.2: 用 Token 兑换 TBC(本地输入ftutxo)
             {
                 let ftAmount = 100;
-                // 准备 utxo
-                const utxo = await API.fetchUTXO(privateKeyA, fee, network);
-                const ftutxo = ftutxo_local;
-                const tx8 = await poolUse.swaptoTBC_baseToken_local(privateKeyA, addressA, utxo, ftutxo, ftAmount, lpPlan);
+                // 使用独立utxo
+                {
+                    // 准备 utxo 网络请求拉取
+                    const utxo = await API.fetchUTXO(privateKeyA, fee, network);
+                    // or 本地维护的utxo列表中选择
+                    const utxo = utxo_manual;
+                    const ftutxo = ftutxo_local;//一个ftutxo
+                    const ftPreTX = ftPreTX_local;//列表
+                    const ftPrePreTxData = ftPrePreTxData_local;//列表
+                    const tx8 = await poolUse.swaptoTBC_baseToken_local(privateKeyA, addressA, ftutxo, ftPreTX, ftPrePreTxData, ftAmount, lpPlan, utxo);//utxo末尾参数
+                }
+                // or从本地ftutxo交易中选择(手动输入的本地ftutxo所在交易的最后一个输出)
+                {
+                    const ftutxo = ftutxo_local;//一个ftutxo
+                    const ftPreTX = ftPreTX_local;//列表
+                    const ftPrePreTxData = ftPrePreTxData_local;//列表
+                    const tx8 = await poolUse.swaptoTBC_baseToken_local(privateKeyA, addressA, ftutxo, ftPreTX, ftPrePreTxData, ftAmount, lpPlan);//没有utxo参数
+                }
                 await API.broadcastTXraw(tx8, network);
             }
-            
+
 
             // 获取 Pool NFT 信息和 UTXO
             {
