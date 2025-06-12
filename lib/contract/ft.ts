@@ -1,12 +1,16 @@
 import * as tbc from 'tbc-lib-js';
 import {
-    getPreTxdata,
-    getPrePreTxdata,
-    getCurrentTxdata,
-    getCurrentInputsdata,
-    getContractTxdata,
-    getSize
-} from '../util/ftunlock';
+  getPreTxdata,
+  getPrePreTxdata,
+  getCurrentTxdata,
+  getCurrentInputsdata,
+  getContractTxdata,
+  getSize,
+} from "../util/ftunlock";
+import {
+  buildUTXO,
+  buildFtPrePreTxData,
+} from "../util/util";
 
 interface FtInfo {
     contractTxid?: string;
@@ -394,7 +398,7 @@ class FT {
             throw new Error('Invalid amount input');
         }
         const amountbn = BigInt(Math.floor(amount * Math.pow(10, decimal)));
-        
+
         if (ftutxo) {
             for (let i = 0; i < ftutxo.length; i++) {
                 tapeAmountSetIn.push(ftutxo[i].ftBalance!);
@@ -433,7 +437,7 @@ class FT {
         }
         tx.feePerKb(80)
         tx.change(address_from);
-        if(ftutxo) {
+        if (ftutxo) {
             for (let i = 0; i < ftutxo.length; i++) {
                 tx.setInputScript({
                     inputIndex: i,
@@ -444,24 +448,78 @@ class FT {
             }
         } else {
             tx.setInputScript({
-                    inputIndex: 0,
-                }, (tx) => {
-                    const unlockingScript = this.getFTunlock(privateKey, tx, preTX[0], prepreTxData[0], 0, 2);
-                    return unlockingScript;
-                });
+                inputIndex: 0,
+            }, (tx) => {
+                const unlockingScript = this.getFTunlock(privateKey, tx, preTX[0], prepreTxData[0], 0, 2);
+                return unlockingScript;
+            });
         }
 
         tx.sign(privateKey);
         tx.seal();
         const txraw = tx.uncheckedSerialize();
-        txsraw.push({txHex: txraw});
-        // console.log(tx.toObject());
-        // console.log(tx.verify());
+        txsraw.push({ txHex: txraw });
         return tx;
     }
 
+    /**
+     * Merges FT UTXOs to one.
+     *
+     * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
+     * @param {tbc.Transaction.IUnspentOutput[]} ftutxo - 要合并的 FT UTXO 列表。
+     * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
+     * @param {tbc.Transaction[]} preTX - 之前的交易列表。
+     * @param {string[]} prepreTxData - 之前交易的数据列表。
+     * @param {tbc.Transaction[]} localTX - 本地交易列表。
+     * @returns {Array<{ txHex: string }>} 返回一个 txHex 数组。
+     */
+    mergeFT(privateKey_from: tbc.PrivateKey, ftutxo: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[], localTX: tbc.Transaction[]): Array<{ txHex: string }> {
+        const privateKey = privateKey_from;
+        const preTxCopy = preTX;
+        let ftutxos = ftutxo.slice(0, 5);
+        let preTXs = preTX.slice(0, 5);
+        let prepreTxDatas = prepreTxData.slice(0, 5);
+        let txsraw: Array<{ txHex: string }> = [];
+        let tx = new tbc.Transaction();
+
+        for (let i = 0; ftutxos.length > 1; i++) {
+            if (i === 0) {
+                tx = this._mergeFT(privateKey, ftutxos, preTXs, prepreTxDatas, txsraw, utxo);
+            } else {
+                tx = this._mergeFT(privateKey, ftutxos, preTXs, prepreTxDatas, txsraw);
+            }
+            let index = (i + 1) * 5;
+            preTXs = preTX.slice(index, index + 5);
+            preTXs.push(tx);
+            prepreTxDatas = prepreTxData.slice(index, index + 5);
+            ftutxos = ftutxo.slice(index, index + 5);
+        }
+
+        if (txsraw.length === 1) return txsraw;
+
+        const utxoTX = preTXs.pop();
+        const nonEmpty = preTXs.length;
+        const newutxo = buildUTXO(utxoTX, 2, false);
+        for (const txraw of txsraw) {
+            const tx = new tbc.Transaction(txraw.txHex);
+            preTXs.push(tx);
+            ftutxos.push(buildUTXO(tx, 0, true));
+        }
+        if (localTX.length === 0) {
+            localTX = preTxCopy;
+        }
+    
+        for (let i = nonEmpty; i < preTXs.length; i++) {
+            prepreTxDatas.push(buildFtPrePreTxData(preTXs[i], 0, localTX));
+        }
+        localTX = preTXs;
+        const txs = this.mergeFT(privateKey, ftutxos, newutxo, preTXs, prepreTxDatas, localTX);
+        txsraw = txsraw.concat(txs ?? []);
+        return txsraw;
+    }
 
     /**
+     * @deprecated 请使用 mergeFT代替。
      * Merges FT UTXOs.
      *
      * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
@@ -472,7 +530,7 @@ class FT {
      * @param {number} times - merge执行次数。
      * @returns {Array<{ txHex: string }>} 返回一个 txHex 数组。
      */
-    mergeFT(privateKey_from: tbc.PrivateKey, ftutxo: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[], times?: number): Array<{ txHex: string }> {
+    mergeFT_(privateKey_from: tbc.PrivateKey, ftutxo: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[], times?: number): Array<{ txHex: string }> {
         const privateKey = privateKey_from;
         let ftutxos = ftutxo.slice(0, 5);
         let preTXs = preTX.slice(0, 5);
@@ -553,7 +611,7 @@ class FT {
         tx.sign(privateKey);
         tx.seal();
         const txraw = tx.uncheckedSerialize();
-        txsraw.push({txHex: txraw});
+        txsraw.push({ txHex: txraw });
         return tx;
     }
 

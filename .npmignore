@@ -3,3 +3,4 @@ test.*
 lib/**/*.d.ts
 lib/**/*.ts
 *.log
+*.txt

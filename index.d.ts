@@ -255,7 +255,7 @@ declare module "tbc-contract" {
       utxo: Transaction.IUnspentOutput,
       preTX: Transaction[],
       prepreTxData: string[],
-      times?: number
+      localTX: Transaction[]
     ): Array<{ txHex: string }>;
     getFTunlock(
       privateKey_from: PrivateKey,
@@ -488,10 +488,12 @@ declare module "tbc-contract" {
     swaptoTBC_baseToken_local(
       privateKey_from: PrivateKey,
       address_to: string,
-      utxo: Transaction.IUnspentOutput,
       ftutxo: Transaction.IUnspentOutput,
+      ftPreTX: Transaction[],
+      ftPrePreTxData: string[],
       amount_token: number,
-      lpPlan?: 1 | 2
+      lpPlan?: 1 | 2,
+      utxo?: Transaction.IUnspentOutput
     ): Promise<string>;
     fetchPoolNftInfo(contractTxid: string): Promise<PoolNFTInfo>;
     fetchPoolNftUTXO(contractTxid: string): Promise<Transaction.IUnspentOutput>;
@@ -664,4 +666,29 @@ declare module "tbc-contract" {
     static getMultiSigLockScript(address: string): string;
     static getCombineHash(address: string): string;
   }
+
+  export function buildUTXO(
+    tx: Transaction,
+    vout: number,
+    isFT?: boolean
+  ): Transaction.IUnspentOutput;
+
+  export function buildFtPrePreTxData(
+    preTX: Transaction,
+    preTxVout: number,
+    localTXs: Transaction[]
+  ): string;
+
+  export function selectTXfromLocal(
+    txs: Transaction[],
+    txid: string
+  ): Transaction;
+
+  export function fetchInBatches<T, R>(
+    items: T[],
+    batchSize: number,
+    fetchFn: (batch: T[]) => Promise<R[]>,
+    context: string
+  ): Promise<R[]>;
+
 }
