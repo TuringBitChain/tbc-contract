@@ -8,6 +8,9 @@ import {
     getCurrentTxOutputsDataforPool2,
     getSize
 } from '../util/poolnftunlock';
+import {
+    fetchInBatches
+} from "../util/util";
 const API = require('../api/api');
 const FT = require('./ft');
 const partial_sha256 = require('tbc-lib-js/lib/util/partial-sha256');
@@ -722,6 +725,7 @@ class poolNFT2 {
      * @param {string} address_to - 接收 FT-A 的地址。
      * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
      * @param {number} amount_tbc - 要交换的 TBC 数量。
+     * @param {1 | 2} [lpPlan] - 流动性池计划，默认为 1。
      * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
      *
      * 该函数执行以下主要步骤：
@@ -859,6 +863,7 @@ class poolNFT2 {
      * @param {string} address_to - 接收 TBC 的地址。
      * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
      * @param {number} amount_token - 要交换的 FT-A 数量。
+     * @param {1 | 2} [lpPlan] - 流动性池计划，默认为 1。
      * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
      *
      * 该函数执行以下主要步骤：
@@ -975,6 +980,7 @@ class poolNFT2 {
         });
         tx.sign(privateKey);
         await tx.sealAsync();
+        console.log(tx.verify());
         const txraw = tx.uncheckedSerialize();
         return txraw;
     }
@@ -984,13 +990,16 @@ class poolNFT2 {
      *
      * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
      * @param {string} address_to - 接收 TBC 的地址。
-     * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
      * @param {tbc.Transaction.IUnspentOutput} ftutxo - 用于创建交易的 FT-A 未花费输出。
+     * @param {tbc.Transaction[]} ftPreTX - 之前的 FT-A 交易列表。
+     * @param {string[]} ftPrePreTxData - 之前的 FT-A 交易数据列表。
      * @param {number} amount_token - 要交换的 FT-A 数量。
+     * @param {1 | 2} [lpPlan] - 流动性池计划，默认为 1。
+     * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
      * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
      *
      */
-    async swaptoTBC_baseToken_local(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, ftutxo: tbc.Transaction.IUnspentOutput, amount_token: number, lpPlan?: 1 | 2): Promise<string> {
+    async swaptoTBC_baseToken_local(privateKey_from: tbc.PrivateKey, address_to: string, ftutxo: tbc.Transaction.IUnspentOutput, ftPreTX: tbc.Transaction[], ftPrePreTxData: string[], amount_token: number, lpPlan?: 1 | 2, utxo?: tbc.Transaction.IUnspentOutput): Promise<string> {
         const privateKey = privateKey_from;
         const fttxo_a = ftutxo;
         const FTA = new FT(this.ft_a_contractTxid);
@@ -1016,10 +1025,6 @@ class poolNFT2 {
             tbc_amount_decrement_swap_lp = tbc_amount_decrement - serviceFeeLP;
         }
         const tapeAmountSetIn: bigint[] = [];
-        const ftPreTX: tbc.Transaction[] = [];
-        const ftPrePreTxData: string[] = [];
-        ftPreTX.push(await API.fetchTXraw(fttxo_a.txId, this.network));
-        ftPrePreTxData.push(await API.fetchFtPrePreTxData(ftPreTX[0], fttxo_a.outputIndex, this.network));
         tapeAmountSetIn.push(BigInt(fttxo_a.ftBalance!));
 
         // Build the amount and change hex strings for the tape
@@ -1028,8 +1033,8 @@ class poolNFT2 {
         // Construct the transaction
         const tx = new tbc.Transaction()
             .from(poolnft)
-            .from(fttxo_a)
-            .from(utxo);
+            .from(fttxo_a);
+        utxo ? tx.from(utxo) : tx.addInputFromPrevTx(ftPreTX[0], ftPreTX[0].outputs.length - 1);
         //poolNft
         tx.addOutput(new tbc.Transaction.Output({
             script: tbc.Script.fromHex(this.poolnft_code),
@@ -1072,20 +1077,25 @@ class poolNFT2 {
         }
         tx.feePerKb(80);
         tx.change(privateKey.toAddress());
-        await tx.setInputScriptAsync({
+
+        const poolNftPreTX = await API.fetchTXraw(poolnft.txId, this.network);
+        const poolNftPrePreTX = await API.fetchTXraw(poolNftPreTX.inputs[poolnft.outputIndex].prevTxId.toString('hex'), this.network);
+        const inputsTXs = ftPreTX;
+        inputsTXs.push(utxo ? await API.fetchTXraw(utxo.txId, this.network) : ftPreTX[0]);
+        tx.setInputScript({
             inputIndex: 0,
-        }, async (tx) => {
-            const unlockingScript = await this.getPoolNftUnlock(privateKey, tx, 0, poolnft.txId, poolnft.outputIndex, 3, 2);
+        }, (tx) => {
+            const unlockingScript = this.getPoolNftUnlockOffLine(privateKey, tx, 0, poolNftPreTX, poolNftPrePreTX, inputsTXs, 3, 2);
             return unlockingScript;
         });
-        await tx.setInputScriptAsync({
+        tx.setInputScript({
             inputIndex: 1,
-        }, async (tx) => {
-            const unlockingScript = await FTA.getFTunlock(privateKey, tx, ftPreTX[0], ftPrePreTxData[0], 1, fttxo_a.outputIndex);
+        }, (tx) => {
+            const unlockingScript = FTA.getFTunlock(privateKey, tx, ftPreTX[0], ftPrePreTxData[0], 1, fttxo_a.outputIndex);
             return unlockingScript;
         });
         tx.sign(privateKey);
-        await tx.sealAsync();
+        tx.seal();
         const txraw = tx.uncheckedSerialize();
         return txraw;
     }
@@ -1500,15 +1510,31 @@ class poolNFT2 {
 
         try {
             const tapeAmountSetIn: bigint[] = [];
-            const ftPreTX: tbc.Transaction[] = [];
-            const ftPrePreTxData: string[] = [];
+            let ftPreTX: tbc.Transaction[] = [];
+            let ftPrePreTxData: string[] = [];
             let tapeAmountSum = BigInt(0);
             for (let i = 0; i < ftutxos.length; i++) {
                 tapeAmountSetIn.push(ftutxos[i].ftBalance!);
                 tapeAmountSum += BigInt(ftutxos[i].ftBalance!);
-                ftPreTX.push(await API.fetchTXraw(ftutxos[i].txId, this.network));
-                ftPrePreTxData.push(await API.fetchFtPrePreTxData(ftPreTX[i], ftutxos[i].outputIndex, this.network));
+                // ftPreTX.push(await API.fetchTXraw(ftutxos[i].txId, this.network));
+                // ftPrePreTxData.push(await API.fetchFtPrePreTxData(ftPreTX[i], ftutxos[i].outputIndex, this.network));
             }
+            const batchSize = 300;
+            ftPreTX = await fetchInBatches<tbc.Transaction.IUnspentOutput, tbc.Transaction>(
+                ftutxos,
+                batchSize,
+                (batch) => Promise.all(batch.map(utxo => API.fetchTXraw(utxo.txId, this.network))),
+                'fetchFtPreTXData'
+            );
+            ftPrePreTxData = await fetchInBatches<tbc.Transaction.IUnspentOutput, string>(
+                ftutxos,
+                batchSize,
+                (batch) => Promise.all(batch.map(utxo => {
+                    const globalIndex = ftutxos.indexOf(utxo);
+                    return API.fetchFtPrePreTxData(ftPreTX[globalIndex], utxo.outputIndex, this.network);
+                })),
+                'fetchFtPrePreTxData'
+            );
             const { amountHex, changeHex } = FT.buildTapeAmount(tapeAmountSum, tapeAmountSetIn, 1);
             if (changeHex != '000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000') {
                 throw new Error('Change amount is not zero');
