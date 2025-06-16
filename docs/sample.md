@@ -36,7 +36,7 @@ Token.initialize(TokenInfo);
         ftutxos.push(ftutxo);
     }
 }
-const mergeFee = 0.0005 * ftutxos.length;
+const mergeFee = 0.005 * ftutxos.length;
 //网络请求获取utxo用于交易fee
 const utxo = await API.fetchUTXO(privateKeyA, mergeFee, network);
 //or手动输入utxo
