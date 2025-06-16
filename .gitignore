@@ -3,3 +3,4 @@ test.*
 lib/**/*.d.ts
 *.log
 *.txt
+obfuscate.js
