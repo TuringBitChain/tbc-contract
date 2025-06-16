@@ -64,7 +64,7 @@ async function main() {
                 const TokenInfo = await API.fetchFtInfo(Token.contractTxid, network);//获取FT信息
                 Token.initialize(TokenInfo);
                 const times = receiveAddressAmount.size;
-                const transferFee = 0.001 * times;
+                const transferFee = 0.002 * times;
                 const utxo = await API.fetchUTXO(privateKeyA, transferFee, network);
                 const transferTokenAmountBN = BigInt(transferTokenAmount * Math.pow(10, Token.decimal));
                 const ftutxo_codeScript = FT.buildFTtransferCode(Token.codeScript, addressA).toBuffer().toString('hex');
@@ -103,7 +103,7 @@ async function main() {
                         ftutxos.push(ftutxo);
                     }
                 }
-                const mergeFee = 0.0005 * ftutxos.length;
+                const mergeFee = 0.005 * ftutxos.length;
                 //网络请求获取utxo用于交易fee
                 const utxo = await API.fetchUTXO(privateKeyA, mergeFee, network);
                 //or手动输入utxo

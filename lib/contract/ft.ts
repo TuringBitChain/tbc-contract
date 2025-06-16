@@ -495,7 +495,7 @@ class FT {
             ftutxos = ftutxo.slice(index, index + 5);
         }
 
-        if (txsraw.length === 1) return txsraw;
+        if (txsraw.length <= 1 && ftutxos.length < 1) return txsraw;
 
         const utxoTX = preTXs.pop();
         const nonEmpty = preTXs.length;
