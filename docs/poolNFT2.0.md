@@ -14,11 +14,14 @@ const lpPlan = 2;  //lp手续费方案, 方案1: LP 0.25%  swap服务商 0.09%  
 const tag = "tbc"; //池子标签，用于区分创建者
 async function main() {
     try {
-        // Step 1: 创建 poolNFT，并初始化
+        // Step 1: 创建 poolNFT
         const pool = new poolNFT2({network: network});
         pool.initCreate(ftContractTxid);
         const utxo = await API.fetchUTXO(privateKeyA, fee, network);
         const tx1 = await pool.createPoolNFT(privateKeyA, utxo, tag, serviceRate, lpPlan);
+        // or 创建带锁的 poolNFT (最多两个公钥)
+        const pubKeyLock = ["pubkey1","pubkey2"];
+        const tx1 = await pool.createPoolNftWithLock(privateKeyA, utxo, tag, pubKeyLock, serviceRate, lpPlan);
         await API.broadcastTXraw(tx1[0], network);
         console.log("poolNFT Contract ID:");
         await API.broadcastTXraw(tx1[1], network);
