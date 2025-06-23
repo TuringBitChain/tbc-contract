@@ -119,3 +119,6 @@ txs.push({ txHex: txSendTBC });
 ```ts
 await API.broadcastTXsraw(txs, network);
 ```
+
+const tbcutxo = await API.fetchUTXO(privateKey, fee, this.network);
+const txSawp = await poolUse.swaptoTBC_baseToken_local(privateKey, address, ftutxos[0], preTXs, prepreTxDatas, ftAmount, lpPlan, tbcutxo);
