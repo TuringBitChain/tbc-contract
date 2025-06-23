@@ -64,7 +64,7 @@ async function main() {
                 const TokenInfo = await API.fetchFtInfo(Token.contractTxid, network);//获取FT信息
                 Token.initialize(TokenInfo);
                 const times = receiveAddressAmount.size;
-                const transferFee = 0.002 * times;
+                const transferFee = 0.005 * times;
                 const utxo = await API.fetchUTXO(privateKeyA, transferFee, network);
                 const transferTokenAmountBN = BigInt(transferTokenAmount * Math.pow(10, Token.decimal));
                 const ftutxo_codeScript = FT.buildFTtransferCode(Token.codeScript, addressA).toBuffer().toString('hex');

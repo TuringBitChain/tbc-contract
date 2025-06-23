@@ -449,6 +449,7 @@ declare module "tbc-contract" {
       privateKey_from: PrivateKey,
       utxo: Transaction.IUnspentOutput,
       tag: string,
+      pubKeyLock: string[],
       serviceFeeRate?: number,
       lpPlan?: 1 | 2
     ): Promise<string[]>;
@@ -546,6 +547,7 @@ declare module "tbc-contract" {
       txid: string,
       vout: number,
       lpPlan: 1 | 2,
+      pubKeyLock: string[],
       tag?: string
     ): Script;
     getFtlpCode(
@@ -690,5 +692,4 @@ declare module "tbc-contract" {
     fetchFn: (batch: T[]) => Promise<R[]>,
     context: string
   ): Promise<R[]>;
-
 }
