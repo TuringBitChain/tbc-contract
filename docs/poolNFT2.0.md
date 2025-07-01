@@ -19,9 +19,11 @@ async function main() {
         pool.initCreate(ftContractTxid);
         const utxo = await API.fetchUTXO(privateKeyA, fee, network);
         const tx1 = await pool.createPoolNFT(privateKeyA, utxo, tag, serviceRate, lpPlan);
-        // or 创建带锁的 poolNFT (最多两个公钥)
+        // or 创建带锁的 poolNFT (最多十个公钥)
         const pubKeyLock = ["pubkey1","pubkey2"];
-        const tx1 = await pool.createPoolNftWithLock(privateKeyA, utxo, tag, pubKeyLock, serviceRate, lpPlan);
+        const lpCostAddress = "";//设置添加流动性扣款地址
+        const lpCostTBC = 5;//设置添加流动性扣款TBC数量
+        const tx1 = await pool.createPoolNftWithLock(privateKeyA, utxo, tag, lpCostAddress, lpCostTBC, pubKeyLock, serviceRate, lpPlan);
         await API.broadcastTXraw(tx1[0], network);
         console.log("poolNFT Contract ID:");
         await API.broadcastTXraw(tx1[1], network);
