@@ -1,4 +1,4 @@
-import { PrivateKey, Transaction, Script } from "tbc-lib-js";
+import { PrivateKey, Address, Transaction, Script } from "tbc-lib-js";
 declare module "tbc-contract" {
   export class API {
     static getTBCbalance(
@@ -449,6 +449,8 @@ declare module "tbc-contract" {
       privateKey_from: PrivateKey,
       utxo: Transaction.IUnspentOutput,
       tag: string,
+      lpCostAddress: Address | string,
+      lpCostTBC: number,
       pubKeyLock: string[],
       serviceFeeRate?: number,
       lpPlan?: 1 | 2
@@ -525,6 +527,7 @@ declare module "tbc-contract" {
       poolnftPreTX: Transaction,
       poolnftPrePreTX: Transaction,
       inputsTXs: Transaction[],
+      withLock: 0 | 1,
       option: 1 | 2 | 3 | 4,
       swapOption?: 1 | 2
     ): Script;
@@ -534,6 +537,7 @@ declare module "tbc-contract" {
       currentUnlockIndex: number,
       preTxId: string,
       preVout: number,
+      withLock: 0 | 1,
       option: 1 | 2 | 3 | 4,
       swapOption?: 1 | 2
     ): Promise<Script>;
@@ -547,6 +551,8 @@ declare module "tbc-contract" {
       txid: string,
       vout: number,
       lpPlan: 1 | 2,
+      lpCostAddress: Address | string,
+      lpCostTBC: number,
       pubKeyLock: string[],
       tag?: string
     ): Script;
@@ -692,4 +698,9 @@ declare module "tbc-contract" {
     fetchFn: (batch: T[]) => Promise<R[]>,
     context: string
   ): Promise<R[]>;
+
+  export function getOpCode(number: number): string;
+  export function getLpCostAddress(poolCode: string): string;
+  export function getLpCostAmount(poolCode: string): number;
+  export function isLock(length: number): 0 | 1;
 }
