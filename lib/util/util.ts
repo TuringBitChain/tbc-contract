@@ -101,3 +101,32 @@ export async function fetchWithRetry<T>(
     }
     throw new Error('Unreachable code');
 }
+
+export function getOpCode(number: number): string {
+    if (number < 0) {
+        throw new Error("Number must more than or equal 0");
+    }
+    if (number < 16)
+         return `OP_${['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'][number]}`;
+    else if (number < 256)
+        return `${number.toString(16).padStart(2, '0')}`;
+    else
+        throw new Error("Number must be less than 256");     
+}
+
+export function getLpCostAddress(poolCode: string): string {
+    const pubKeyHash = poolCode.substring(426, 426 + 40);
+    // console.log(pubKeyHash);
+    return tbc.Address.fromPublicKeyHash(Buffer.from(pubKeyHash, 'hex')).toString();
+}
+
+export function getLpCostAmount(poolCode: string): number {
+    const amount = poolCode.substring(474, 474 + 16);
+    // console.log(amount);
+    const satoshi = new tbc.encoding.BufferReader(Buffer.from(amount, 'hex')).readUInt64LEBN();
+    return Number(satoshi);
+}
+
+export function isLock(length: number): 0 | 1 {
+    return length > 6600 ? 1 : 0;
+}

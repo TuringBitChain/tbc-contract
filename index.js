@@ -21,6 +21,11 @@ contract.MultiSig = require("./lib/contract/multiSig.js");
 
 contract.buildUTXO = require("./lib/util/util").buildUTXO;
 contract.buildFtPrePreTxData = require("./lib/util/util").buildFtPrePreTxData;
+contract.getFtBalanceFromTape = require("./lib/util/util").getFtBalanceFromTape;
 contract.selectTXfromLocal = require("./lib/util/util").selectTXfromLocal;
 contract.fetchInBatches = require("./lib/util/util").fetchInBatches;
 contract.fetchWithRetry = require("./lib/util/util").fetchWithRetry;
+contract.getOpCode = require("./lib/util/util").getOpCode;
+contract.getLpCostAddress = require("./lib/util/util").getLpCostAddress;
+contract.getLpCostAmount = require("./lib/util/util").getLpCostAmount;
+contract.isLock = require("./lib/util/util").isLock;

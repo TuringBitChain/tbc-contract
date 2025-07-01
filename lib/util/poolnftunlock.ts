@@ -760,7 +760,7 @@ export function getCurrentTxOutputsDataforPool1(tx: tbc.Transaction, option: num
     return `${currenttxoutputsdata}`;
 }
 
-export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: number, swapOption?: number): string {
+export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: number, withLock: 0 | 1, swapOption?: number): string {
     const writer = new tbc.encoding.BufferWriter();
     let lockingscript = tx.outputs[2].script.toBuffer()//FTAbyC code部分
     let size = getSize(lockingscript.length)
@@ -800,7 +800,6 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
             //FT-LP输出
             lockingscript = tx.outputs[4].script.toBuffer()//FT-LP code部分
             size = getSize(lockingscript.length)
-            //之后要修改部分，根据FT-LP的设计
             partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, 1536))
             suffixdata = lockingscript.subarray(1536)
             writer.write(Buffer.from(amountlength, 'hex'));
@@ -816,8 +815,24 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
             writer.write(getLengthHex(tx.outputs[5].script.toBuffer().length))
             writer.write(tx.outputs[5].script.toBuffer());
 
+            //若带锁则存在P2PKH输出
+            if (withLock) {
+                const lockingscript = tx.outputs[6].script.toBuffer();
+                const size = getSize(lockingscript.length); // size小端序
+                const partialhash = '00';
+                const suffixdata = lockingscript;
+                writer.write(Buffer.from(amountlength, 'hex'));
+                writer.writeUInt64LEBN(tx.outputs[6].satoshisBN);
+                writer.write(getLengthHex(suffixdata.length)); // suffixdata为完整锁定脚本
+                writer.write(suffixdata);
+                writer.write(Buffer.from(partialhash, 'hex')); // partialhash为空
+                writer.write(getLengthHex(size.length));
+                writer.write(size);
+            } else {
+                writer.write(Buffer.from('00', 'hex'));
+            }
             //可能的FTAbyA找零、普通P2PKH找零输出，要求若两者均存在，FTAbyA找零在前
-            switch (tx.outputs.length) {
+            switch (tx.outputs.length - withLock) {
                 //无任何找零
                 case 6:
                     writer.write(Buffer.from('00', 'hex'));
@@ -825,13 +840,13 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                     break;
                 //只有普通找零
                 case 7:
-                    const lockingscript = tx.outputs[6].script.toBuffer();
+                    const lockingscript = tx.outputs[6 + withLock].script.toBuffer();
                     const size = getSize(lockingscript.length); // size小端序
                     const partialhash = '00';
                     const suffixdata = lockingscript;
                     writer.write(Buffer.from('00', 'hex'));
                     writer.write(Buffer.from(amountlength, 'hex'));
-                    writer.writeUInt64LEBN(tx.outputs[6].satoshisBN);
+                    writer.writeUInt64LEBN(tx.outputs[6 + withLock].satoshisBN);
                     writer.write(getLengthHex(suffixdata.length)); // suffixdata为完整锁定脚本
                     writer.write(suffixdata);
                     writer.write(Buffer.from(partialhash, 'hex')); // partialhash为空
@@ -840,7 +855,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                     break;
                 //只有FTAbyA找零
                 case 8:
-                    for (let i = 6; i < tx.outputs.length; i++) {
+                    for (let i = 6 + withLock; i < tx.outputs.length; i++) {
                         const lockingscript = tx.outputs[i].script.toBuffer();
                         const size = getSize(lockingscript.length); // size小端序
                         const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, 1536));
@@ -863,7 +878,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                     break;
                 //同时存在FTAbyA找零和普通找零
                 case 9:
-                    for (let i = 6; i < tx.outputs.length; i++) {
+                    for (let i = 6 + withLock; i < tx.outputs.length; i++) {
                         const lockingscript = tx.outputs[i].script.toBuffer();
                         if (lockingscript.length == 1564) {
                             const size = getSize(lockingscript.length); // size小端序

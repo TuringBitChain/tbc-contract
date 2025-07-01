@@ -3,4 +3,5 @@ test.*
 lib/**/*.d.ts
 *.log
 *.txt
+package-lock.json
 obfuscate.js
