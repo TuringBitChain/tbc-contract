@@ -8,7 +8,7 @@
     "obfuscate": "node obfuscate.js",
     "prepublish": "npm run build && npm run obfuscate"
   },
-  "author": "Edmund <makinishikino4eva@gmail.com>",
+  "author": "Edmund",
   "dependencies": {
     "@types/node": "22.10.1",
     "tbc-lib-js": "1.0.27"
