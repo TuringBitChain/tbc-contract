@@ -1670,30 +1670,57 @@ class poolNFT2 {
         }
         currentinputstxdata = '51' + currentinputstxdata;
         const currenttxoutputsdata = getCurrentTxOutputsDataforPool2(currentTX, option, withLock, swapOption);
+
         let unlockingScript = new tbc.Script('');
         const optionHex = option + 50;
-        switch (option) {
-            case 1:
-                unlockingScript = new tbc.Script(`${currentinputstxdata}${currentinputsdata}${currenttxoutputsdata}${optionHex}${prepretxdata}${pretxdata}`);
-                break;
-            case 2:
-                unlockingScript = new tbc.Script(`${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`);
-                break;
-            case 3:
-                if (withLock === 1) {
-                    const signature = currentTX.getSignature(currentUnlockIndex, privateKey);
-                    const sig = (signature.length / 2).toString(16).padStart(2, '0') + signature;
-                    const publicKey = (privateKey.toPublicKey().toString().length / 2).toString(16).padStart(2, '0') + privateKey.toPublicKey().toString();
-                    unlockingScript = new tbc.Script(`${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`);
-                } else {
+
+        const poolCode = currentTX.outputs[0].script;
+        const sub = poolCode.chunks[poolCode.chunks.length - 2].buf.length + 1;
+        const poolCodeLength = poolCode.toBuffer().length - sub;
+        if (poolCodeLength > 3279 || poolCode.chunks[poolCode.chunks.length - 4].opcodenum === 81) {
+            switch (option) {
+                case 1:
+                    unlockingScript = new tbc.Script(`${currentinputstxdata}${currentinputsdata}${currenttxoutputsdata}${optionHex}${prepretxdata}${pretxdata}`);
+                    break;
+                case 2:
                     unlockingScript = new tbc.Script(`${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`);
-                }
-                break;
-            case 4:
-                unlockingScript = new tbc.Script(`${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`);
-                break;
-            default:
-                throw new Error("Invalid option.");
+                    break;
+                case 3:
+                    if (withLock) {
+                        const signature = currentTX.getSignature(currentUnlockIndex, privateKey);
+                        const sig = (signature.length / 2).toString(16).padStart(2, '0') + signature;
+                        const publicKey = (privateKey.toPublicKey().toString().length / 2).toString(16).padStart(2, '0') + privateKey.toPublicKey().toString();
+                        unlockingScript = new tbc.Script(`${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`);
+                    } else {
+                        unlockingScript = new tbc.Script(`${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`);
+                    }
+                    break;
+                case 4:
+                    unlockingScript = new tbc.Script(`${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`);
+                    break;
+                default:
+                    throw new Error("Invalid option.");
+            }
+        } else {
+            const signature = currentTX.getSignature(currentUnlockIndex, privateKey);
+            const sig = (signature.length / 2).toString(16).padStart(2, '0') + signature;
+            const publicKey = (privateKey.toPublicKey().toString().length / 2).toString(16).padStart(2, '0') + privateKey.toPublicKey().toString();
+            switch (option) {
+                case 1:
+                    unlockingScript = new tbc.Script(`${sig}${publicKey}${currentinputstxdata}${currentinputsdata}${currenttxoutputsdata}${optionHex}${prepretxdata}${pretxdata}`);
+                    break;
+                case 2:
+                    unlockingScript = new tbc.Script(`${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`);
+                    break;
+                case 3:
+                    unlockingScript = new tbc.Script(`${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`);
+                    break;
+                case 4:
+                    unlockingScript = new tbc.Script(`${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`);
+                    break;
+                default:
+                    throw new Error("Invalid option.");
+            }
         }
         return unlockingScript;
     }
@@ -1734,30 +1761,60 @@ class poolNFT2 {
         }
         currentinputstxdata = '51' + currentinputstxdata;
         const currenttxoutputsdata = getCurrentTxOutputsDataforPool2(currentTX, option, withLock, swapOption);
+        
         let unlockingScript = new tbc.Script('');
         const optionHex = option + 50;
-        switch (option) {
-            case 1:
-                unlockingScript = new tbc.Script(`${currentinputstxdata}${currentinputsdata}${currenttxoutputsdata}${optionHex}${prepretxdata}${pretxdata}`);
-                break;
-            case 2:
-                unlockingScript = new tbc.Script(`${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`);
-                break;
-            case 3:
-                if (withLock) {
-                    const signature = currentTX.getSignature(currentUnlockIndex, privateKey);
-                    const sig = (signature.length / 2).toString(16).padStart(2, '0') + signature;
-                    const publicKey = (privateKey.toPublicKey().toString().length / 2).toString(16).padStart(2, '0') + privateKey.toPublicKey().toString();
-                    unlockingScript = new tbc.Script(`${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`);
-                } else {
+
+        const poolCode = currentTX.outputs[0].script;
+        const sub = poolCode.chunks[poolCode.chunks.length - 2].buf.length + 1;
+        const poolCodeLength = poolCode.toBuffer().length - sub;
+        console.log(poolCode.toBuffer().length, sub, poolCode.chunks[poolCode.chunks.length - 2], poolCode.chunks[poolCode.chunks.length - 4].opcodenum);
+        if (poolCodeLength > 3279 || poolCode.chunks[poolCode.chunks.length - 4].opcodenum === 81) {
+            console.log("poolCodeLength:", poolCodeLength);
+            switch (option) {
+                case 1:
+                    unlockingScript = new tbc.Script(`${currentinputstxdata}${currentinputsdata}${currenttxoutputsdata}${optionHex}${prepretxdata}${pretxdata}`);
+                    break;
+                case 2:
                     unlockingScript = new tbc.Script(`${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`);
-                }
-                break;
-            case 4:
-                unlockingScript = new tbc.Script(`${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`);
-                break;
-            default:
-                throw new Error("Invalid option.");
+                    break;
+                case 3:
+                    if (withLock) {
+                        const signature = currentTX.getSignature(currentUnlockIndex, privateKey);
+                        const sig = (signature.length / 2).toString(16).padStart(2, '0') + signature;
+                        const publicKey = (privateKey.toPublicKey().toString().length / 2).toString(16).padStart(2, '0') + privateKey.toPublicKey().toString();
+                        unlockingScript = new tbc.Script(`${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`);
+                    } else {
+                        unlockingScript = new tbc.Script(`${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`);
+                    }
+                    break;
+                case 4:
+                    unlockingScript = new tbc.Script(`${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`);
+                    break;
+                default:
+                    throw new Error("Invalid option.");
+            }
+        } else {
+            console.log("poolCodeLength:", poolCodeLength);
+            const signature = currentTX.getSignature(currentUnlockIndex, privateKey);
+            const sig = (signature.length / 2).toString(16).padStart(2, '0') + signature;
+            const publicKey = (privateKey.toPublicKey().toString().length / 2).toString(16).padStart(2, '0') + privateKey.toPublicKey().toString();
+            switch (option) {
+                case 1:
+                    unlockingScript = new tbc.Script(`${sig}${publicKey}${currentinputstxdata}${currentinputsdata}${currenttxoutputsdata}${optionHex}${prepretxdata}${pretxdata}`);
+                    break;
+                case 2:
+                    unlockingScript = new tbc.Script(`${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`);
+                    break;
+                case 3:
+                    unlockingScript = new tbc.Script(`${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`);
+                    break;
+                case 4:
+                    unlockingScript = new tbc.Script(`${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`);
+                    break;
+                default:
+                    throw new Error("Invalid option.");
+            }
         }
         return unlockingScript;
     }
