@@ -996,6 +996,63 @@ class API {
     }
   }
 
+
+  /**
+   * Fetches the NFT UTXOs for a given script and transaction hash.
+   *
+   * @param {Object} params - The parameters for fetching the NFT UTXOs.
+   * @param {string} params.script - The script to fetch the UTXOs for.
+   * @param {string} params.tx_hash - The transaction hash to filter the UTXOs.
+   * @param {("testnet" | "mainnet")} [params.network] - The network type.
+   * @returns {Promise<tbc.Transaction.IUnspentOutput[]>} Returns a Promise that resolves to an array of NFT UTXOs.
+   * @throws {Error} Throws an error if the request fails or no matching UTXO is found.
+   */
+  static async fetchNFTTXOs(params: {
+    script: string;
+    tx_hash: string;
+    network?: "testnet" | "mainnet" | string;
+  }): Promise<tbc.Transaction.IUnspentOutput[]> {
+    const { script, tx_hash, network } = params;
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
+    const script_hash = Buffer.from(
+      tbc.crypto.Hash.sha256(Buffer.from(script, "hex")).toString("hex"),
+      "hex"
+    )
+      .reverse()
+      .toString("hex");
+    const url = base_url + `script/hash/${script_hash}/unspent`;
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error("Failed to fetch UTXO: ".concat(response.statusText));
+      }
+      const data: {
+        tx_hash: string;
+        tx_pos: number;
+        height: number;
+        value: number;
+      }[] = await response.json();
+      const filteredUTXOs = data.filter((item) => item.tx_hash === tx_hash);
+
+      if (filteredUTXOs.length === 0) {
+        throw new Error("The collection supply has been exhausted.");
+      }
+      
+      const sortedUTXOs = filteredUTXOs.sort((a, b) => a.tx_pos - b.tx_pos);
+
+      return sortedUTXOs.map((utxo) => ({
+        txId: utxo.tx_hash,
+        outputIndex: utxo.tx_pos,
+        script: script,
+        satoshis: utxo.value,
+      }));
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  }
+
   /**
    * Fetches the NFT information for a given contract ID.
    *
