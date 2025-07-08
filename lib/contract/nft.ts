@@ -3,6 +3,8 @@ import {
   getCurrentTxdata,
   getPreTxdata,
   getPrePreTxdata,
+  getLengthHex,
+  getOutputsData,
 } from "../util/nftunlock";
 interface NFTInfo {
   collectionId: string;
@@ -32,6 +34,11 @@ interface NFTData {
   attributes: string;
   file?: string;
 }
+
+const version = 10;
+const vliolength = "10";
+const amountlength = "08";
+const hashlength = "20";
 
 class NFT {
   collection_id: string = "";
@@ -72,7 +79,7 @@ class NFT {
     if (
       nftIcon ===
       collectionId +
-      writer.writeUInt32LE(collectionIndex).toBuffer().toString("hex")
+        writer.writeUInt32LE(collectionIndex).toBuffer().toString("hex")
     ) {
       file = nftIcon;
     } else {
@@ -181,7 +188,7 @@ class NFT {
       .addOutput(
         new tbc.Transaction.Output({
           script: NFT.buildCodeScript(nfttxo.txId, nfttxo.outputIndex),
-          satoshis: 1000,
+          satoshis: 100,
         })
       )
       .addOutput(
@@ -238,18 +245,21 @@ class NFT {
     privateKey: tbc.PrivateKey,
     datas: NFTData[],
     utxos: tbc.Transaction.IUnspentOutput[],
-    nfttxos: tbc.Transaction.IUnspentOutput[],
+    nfttxos: tbc.Transaction.IUnspentOutput[]
   ): Array<{ txHex: string }> {
     if (datas.length !== nfttxos.length) {
-      throw new Error("The length of datas array must match the length of nfttxos array");
+      throw new Error(
+        "The length of datas array must match the length of nfttxos array"
+      );
     }
     const hold = NFT.buildHoldScript(address);
     const txs: tbc.Transaction[] = [];
     for (let i = 0; i < datas.length; i++) {
       const writer = new tbc.encoding.BufferWriter();
-      datas[i].file = collection_id + writer.writeUInt32LE(nfttxos[i].outputIndex).toBuffer().toString("hex");
-      const tx = new tbc.Transaction()
-        .from(nfttxos[i]);
+      datas[i].file =
+        collection_id +
+        writer.writeUInt32LE(nfttxos[i].outputIndex).toBuffer().toString("hex");
+      const tx = new tbc.Transaction().from(nfttxos[i]);
       if (i === 0) {
         tx.from(utxos);
       } else {
@@ -258,7 +268,7 @@ class NFT {
       tx.addOutput(
         new tbc.Transaction.Output({
           script: NFT.buildCodeScript(nfttxos[i].txId, nfttxos[i].outputIndex),
-          satoshis: 1000,
+          satoshis: 100,
         })
       )
         .addOutput(
@@ -297,7 +307,7 @@ class NFT {
         .seal();
       txs.push(tx);
     }
-    return txs.map(tx => ({ txHex: tx.uncheckedSerialize() }));
+    return txs.map((tx) => ({ txHex: tx.uncheckedSerialize() }));
   }
 
   /**
@@ -400,9 +410,90 @@ class NFT {
       )
       .sign(privateKey)
       .seal();
-      console.log(tx.verify());
+    console.log(tx.verify());
     return tx.uncheckedSerialize();
-  }  
+  }
+
+  transferNFT_v0(
+    address_from: string,
+    address_to: string,
+    privateKey: tbc.PrivateKey,
+    utxos: tbc.Transaction.IUnspentOutput[],
+    pre_tx: tbc.Transaction,
+    pre_pre_tx: tbc.Transaction
+  ): string {
+    const code = NFT.buildCodeScript_v0(this.collection_id, this.collection_index);
+
+    const tx = new tbc.Transaction()
+      .addInputFromPrevTx(pre_tx, 0)
+      .addInputFromPrevTx(pre_tx, 1)
+      .from(utxos)
+      .addOutput(
+        new tbc.Transaction.Output({
+          script: code,
+          satoshis: this.code_balance,
+        })
+      )
+      .addOutput(
+        new tbc.Transaction.Output({
+          script: NFT.buildHoldScript(address_to),
+          satoshis: this.hold_balance,
+        })
+      )
+      .addOutput(
+        new tbc.Transaction.Output({
+          script: NFT.buildTapeScript(this.nftData),
+          satoshis: 0,
+        })
+      )
+      .feePerKb(80)
+      .change(address_from)
+      .setInputScript(
+        {
+          inputIndex: 0,
+          privateKey,
+        },
+        (tx) => {
+          const Sig = tx.getSignature(0);
+          const SigLength = (Sig.length / 2).toString(16);
+          const sig = SigLength + Sig;
+          const publicKeylength = (
+            privateKey.toPublicKey().toBuffer().toString("hex").length / 2
+          ).toString(16);
+          const publickey =
+            publicKeylength +
+            privateKey.toPublicKey().toBuffer().toString("hex");
+          const currenttxdata = NFT.getCurrentTxdata_v0(tx);
+          const prepretxdata = NFT.getPrePreTxdata_v0(pre_pre_tx);
+          const pretxdata = NFT.getPreTxdata_v0(pre_tx);
+          return new tbc.Script(
+            sig + publickey + currenttxdata + prepretxdata + pretxdata
+          );
+        }
+      )
+      .setInputScript(
+        {
+          inputIndex: 1,
+          privateKey,
+        },
+        (tx) => {
+          const Sig = tx.getSignature(1);
+          const SigLength = (Sig.length / 2).toString(16);
+          const sig = SigLength + Sig;
+          const publicKeylength = (
+            privateKey.toPublicKey().toBuffer().toString("hex").length / 2
+          ).toString(16);
+          const publickey =
+            publicKeylength +
+            privateKey.toPublicKey().toBuffer().toString("hex");
+          return new tbc.Script(sig + publickey);
+        }
+      )
+      .sign(privateKey)
+      .seal();
+    console.log(tx.verify());
+    return tx.uncheckedSerialize();
+  }
 
   static buildCodeScript(tx_hash: string, outputIndex: number): tbc.Script {
     const tx_id = Buffer.from(tx_hash, "hex").reverse().toString("hex");
@@ -410,7 +501,22 @@ class NFT {
     const vout = writer.writeUInt32LE(outputIndex).toBuffer().toString("hex");
     const tx_id_vout = "0x" + tx_id + vout;
     const code = new tbc.Script(
-      "OP_1 OP_PICK OP_3 OP_SPLIT 0x01 0x14 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_OVER OP_TOALTSTACK OP_TOALTSTACK OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_OVER 0x01 0x24 OP_SPLIT OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_HASH256 OP_6 OP_PUSH_META 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_OVER OP_TOALTSTACK OP_TOALTSTACK OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_SWAP OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUAL OP_IF OP_DROP OP_ELSE 0x24 " + tx_id_vout + " OP_EQUALVERIFY OP_ENDIF OP_OVER OP_FROMALTSTACK OP_EQUALVERIFY OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_DUP OP_HASH160 OP_FROMALTSTACK OP_EQUALVERIFY OP_CHECKSIG OP_RETURN"
+      "OP_1 OP_PICK OP_3 OP_SPLIT 0x01 0x14 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_OVER OP_TOALTSTACK OP_TOALTSTACK OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_OVER 0x01 0x24 OP_SPLIT OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_HASH256 OP_6 OP_PUSH_META 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_OVER OP_TOALTSTACK OP_TOALTSTACK OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_SWAP OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUAL OP_IF OP_DROP OP_ELSE 0x24 " +
+        tx_id_vout +
+        " OP_EQUALVERIFY OP_ENDIF OP_OVER OP_FROMALTSTACK OP_EQUALVERIFY OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_DUP OP_HASH160 OP_FROMALTSTACK OP_EQUALVERIFY OP_CHECKSIG OP_RETURN"
+    );
+    return code;
+  }
+
+  static buildCodeScript_v0(tx_hash: string, outputIndex: number) {
+    const tx_id = Buffer.from(tx_hash, "hex").reverse().toString("hex");
+    const writer = new tbc.encoding.BufferWriter();
+    const vout = writer.writeUInt32LE(outputIndex).toBuffer().toString("hex");
+    const tx_id_vout = "0x" + tx_id + vout;
+    const code = new tbc.Script(
+      "OP_1 OP_PICK OP_3 OP_SPLIT 0x01 0x14 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_1 OP_PICK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_1 OP_PICK 0x01 0x24 OP_SPLIT OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_SHA256 OP_6 OP_PUSH_META 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_1 OP_PICK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_SHA256 OP_SHA256 OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_SWAP OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUAL OP_IF OP_DROP OP_ELSE 0x24 " +
+        tx_id_vout +
+        " OP_EQUALVERIFY OP_ENDIF OP_1 OP_PICK OP_FROMALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_DUP OP_HASH160 OP_FROMALTSTACK OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x05 0x33436f6465"
     );
     return code;
   }
@@ -420,9 +526,9 @@ class NFT {
       tbc.Address.fromString(address).hashBuffer.toString("hex");
     const mint = new tbc.Script(
       "OP_DUP OP_HASH160" +
-      " 0x14 0x" +
-      pubKeyHash +
-      " OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x0d 0x5630204d696e74204e486f6c64"
+        " 0x14 0x" +
+        pubKeyHash +
+        " OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x0d 0x5630204d696e74204e486f6c64"
     );
     return mint;
   }
@@ -432,9 +538,9 @@ class NFT {
       tbc.Address.fromString(address).hashBuffer.toString("hex");
     const hold = new tbc.Script(
       "OP_DUP OP_HASH160" +
-      " 0x14 0x" +
-      pubKeyHash +
-      " OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x0d 0x56302043757272204e486f6c64"
+        " 0x14 0x" +
+        pubKeyHash +
+        " OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x0d 0x56302043757272204e486f6c64"
     );
     return hold;
   }
@@ -447,7 +553,7 @@ class NFT {
 
   static decodeNFTDataFromHex(hex: string): any {
     try {
-      const jsonString = Buffer.from(hex, 'hex').toString('utf8');
+      const jsonString = Buffer.from(hex, "hex").toString("utf8");
       return JSON.parse(jsonString);
     } catch (error) {
       throw new Error(`Failed to decode NFT data from hex: ${error.message}`);
@@ -457,10 +563,78 @@ class NFT {
   static encodeNFTDataToHex(data: any): string {
     try {
       const jsonString = JSON.stringify(data);
-      return Buffer.from(jsonString).toString('hex');
+      return Buffer.from(jsonString).toString("hex");
     } catch (error) {
       throw new Error(`Failed to encode NFT data to hex: ${error.message}`);
     }
+  }
+
+  static getCurrentTxdata_v0(tx: tbc.Transaction) {
+    const writer = new tbc.encoding.BufferWriter();
+    writer.write(Buffer.from(amountlength, "hex"));
+    writer.writeUInt64LEBN(tx.outputs[0].satoshisBN);
+    writer.write(getLengthHex(tx.outputs[0].script.toBuffer().length));
+    writer.write(tx.outputs[0].script.toBuffer());
+    writer.write(Buffer.from(getOutputsData(tx, 1), "hex"));
+    return writer.toBuffer().toString("hex");
+  }
+
+  static getPreTxdata_v0(tx: tbc.Transaction) {
+    const writer = new tbc.encoding.BufferWriter();
+    writer.write(Buffer.from(vliolength, "hex"));
+    writer.writeUInt32LE(version);
+    writer.writeUInt32LE(tx.nLockTime);
+    writer.writeInt32LE(tx.inputs.length);
+    writer.writeInt32LE(tx.outputs.length);
+    const inputWriter = new tbc.encoding.BufferWriter();
+    const inputWriter2 = new tbc.encoding.BufferWriter();
+    for (const input of tx.inputs) {
+      inputWriter.writeReverse(input.prevTxId);
+      inputWriter.writeUInt32LE(input.outputIndex);
+      inputWriter.writeUInt32LE(input.sequenceNumber);
+      inputWriter2.write(tbc.crypto.Hash.sha256(input.script.toBuffer()));
+    }
+    writer.write(getLengthHex(inputWriter.toBuffer().length));
+    writer.write(inputWriter.toBuffer());
+    writer.write(Buffer.from(hashlength, "hex"));
+    writer.write(tbc.crypto.Hash.sha256(inputWriter2.toBuffer()));
+    writer.write(Buffer.from(amountlength, "hex"));
+    writer.writeUInt64LEBN(tx.outputs[0].satoshisBN);
+    writer.write(getLengthHex(tx.outputs[0].script.toBuffer().length));
+    writer.write(tx.outputs[0].script.toBuffer());
+    writer.write(Buffer.from(amountlength, "hex"));
+    writer.writeUInt64LEBN(tx.outputs[1].satoshisBN);
+    writer.write(getLengthHex(tx.outputs[1].script.toBuffer().length));
+    writer.write(tx.outputs[1].script.toBuffer());
+    writer.write(Buffer.from(getOutputsData(tx, 2), "hex"));
+    return writer.toBuffer().toString("hex");
+  }
+
+  static getPrePreTxdata_v0(tx: tbc.Transaction) {
+    const writer = new tbc.encoding.BufferWriter();
+    writer.write(Buffer.from(vliolength, "hex"));
+    writer.writeUInt32LE(version);
+    writer.writeUInt32LE(tx.nLockTime);
+    writer.writeInt32LE(tx.inputs.length);
+    writer.writeInt32LE(tx.outputs.length);
+    const inputWriter = new tbc.encoding.BufferWriter();
+    const inputWriter2 = new tbc.encoding.BufferWriter();
+    for (const input of tx.inputs) {
+      inputWriter.writeReverse(input.prevTxId);
+      inputWriter.writeUInt32LE(input.outputIndex);
+      inputWriter.writeUInt32LE(input.sequenceNumber);
+      inputWriter2.write(tbc.crypto.Hash.sha256(input.script.toBuffer()));
+    }
+    writer.write(Buffer.from(hashlength, "hex"));
+    writer.write(tbc.crypto.Hash.sha256(inputWriter.toBuffer()));
+    writer.write(Buffer.from(hashlength, "hex"));
+    writer.write(tbc.crypto.Hash.sha256(inputWriter2.toBuffer()));
+    writer.write(Buffer.from(amountlength, "hex"));
+    writer.writeUInt64LEBN(tx.outputs[0].satoshisBN);
+    writer.write(getLengthHex(tx.outputs[0].script.toBuffer().length));
+    writer.write(tx.outputs[0].script.toBuffer());
+    writer.write(Buffer.from(getOutputsData(tx, 1), "hex"));
+    return writer.toBuffer().toString("hex");
   }
 }
 
