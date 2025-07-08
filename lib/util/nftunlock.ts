@@ -8,8 +8,8 @@ export function getCurrentTxdata(tx: tbc.Transaction): string {
     const writer = new tbc.encoding.BufferWriter();
     writer.write(Buffer.from(amountlength, 'hex'));
     writer.writeUInt64LEBN(tx.outputs[0].satoshisBN);
-    writer.write(getLengthHex(tx.outputs[0].script.toBuffer().length));
-    writer.write(tx.outputs[0].script.toBuffer());
+    writer.write(Buffer.from(hashlength, 'hex'));
+    writer.write(tbc.crypto.Hash.sha256(tx.outputs[0].script.toBuffer()));
     writer.write(Buffer.from(getOutputsData(tx, 1), 'hex'));
     return writer.toBuffer().toString('hex');
 }
@@ -36,8 +36,8 @@ export function getPreTxdata(tx: tbc.Transaction): string {
     writer.write(tbc.crypto.Hash.sha256(inputWriter2.toBuffer()));
     writer.write(Buffer.from(amountlength, 'hex'));
     writer.writeUInt64LEBN(tx.outputs[0].satoshisBN);
-    writer.write(getLengthHex(tx.outputs[0].script.toBuffer().length));
-    writer.write(tx.outputs[0].script.toBuffer());
+    writer.write(Buffer.from(hashlength, 'hex'));
+    writer.write(tbc.crypto.Hash.sha256(tx.outputs[0].script.toBuffer()));
     writer.write(Buffer.from(amountlength, 'hex'));
     writer.writeUInt64LEBN(tx.outputs[1].satoshisBN);
     writer.write(getLengthHex(tx.outputs[1].script.toBuffer().length));
@@ -69,9 +69,8 @@ export function getPrePreTxdata(tx: tbc.Transaction): string {
     writer.write(Buffer.from(amountlength, 'hex'));
     writer.writeUInt64LEBN(tx.outputs[0].satoshisBN);
 
-    writer.write(getLengthHex(tx.outputs[0].script.toBuffer().length));
-
-    writer.write(tx.outputs[0].script.toBuffer());
+    writer.write(Buffer.from(hashlength, 'hex'));
+    writer.write(tbc.crypto.Hash.sha256(tx.outputs[0].script.toBuffer()));
     writer.write(Buffer.from(getOutputsData(tx, 1), 'hex'));
     return writer.toBuffer().toString('hex');
 }
