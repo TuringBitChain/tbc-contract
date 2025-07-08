@@ -11,6 +11,7 @@ import {
   buildUTXO,
   buildFtPrePreTxData,
 } from "../util/util";
+const BN = tbc.crypto.BN;
 
 interface FtInfo {
     contractTxid?: string;
@@ -379,7 +380,8 @@ class FT {
                 prepreTxData = ["57" + getPrePreTxdata(preTX[0], tx.inputs[0].outputIndex)];
             }
             preTX = [tx];
-            ftutxoBalance -= BigInt(Math.floor(amount * Math.pow(10, this.decimal)));
+            // ftutxoBalance -= BigInt(Math.floor(amount * Math.pow(10, this.decimal)));
+            ftutxoBalance -= BigInt(new BN(amount).mul(new BN(Math.pow(10, this.decimal))).toString());
             i++;
             console.log("ftutxoBalance", ftutxoBalance);
         }
@@ -397,7 +399,7 @@ class FT {
         if (amount < 0) {
             throw new Error('Invalid amount input');
         }
-        const amountbn = BigInt(Math.floor(amount * Math.pow(10, decimal)));
+        const amountbn = BigInt(new BN(amount).mul(new BN(Math.pow(10, decimal))).toString());
 
         if (ftutxo) {
             for (let i = 0; i < ftutxo.length; i++) {
