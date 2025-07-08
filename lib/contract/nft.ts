@@ -188,7 +188,7 @@ class NFT {
       .addOutput(
         new tbc.Transaction.Output({
           script: NFT.buildCodeScript(nfttxo.txId, nfttxo.outputIndex),
-          satoshis: 100,
+          satoshis: 200,
         })
       )
       .addOutput(
@@ -268,7 +268,7 @@ class NFT {
       tx.addOutput(
         new tbc.Transaction.Output({
           script: NFT.buildCodeScript(nfttxos[i].txId, nfttxos[i].outputIndex),
-          satoshis: 100,
+          satoshis: 200,
         })
       )
         .addOutput(
@@ -350,13 +350,13 @@ class NFT {
       .addOutput(
         new tbc.Transaction.Output({
           script: code,
-          satoshis: this.code_balance,
+          satoshis: 200,
         })
       )
       .addOutput(
         new tbc.Transaction.Output({
           script: NFT.buildHoldScript(address_to),
-          satoshis: this.hold_balance,
+          satoshis: 100,
         })
       )
       .addOutput(
@@ -431,13 +431,13 @@ class NFT {
       .addOutput(
         new tbc.Transaction.Output({
           script: code,
-          satoshis: this.code_balance,
+          satoshis: 200,
         })
       )
       .addOutput(
         new tbc.Transaction.Output({
           script: NFT.buildHoldScript(address_to),
-          satoshis: this.hold_balance,
+          satoshis: 100,
         })
       )
       .addOutput(
