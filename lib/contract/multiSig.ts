@@ -60,7 +60,7 @@ class MultiSig {
     if (txSize < 1000) {
       tx.fee(80);
     } else {
-      tx.feePerKb(100);
+      tx.feePerKb(80);
     }
     tx.sign(privateKey).seal();
     const raw = tx.uncheckedSerialize();
@@ -99,7 +99,7 @@ class MultiSig {
     if (txSize < 1000) {
       tx.fee(80);
     } else {
-      tx.feePerKb(100);
+      tx.feePerKb(80);
     }
 
     tx.sign(privateKey).seal();
@@ -431,7 +431,7 @@ class MultiSig {
     if (txSize < 1000) {
       tx.fee(80);
     } else {
-      tx.feePerKb(100);
+      tx.feePerKb(80);
     }
 
     for (let i = 0; i < ftutxos.length; i++) {
