@@ -46,7 +46,7 @@ const main = async ()=>{
     if (nft_data){
         utxos = await contract.API.getUTXOs(address,0.2,network);
     }else{
-        utxos = await contract.API.getUTXOs(address,0.01,network);
+        utxos = await contract.API.getUTXOs(address,0.001,network);
     }
     const nfttxo = await contract.API.fetchNFTTXO({ script: contract.NFT.buildMintScript(address).toBuffer().toString("hex"), tx_hash: collection_id, network });
     const txraw = contract.NFT.createNFT(collection_id,address,privateKey,nft_data, utxos, nfttxo);
@@ -61,7 +61,7 @@ const main = async ()=>{
             attributes: "",
         })
     }
-    const utxos = await contract.API.getUTXOs(address, 0.01 * 100, network);
+    const utxos = await contract.API.getUTXOs(address, 0.001 * 100, network);
     const nfttxos = await contract.API.fetchNFTTXOs({ script: contract.NFT.buildMintScript(address).toBuffer().toString("hex"), tx_hash: collection_id, network });
     const txraws = contract.NFT.batchCreateNFT(collection_id, address, privateKey, nft_datas, utxos, nfttxos);
     await contract.API.broadcastTXsraw(txraws, network);
@@ -69,12 +69,7 @@ const main = async ()=>{
     const nft = new contract.NFT(contract_id);
     const nftInfo = await contract.API.fetchNFTInfo(contract_id, network);
     nft.initialize(nftInfo);
-    let utxos:tbc.Transaction.IUnspentOutput[] = [];
-    if (nft.nftTransferTimeCount === 0){
-        utxos = await contract.API.getUTXOs(address,0.2,network);
-    }else{
-        utxos = await contract.API.getUTXOs(address,0.01,network);
-    }
+    utxos = await contract.API.getUTXOs(address,0.001,network);
     const nfttxo = await contract.API.fetchNFTTXO({ script: contract.NFT.buildCodeScript(nftInfo.collectionId, nftInfo.collectionIndex).toBuffer().toString("hex"), network });
     const pre_tx = await contract.API.fetchTXraw(nfttxo.txId, network);
     const pre_pre_tx = await contract.API.fetchTXraw(pre_tx.toObject().inputs[0].prevTxId, network);
