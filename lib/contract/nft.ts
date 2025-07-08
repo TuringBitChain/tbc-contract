@@ -68,7 +68,7 @@ class NFT {
     if (
       nftIcon ===
       collectionId +
-        writer.writeUInt32LE(collectionIndex).toBuffer().toString("hex")
+      writer.writeUInt32LE(collectionIndex).toBuffer().toString("hex")
     ) {
       file = nftIcon;
     } else {
@@ -218,6 +218,85 @@ class NFT {
   }
 
   /**
+   * 批量创建 NFT，并返回未检查的交易原始数据。
+   *
+   * @param {string} collection_id - 关联的 NFT 集合 ID。
+   * @param {string} address - 接收 NFT 的地址。
+   * @param {tbc.PrivateKey} privateKey - 用于签名交易的私钥。
+   * @param {NFTData[]} datas - 包含 NFT 数据的对象数组，包括文件信息等。
+   * @param {tbc.Transaction.IUnspentOutput[]} utxos - 用于创建交易的未花费输出列表。
+   * @param {tbc.Transaction.IUnspentOutput[]} nfttxos - 用于创建 NFT 的特定未花费输出列表。
+   * @returns {Array<{ txHex: string }>} 返回包含未检查交易原始数据的数组。
+   */
+  static batchCreateNFT(
+    collection_id: string,
+    address: string,
+    privateKey: tbc.PrivateKey,
+    datas: NFTData[],
+    utxos: tbc.Transaction.IUnspentOutput[],
+    nfttxos: tbc.Transaction.IUnspentOutput[],
+  ): Array<{ txHex: string }> {
+    if (datas.length !== nfttxos.length) {
+      throw new Error("The length of datas array must match the length of nfttxos array");
+    }
+    const hold = NFT.buildHoldScript(address);
+    const txs: tbc.Transaction[] = [];
+    for (let i = 0; i < datas.length; i++) {
+      const writer = new tbc.encoding.BufferWriter();
+      datas[i].file = collection_id + writer.writeUInt32LE(nfttxos[i].outputIndex).toBuffer().toString("hex");
+      const tx = new tbc.Transaction()
+        .from(nfttxos[i]);
+      if (i === 0) {
+        tx.from(utxos);
+      } else {
+        tx.addInputFromPrevTx(txs[i - 1], 3);
+      }
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: NFT.buildCodeScript(nfttxos[i].txId, nfttxos[i].outputIndex),
+          satoshis: 1000,
+        })
+      )
+        .addOutput(
+          new tbc.Transaction.Output({
+            script: hold,
+            satoshis: 100,
+          })
+        )
+        .addOutput(
+          new tbc.Transaction.Output({
+            script: NFT.buildTapeScript(datas[i]),
+            satoshis: 0,
+          })
+        )
+        .feePerKb(100)
+        .change(address)
+        .setInputScript(
+          {
+            inputIndex: 0,
+            privateKey,
+          },
+          (tx) => {
+            const Sig = tx.getSignature(0);
+            const SigLength = (Sig.length / 2).toString(16);
+            const sig = SigLength + Sig;
+            const publicKeylength = (
+              privateKey.toPublicKey().toBuffer().toString("hex").length / 2
+            ).toString(16);
+            const publickey =
+              publicKeylength +
+              privateKey.toPublicKey().toBuffer().toString("hex");
+            return new tbc.Script(sig + publickey);
+          }
+        )
+        .sign(privateKey)
+        .seal();
+      txs.push(tx);
+    }
+    return txs.map(tx => ({ txHex: tx.uncheckedSerialize() }));
+  }
+
+  /**
    * 转移 NFT 从一个地址到另一个地址，并返回未检查的交易原始数据。
    *
    * @param {string} address_from - NFT 转出地址。
@@ -319,7 +398,7 @@ class NFT {
       .seal();
 
     return tx.uncheckedSerialize();
-  }
+  }  
 
   static buildCodeScript(tx_hash: string, outputIndex: number): tbc.Script {
     const tx_id = Buffer.from(tx_hash, "hex").reverse().toString("hex");
@@ -328,8 +407,8 @@ class NFT {
     const tx_id_vout = "0x" + tx_id + vout;
     const code = new tbc.Script(
       "OP_1 OP_PICK OP_3 OP_SPLIT 0x01 0x14 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_1 OP_PICK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_1 OP_PICK 0x01 0x24 OP_SPLIT OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_SHA256 OP_6 OP_PUSH_META 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_1 OP_PICK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_SHA256 OP_SHA256 OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_SWAP OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUAL OP_IF OP_DROP OP_ELSE 0x24 " +
-        tx_id_vout +
-        " OP_EQUALVERIFY OP_ENDIF OP_1 OP_PICK OP_FROMALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_DUP OP_HASH160 OP_FROMALTSTACK OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x05 0x33436f6465"
+      tx_id_vout +
+      " OP_EQUALVERIFY OP_ENDIF OP_1 OP_PICK OP_FROMALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_DUP OP_HASH160 OP_FROMALTSTACK OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x05 0x33436f6465"
     );
     return code;
   }
@@ -339,9 +418,9 @@ class NFT {
       tbc.Address.fromString(address).hashBuffer.toString("hex");
     const mint = new tbc.Script(
       "OP_DUP OP_HASH160" +
-        " 0x14 0x" +
-        pubKeyHash +
-        " OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x0d 0x5630204d696e74204e486f6c64"
+      " 0x14 0x" +
+      pubKeyHash +
+      " OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x0d 0x5630204d696e74204e486f6c64"
     );
     return mint;
   }
@@ -351,9 +430,9 @@ class NFT {
       tbc.Address.fromString(address).hashBuffer.toString("hex");
     const hold = new tbc.Script(
       "OP_DUP OP_HASH160" +
-        " 0x14 0x" +
-        pubKeyHash +
-        " OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x0d 0x56302043757272204e486f6c64"
+      " 0x14 0x" +
+      pubKeyHash +
+      " OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x0d 0x56302043757272204e486f6c64"
     );
     return hold;
   }
@@ -362,6 +441,24 @@ class NFT {
     const dataHex = Buffer.from(JSON.stringify(data)).toString("hex");
     const tape = tbc.Script.fromASM(`OP_FALSE OP_RETURN ${dataHex} 4e54617065`);
     return tape;
+  }
+
+  static decodeNFTDataFromHex(hex: string): any {
+    try {
+      const jsonString = Buffer.from(hex, 'hex').toString('utf8');
+      return JSON.parse(jsonString);
+    } catch (error) {
+      throw new Error(`Failed to decode NFT data from hex: ${error.message}`);
+    }
+  }
+
+  static encodeNFTDataToHex(data: any): string {
+    try {
+      const jsonString = JSON.stringify(data);
+      return Buffer.from(jsonString).toString('hex');
+    } catch (error) {
+      throw new Error(`Failed to encode NFT data to hex: ${error.message}`);
+    }
   }
 
   private static getCurrentTxdata(tx: tbc.Transaction): string {

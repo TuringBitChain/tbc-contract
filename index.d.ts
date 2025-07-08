@@ -99,6 +99,11 @@ declare module "tbc-contract" {
       tx_hash?: string;
       network?: "testnet" | "mainnet" | string;
     }): Promise<Transaction.IUnspentOutput>;
+    static fetchNFTTXOs(params: {
+      script: string;
+      tx_hash: string;
+      network?: "testnet" | "mainnet" | string;
+    }): Promise<Transaction.IUnspentOutput[]>;
     static fetchNFTInfo(
       contract_id: string,
       network?: "testnet" | "mainnet" | string
@@ -178,6 +183,14 @@ declare module "tbc-contract" {
       utxos: Transaction.IUnspentOutput[],
       nfttxo: Transaction.IUnspentOutput
     ): string;
+    static batchCreateNFT(
+      collection_id: string,
+      address: string,
+      privateKey: PrivateKey,
+      datas: NFTData[],
+      utxos: Transaction.IUnspentOutput[],
+      nfttxos: Transaction.IUnspentOutput[],
+    ): Array<{ txHex: string }>;
     transferNFT(
       address_from: string,
       address_to: string,
@@ -190,6 +203,8 @@ declare module "tbc-contract" {
     static buildHoldScript(address: string): Script;
     static buildMintScript(address: string): Script;
     static buildTapeScript(data: CollectionData | NFTData): Script;
+    static decodeNFTDataFromHex(hex: string): any;
+    static encodeNFTDataToHex(data: any): string;
   }
 
   interface FtInfo {
@@ -326,8 +341,8 @@ declare module "tbc-contract" {
 
     constructor(config?: {
       txidOrParams?:
-        | string
-        | { ftContractTxid: string; tbc_amount: number; ft_a: number };
+      | string
+      | { ftContractTxid: string; tbc_amount: number; ft_a: number };
       network?: "testnet" | "mainnet" | string;
     });
     initCreate(ftContractTxid?: string): Promise<void>;
