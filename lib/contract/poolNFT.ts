@@ -159,7 +159,7 @@ class poolNFT {
                 script: poolnftTapeScript,
                 satoshis: 0,
             }))
-        tx.feePerKb(100);
+        tx.feePerKb(80);
         tx.change(privateKey.toAddress());
         tx.setInputScript({
             inputIndex: 0,
@@ -243,7 +243,7 @@ class poolNFT {
                 script: poolnftTapeScript,
                 satoshis: 0,
             }))
-        tx.feePerKb(100);
+        tx.feePerKb(80);
         tx.change(privateKey.toAddress());
         tx.setInputScript({
             inputIndex: 0,
@@ -407,7 +407,7 @@ class poolNFT {
                 satoshis: 0
             }));
         }
-        tx.feePerKb(100);
+        tx.feePerKb(80);
         tx.change(privateKey.toAddress())
         await tx.setInputScriptAsync({
             inputIndex: 0,
@@ -558,7 +558,7 @@ class poolNFT {
                 satoshis: 0
             }));
         }
-        tx.feePerKb(100)
+        tx.feePerKb(80)
         tx.change(privateKey.toAddress());
         await tx.setInputScriptAsync({
             inputIndex: 0,
@@ -744,7 +744,7 @@ class poolNFT {
                 satoshis: 0
             }));
         }
-        tx.feePerKb(100)
+        tx.feePerKb(80)
         tx.change(privateKey.toAddress());
         await tx.setInputScriptAsync({
             inputIndex: 0,
@@ -880,7 +880,7 @@ class poolNFT {
             script: ftabycTapeScript,
             satoshis: 0
         }));
-        tx.feePerKb(100)
+        tx.feePerKb(80)
         tx.change(privateKey.toAddress());
         await tx.setInputScriptAsync({
             inputIndex: 0,
@@ -1008,7 +1008,7 @@ class poolNFT {
             script: ftabycTapeScript,
             satoshis: 0
         }));
-        tx.feePerKb(100)
+        tx.feePerKb(80)
         tx.change(privateKey.toAddress());
         await tx.setInputScriptAsync({
             inputIndex: 0,
@@ -1157,7 +1157,7 @@ class poolNFT {
                 satoshis: 0
             }));
         }
-        tx.feePerKb(100)
+        tx.feePerKb(80)
         tx.change(privateKey.toAddress());
         await tx.setInputScriptAsync({
             inputIndex: 0,
@@ -1311,7 +1311,7 @@ class poolNFT {
                 satoshis: 0
             }));
         }
-        tx.feePerKb(100)
+        tx.feePerKb(80)
         tx.change(privateKey.toAddress());
         await tx.setInputScriptAsync({
             inputIndex: 0,
@@ -1577,7 +1577,7 @@ class poolNFT {
                 script: tapeScript,
                 satoshis: 0
             }));
-            tx.feePerKb(100)
+            tx.feePerKb(80)
                 .change(privateKey.toAddress());
             for (let i = 0; i < fttxo.length; i++) {
                 await tx.setInputScriptAsync({
@@ -1710,7 +1710,7 @@ class poolNFT {
                 script: tapeScript,
                 satoshis: 0
             }));
-            tx.feePerKb(100)
+            tx.feePerKb(80)
             tx.change(privateKey.toAddress());
             await tx.setInputScriptAsync({
                 inputIndex: 0,

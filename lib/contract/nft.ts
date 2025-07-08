@@ -79,7 +79,7 @@ class NFT {
     if (
       nftIcon ===
       collectionId +
-        writer.writeUInt32LE(collectionIndex).toBuffer().toString("hex")
+      writer.writeUInt32LE(collectionIndex).toBuffer().toString("hex")
     ) {
       file = nftIcon;
     } else {
@@ -202,9 +202,14 @@ class NFT {
           script: NFT.buildTapeScript(data),
           satoshis: 0,
         })
-      )
-      .feePerKb(80)
-      .change(address)
+      );
+    const txSize = tx.getEstimateSize();
+    if (txSize < 1000) {
+      tx.fee(80);
+    } else {
+      tx.feePerKb(80);
+    }
+    tx.change(address)
       .setInputScript(
         {
           inputIndex: 0,
@@ -283,7 +288,6 @@ class NFT {
             satoshis: 0,
           })
         )
-        .feePerKb(80)
         .change(address)
         .setInputScript(
           {
@@ -302,8 +306,14 @@ class NFT {
               privateKey.toPublicKey().toBuffer().toString("hex");
             return new tbc.Script(sig + publickey);
           }
-        )
-        .sign(privateKey)
+        );
+      const txSize = tx.getEstimateSize();
+      if (txSize < 1000) {
+        tx.fee(80);
+      } else {
+        tx.feePerKb(80);
+      }
+      tx.sign(privateKey)
         .seal();
       txs.push(tx);
     }
@@ -365,7 +375,6 @@ class NFT {
           satoshis: 0,
         })
       )
-      .feePerKb(80)
       .change(address_from)
       .setInputScript(
         {
@@ -407,10 +416,15 @@ class NFT {
             privateKey.toPublicKey().toBuffer().toString("hex");
           return new tbc.Script(sig + publickey);
         }
-      )
-      .sign(privateKey)
+      );
+    const txSize = tx.getEstimateSize();
+    if (txSize < 1000) {
+      tx.fee(80);
+    } else {
+      tx.feePerKb(80);
+    }
+    tx.sign(privateKey)
       .seal();
-    console.log(tx.verify());
     return tx.uncheckedSerialize();
   }
 
@@ -446,7 +460,6 @@ class NFT {
           satoshis: 0,
         })
       )
-      .feePerKb(80)
       .change(address_from)
       .setInputScript(
         {
@@ -489,9 +502,14 @@ class NFT {
           return new tbc.Script(sig + publickey);
         }
       )
-      .sign(privateKey)
+    const txSize = tx.getEstimateSize();
+    if (txSize < 1000) {
+      tx.fee(80);
+    } else {
+      tx.feePerKb(80);
+    }
+    tx.sign(privateKey)
       .seal();
-    console.log(tx.verify());
     return tx.uncheckedSerialize();
   }
 
@@ -502,8 +520,8 @@ class NFT {
     const tx_id_vout = "0x" + tx_id + vout;
     const code = new tbc.Script(
       "OP_1 OP_PICK OP_3 OP_SPLIT 0x01 0x14 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_OVER OP_TOALTSTACK OP_TOALTSTACK OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_OVER 0x01 0x24 OP_SPLIT OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_HASH256 OP_6 OP_PUSH_META 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_OVER OP_TOALTSTACK OP_TOALTSTACK OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_SWAP OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUAL OP_IF OP_DROP OP_ELSE 0x24 " +
-        tx_id_vout +
-        " OP_EQUALVERIFY OP_ENDIF OP_OVER OP_FROMALTSTACK OP_EQUALVERIFY OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_DUP OP_HASH160 OP_FROMALTSTACK OP_EQUALVERIFY OP_CHECKSIG OP_RETURN"
+      tx_id_vout +
+      " OP_EQUALVERIFY OP_ENDIF OP_OVER OP_FROMALTSTACK OP_EQUALVERIFY OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_DUP OP_HASH160 OP_FROMALTSTACK OP_EQUALVERIFY OP_CHECKSIG OP_RETURN"
     );
     return code;
   }
@@ -515,8 +533,8 @@ class NFT {
     const tx_id_vout = "0x" + tx_id + vout;
     const code = new tbc.Script(
       "OP_1 OP_PICK OP_3 OP_SPLIT 0x01 0x14 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_1 OP_PICK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_1 OP_PICK 0x01 0x24 OP_SPLIT OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_SHA256 OP_6 OP_PUSH_META 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_1 OP_PICK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_SHA256 OP_SHA256 OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_SWAP OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUAL OP_IF OP_DROP OP_ELSE 0x24 " +
-        tx_id_vout +
-        " OP_EQUALVERIFY OP_ENDIF OP_1 OP_PICK OP_FROMALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_DUP OP_HASH160 OP_FROMALTSTACK OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x05 0x33436f6465"
+      tx_id_vout +
+      " OP_EQUALVERIFY OP_ENDIF OP_1 OP_PICK OP_FROMALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_DUP OP_HASH160 OP_FROMALTSTACK OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x05 0x33436f6465"
     );
     return code;
   }
@@ -526,9 +544,9 @@ class NFT {
       tbc.Address.fromString(address).hashBuffer.toString("hex");
     const mint = new tbc.Script(
       "OP_DUP OP_HASH160" +
-        " 0x14 0x" +
-        pubKeyHash +
-        " OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x0d 0x5630204d696e74204e486f6c64"
+      " 0x14 0x" +
+      pubKeyHash +
+      " OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x0d 0x5630204d696e74204e486f6c64"
     );
     return mint;
   }
@@ -538,9 +556,9 @@ class NFT {
       tbc.Address.fromString(address).hashBuffer.toString("hex");
     const hold = new tbc.Script(
       "OP_DUP OP_HASH160" +
-        " 0x14 0x" +
-        pubKeyHash +
-        " OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x0d 0x56302043757272204e486f6c64"
+      " 0x14 0x" +
+      pubKeyHash +
+      " OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x0d 0x56302043757272204e486f6c64"
     );
     return hold;
   }
