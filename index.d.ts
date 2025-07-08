@@ -199,6 +199,18 @@ declare module "tbc-contract" {
       pre_tx: Transaction,
       pre_pre_tx: Transaction
     ): string;
+    transferNFT_v0(
+      address_from: string,
+      address_to: string,
+      privateKey: PrivateKey,
+      utxos: Transaction.IUnspentOutput[],
+      pre_tx: Transaction,
+      pre_pre_tx: Transaction
+    ): string;
+    static buildCodeScript_v0(tx_hash: string, outputIndex: number): Script;
+    static getCurrentTxdata_v0(tx: Transaction): string;
+    static getPreTxdata_v0(tx: Transaction): string;
+    static getPrePreTxdata_v0(tx: Transaction): string;
     static buildCodeScript(tx_hash: string, outputIndex: number): Script;
     static buildHoldScript(address: string): Script;
     static buildMintScript(address: string): Script;
