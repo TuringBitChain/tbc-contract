@@ -96,7 +96,6 @@ class FT {
      */
     MintFT(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput): string[] {
         const privateKey = privateKey_from;
-        const address_from = privateKey.toAddress().toString();
         const name = this.name;
         const symbol = this.symbol;
         const decimal = this.decimal;
@@ -356,6 +355,17 @@ class FT {
         return txraw;
     }
 
+    /**
+     * 批量转移 FT 从一个地址到多个地址，并返回未检查的交易原始数据。
+     *
+     * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
+     * @param {Map<string, number>} receiveAddressAmount - 接收地址和金额的映射。
+     * @param {tbc.Transaction.IUnspentOutput[]} ftutxo - 用于创建交易的 FT UTXO 列表。
+     * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
+     * @param {tbc.Transaction[]} preTX - 之前的交易列表。
+     * @param {string[]} prepreTxData - 之前交易的数据列表。
+     * @returns {Array<{ txHex: string }>} 返回包含未检查交易原始数据的数组。
+     */
     batchTransfer(privateKey_from: tbc.PrivateKey, receiveAddressAmount: Map<string, number>, ftutxo: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[]): Array<{ txHex: string }> {
         const privateKey = privateKey_from;
         let txsraw: Array<{ txHex: string }> = [];
