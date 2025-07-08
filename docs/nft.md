@@ -52,8 +52,9 @@ const main = async ()=>{
     const txraw = contract.NFT.createNFT(collection_id,address,privateKey,nft_data, utxos, nfttxo);
     const contract_id = await contract.API.broadcastTXraw(txraw,network);
     //批量创建nft(使用合集图片数据)
+    const number = 100;
     const nft_datas: { nftName: string, symbol: string, description: string, attributes: string }[] = [];
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < number; i++) {
         nft_datas.push({
             nftName: "",
             symbol: "",
@@ -61,9 +62,10 @@ const main = async ()=>{
             attributes: "",
         })
     }
-    const utxos = await contract.API.getUTXOs(address, 0.001 * 100, network);
+    const utxos = await contract.API.getUTXOs(address, 0.001 * number, network);
     const nfttxos = await contract.API.fetchNFTTXOs({ script: contract.NFT.buildMintScript(address).toBuffer().toString("hex"), tx_hash: collection_id, network });
-    const txraws = contract.NFT.batchCreateNFT(collection_id, address, privateKey, nft_datas, utxos, nfttxos);
+    const selectedNfttxos = nfttxos.slice(0, nft_datas.length);
+    const txraws = contract.NFT.batchCreateNFT(collection_id, address, privateKey, nft_datas, utxos, selectedNfttxos);
     await contract.API.broadcastTXsraw(txraws, network);
     //转移nft
     const nft = new contract.NFT(contract_id);
