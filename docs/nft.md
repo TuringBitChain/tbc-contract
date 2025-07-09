@@ -52,7 +52,7 @@ const main = async ()=>{
     const txraw = contract.NFT.createNFT(collection_id,address,privateKey,nft_data, utxos, nfttxo);
     const contract_id = await contract.API.broadcastTXraw(txraw,network);
     //批量创建nft(使用合集图片数据)
-    const number = 100;
+    const number = 1000;
     const nft_datas: { nftName: string, symbol: string, description: string, attributes: string }[] = [];
     for (let i = 0; i < number; i++) {
         nft_datas.push({
@@ -71,13 +71,84 @@ const main = async ()=>{
     const nft = new contract.NFT(contract_id);
     const nftInfo = await contract.API.fetchNFTInfo(contract_id, network);
     nft.initialize(nftInfo);
-    utxos = await contract.API.getUTXOs(address,0.001,network);
+    utxos = await contract.API.getUTXOs(address,0.01,network);
     const nfttxo = await contract.API.fetchNFTTXO({ script: contract.NFT.buildCodeScript(nftInfo.collectionId, nftInfo.collectionIndex).toBuffer().toString("hex"), network });
     const pre_tx = await contract.API.fetchTXraw(nfttxo.txId, network);
     const pre_pre_tx = await contract.API.fetchTXraw(pre_tx.toObject().inputs[0].prevTxId, network);
     const txraw = nft.transferNFT(address_from, address_to, privateKey, utxos, pre_tx, pre_pre_tx);
     await contract.API.broadcastTXraw(txraw,network);
+    //批量转移nft
+    const number = 1000;
+    const utxos = await contract.API.getUTXOs(address, 0.01 * number, network);
+    const tx = new tbc.Transaction().from(utxos);
+    for (let i = 0; i < 100; i++) {
+        tx.addOutput(new tbc.Transaction.Output({
+            script: tbc.Script.buildPublicKeyHashOut(address),
+            satoshis: 5000
+        }));
+    }
+    tx.change(address);
+    const txSize = tx.getEstimateSize();
+    if (txSize < 1000) {
+        tx.fee(80);
+    }
+    else {
+        tx.feePerKb(80);
+    }
+    tx.sign(privateKey).seal();
+    const txid = await contract.API.broadcastTXraw(tx.uncheckedSerialize(), network);
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const utxos_created: tbc.Transaction.IUnspentOutput[] = [];
+    for (let i = 0; i < number; i++) {
+        utxos_created.push({
+            txId: txid,
+            outputIndex: i,
+            script: tbc.Script.buildPublicKeyHashOut(address).toHex(),
+            satoshis: 5000
+        });
+    }
+    let addresses: string[] = [];
+    for (let i = 0; i < number; i++) {
+        addresses.push(address);
+    }
+    const nftContractIds = await contract.API.fetchNFTs(collection_id, address, number, network);
+    const nftInfoPromises = nftContractIds.map((contractId: string, index: number) =>
+        contract.API.fetchNFTInfo(contractId, network)
+    );
+    const nftInfos = await Promise.all(nftInfoPromises);
+    let nfts: contract.NFT[] = [];
+    for (let i = 0; i < 100; i++) {
+        const nft = new contract.NFT(nftContractIds[i]);
+        nft.initialize(nftInfos[i]);
+        nfts.push(nft);
+    }
+    const nfttxoPromises = nftInfos.map((nftInfo, index) => {
+        const script = contract.NFT.buildCodeScript(nftInfo.collectionId, nftInfo.collectionIndex).toBuffer().toString("hex");
+        return contract.API.fetchNFTTXO({
+            script: script,
+            network
+        });
+    });
+    const nfttxos = await Promise.all(nfttxoPromises);;
+    const preTxPromises = nfttxos.map((nfttxo, index) =>
+        contract.API.fetchTXraw(nfttxo.txId, network)
+    );
+    const preTxs = await Promise.all(preTxPromises);
+    const collectionTx = await contract.API.fetchTXraw(collection_id, network);
+    const prePreTxPromises = preTxs.map((preTx, index) => {
+        const nftInfo = nftInfos[index];
+        if (nftInfo.nftTransferTimeCount === 0) {
+            return Promise.resolve(collectionTx);
+        }
+        return contract.API.fetchTXraw(preTx.toObject().inputs[0].prevTxId, network);
+    });
+    const prePreTxs = await Promise.all(prePreTxPromises);
+    const txraws = nfts.map((nft, i) => {
+        const txraw = nft.transferNFT(address, addresses[i], privateKey, [utxos_created[i]], preTxs[i], prePreTxs[i], true);
+        return txraw;
+    });
+    await contract.API.broadcastTXsraw(txraws.map(txHex => ({ txHex })), network);
 }
- 
+
 main();
 ```
