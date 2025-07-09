@@ -108,6 +108,12 @@ declare module "tbc-contract" {
       contract_id: string,
       network?: "testnet" | "mainnet" | string
     ): Promise<NFTInfo>;
+    static fetchNFTs(
+      collection_id: string,
+      address: string,
+      number: number,
+      network?: "testnet" | "mainnet" | string
+    ): Promise<string[]>
     static fetchUMTXO(
       script_asm: string,
       tbc_amount: number,
@@ -197,7 +203,8 @@ declare module "tbc-contract" {
       privateKey: PrivateKey,
       utxos: Transaction.IUnspentOutput[],
       pre_tx: Transaction,
-      pre_pre_tx: Transaction
+      pre_pre_tx: Transaction,
+      batch?: boolean
     ): string;
     transferNFT_v0(
       address_from: string,
