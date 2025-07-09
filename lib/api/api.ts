@@ -1039,7 +1039,7 @@ class API {
       if (filteredUTXOs.length === 0) {
         throw new Error("The collection supply has been exhausted.");
       }
-      
+
       const sortedUTXOs = filteredUTXOs.sort((a, b) => a.tx_pos - b.tx_pos);
 
       return sortedUTXOs.map((utxo) => ({
@@ -1106,6 +1106,52 @@ class API {
       return nftInfo;
     } catch (error: any) {
       throw new Error(error.message);
+    }
+  }
+
+  /**
+   * Fetches the NFTs for a given collection ID and address.
+   *
+   * @param {string} collection_id - The collection ID to fetch NFTs for.
+   * @param {string} address - The address to filter NFTs by.
+   * @param {number} number - The number of NFTs to fetch.
+   * @param {("testnet" | "mainnet")} [network] - The network type.
+   * @returns {Promise<string[]>} Returns a Promise that resolves to an array of NFT contract IDs.
+   * @throws {Error} Throws an error if the request fails.
+   */
+  static async fetchNFTs(
+    collection_id: string,
+    address: string,
+    number: number,
+    network?: "testnet" | "mainnet" | string
+  ): Promise<string[]> {
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
+    const url = base_url + `nft/collection/id/${collection_id}/page/0/size/${number}`;
+
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch NFTs: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.nftList && Array.isArray(data.nftList)) {
+        const filteredNFTs = data.nftList.filter((nft: any) => nft.nftHolder === address);
+        return filteredNFTs.map((nft: any) => nft.nftContractId);
+      }
+
+      return [];
+    } catch (error: any) {
+      throw new Error(`Error fetching NFTs: ${error.message}`);
     }
   }
 

@@ -349,7 +349,8 @@ class NFT {
     privateKey: tbc.PrivateKey,
     utxos: tbc.Transaction.IUnspentOutput[],
     pre_tx: tbc.Transaction,
-    pre_pre_tx: tbc.Transaction
+    pre_pre_tx: tbc.Transaction,
+    batch: boolean = false
   ): string {
     const code = NFT.buildCodeScript(this.collection_id, this.collection_index);
 
@@ -374,31 +375,33 @@ class NFT {
           script: NFT.buildTapeScript(this.nftData),
           satoshis: 0,
         })
-      )
-      .change(address_from)
-      .setInputScript(
-        {
-          inputIndex: 0,
-          privateKey,
-        },
-        (tx) => {
-          const Sig = tx.getSignature(0);
-          const SigLength = (Sig.length / 2).toString(16);
-          const sig = SigLength + Sig;
-          const publicKeylength = (
-            privateKey.toPublicKey().toBuffer().toString("hex").length / 2
-          ).toString(16);
-          const publickey =
-            publicKeylength +
-            privateKey.toPublicKey().toBuffer().toString("hex");
-          const currenttxdata = getCurrentTxdata(tx);
-          const prepretxdata = getPrePreTxdata(pre_pre_tx);
-          const pretxdata = getPreTxdata(pre_tx);
-          return new tbc.Script(
-            sig + publickey + currenttxdata + prepretxdata + pretxdata
-          );
-        }
-      )
+      );
+    if (!batch) {
+      tx.change(address_from);
+    }
+    tx.setInputScript(
+      {
+        inputIndex: 0,
+        privateKey,
+      },
+      (tx) => {
+        const Sig = tx.getSignature(0);
+        const SigLength = (Sig.length / 2).toString(16);
+        const sig = SigLength + Sig;
+        const publicKeylength = (
+          privateKey.toPublicKey().toBuffer().toString("hex").length / 2
+        ).toString(16);
+        const publickey =
+          publicKeylength +
+          privateKey.toPublicKey().toBuffer().toString("hex");
+        const currenttxdata = getCurrentTxdata(tx);
+        const prepretxdata = getPrePreTxdata(pre_pre_tx);
+        const pretxdata = getPreTxdata(pre_tx);
+        return new tbc.Script(
+          sig + publickey + currenttxdata + prepretxdata + pretxdata
+        );
+      }
+    )
       .setInputScript(
         {
           inputIndex: 1,
@@ -434,7 +437,7 @@ class NFT {
     privateKey: tbc.PrivateKey,
     utxos: tbc.Transaction.IUnspentOutput[],
     pre_tx: tbc.Transaction,
-    pre_pre_tx: tbc.Transaction
+    pre_pre_tx: tbc.Transaction,
   ): string {
     const code = NFT.buildCodeScript_v0(this.collection_id, this.collection_index);
 
