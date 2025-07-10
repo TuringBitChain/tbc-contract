@@ -426,7 +426,7 @@ class poolNFT2 {
      */
     async increaseLP(privateKey_from: tbc.PrivateKey, address_to: string, utxo: tbc.Transaction.IUnspentOutput, amount_tbc: number): Promise<string> {
         const lockStatus = isLock(this.poolnft_code.length);
-        console.log(`Lock status: ${lockStatus}`);
+        // console.log(`Lock status: ${lockStatus}`);
         if (lockStatus) amount_tbc -= 5;
         if (amount_tbc <= 0) throw new Error('Invalid TBC amount input');
         const privateKey = privateKey_from;
@@ -549,8 +549,8 @@ class poolNFT2 {
         });
         tx.sign(privateKey);
         await tx.sealAsync();
-        console.log(tx.verify());
-        console.log(tx.toObject());
+        // console.log(tx.verify());
+        // console.log(tx.toObject());
         const txraw = tx.uncheckedSerialize();
         return txraw;
     }
@@ -1768,9 +1768,9 @@ class poolNFT2 {
         const poolCode = currentTX.outputs[0].script;
         const sub = poolCode.chunks[poolCode.chunks.length - 2].buf.length + 1;
         const poolCodeLength = poolCode.toBuffer().length - sub;
-        console.log(poolCode.toBuffer().length, sub, poolCode.chunks[poolCode.chunks.length - 2], poolCode.chunks[poolCode.chunks.length - 4].opcodenum);
+        // console.log(poolCode.toBuffer().length, sub, poolCode.chunks[poolCode.chunks.length - 2], poolCode.chunks[poolCode.chunks.length - 4].opcodenum);
         if (poolCodeLength > 3279 || poolCode.chunks[poolCode.chunks.length - 4].opcodenum === 81) {
-            console.log("poolCodeLength:", poolCodeLength);
+            // console.log("poolCodeLength:", poolCodeLength);
             switch (option) {
                 case 1:
                     unlockingScript = new tbc.Script(`${currentinputstxdata}${currentinputsdata}${currenttxoutputsdata}${optionHex}${prepretxdata}${pretxdata}`);
@@ -1795,7 +1795,7 @@ class poolNFT2 {
                     throw new Error("Invalid option.");
             }
         } else {
-            console.log("poolCodeLength:", poolCodeLength);
+            // console.log("poolCodeLength:", poolCodeLength);
             const signature = currentTX.getSignature(currentUnlockIndex, privateKey);
             const sig = (signature.length / 2).toString(16).padStart(2, '0') + signature;
             const publicKey = (privateKey.toPublicKey().toString().length / 2).toString(16).padStart(2, '0') + privateKey.toPublicKey().toString();
