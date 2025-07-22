@@ -78,10 +78,10 @@ const main = async ()=>{
     const txraw = nft.transferNFT(address_from, address_to, privateKey, utxos, pre_tx, pre_pre_tx);
     await contract.API.broadcastTXraw(txraw,network);
     //批量转移nft
-    const number = 1000;
+    const number = 100;
     const utxos = await contract.API.getUTXOs(address, 0.01 * number, network);
     const tx = new tbc.Transaction().from(utxos);
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < number; i++) {
         tx.addOutput(new tbc.Transaction.Output({
             script: tbc.Script.buildPublicKeyHashOut(address),
             satoshis: 5000
@@ -117,7 +117,7 @@ const main = async ()=>{
     );
     const nftInfos = await Promise.all(nftInfoPromises);
     let nfts: contract.NFT[] = [];
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < number; i++) {
         const nft = new contract.NFT(nftContractIds[i]);
         nft.initialize(nftInfos[i]);
         nfts.push(nft);
