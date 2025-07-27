@@ -113,7 +113,7 @@ declare module "tbc-contract" {
       address: string,
       number: number,
       network?: "testnet" | "mainnet" | string
-    ): Promise<string[]>
+    ): Promise<string[]>;
     static fetchUMTXO(
       script_asm: string,
       tbc_amount: number,
@@ -195,7 +195,7 @@ declare module "tbc-contract" {
       privateKey: PrivateKey,
       datas: NFTData[],
       utxos: Transaction.IUnspentOutput[],
-      nfttxos: Transaction.IUnspentOutput[],
+      nfttxos: Transaction.IUnspentOutput[]
     ): Array<{ txHex: string }>;
     transferNFT(
       address_from: string,
@@ -360,8 +360,8 @@ declare module "tbc-contract" {
 
     constructor(config?: {
       txidOrParams?:
-      | string
-      | { ftContractTxid: string; tbc_amount: number; ft_a: number };
+        | string
+        | { ftContractTxid: string; tbc_amount: number; ft_a: number };
       network?: "testnet" | "mainnet" | string;
     });
     initCreate(ftContractTxid?: string): Promise<void>;
@@ -619,18 +619,12 @@ declare module "tbc-contract" {
       utxos: Transaction.IUnspentOutput[],
       privateKey: PrivateKey
     ): string;
-    static buildMultiSigTransaction_sendTBCToP2pkh(
+    static buildMultiSigTransaction_sendTBC(
       address_from: string,
       address_to: string,
       amount_tbc: number,
       utxos: Transaction.IUnspentOutput[]
     ): MultiSigTxRaw;
-    static buildMultiSigTransaction_sendTBCToMultiSig(
-      address_from: string,
-      address_to: string,
-      amount_tbc: number,
-      utxos: Transaction.IUnspentOutput[]
-    ): MultiSigTxRaw[];
     static signMultiSigTransaction_sendTBC(
       address_from: string,
       multiSigTxraw: MultiSigTxRaw,
