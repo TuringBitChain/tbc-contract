@@ -6,7 +6,6 @@ const path = require('path');
 const network= "testnet"
 //const network= "mainnet"
 
-//以下以1MB数据图片为例
 // 将图片转换为base64
 async function encodeByBase64(filePath: string): Promise<string> {
     try {
@@ -30,7 +29,7 @@ const main = async ()=>{
       supply: 10,
       file: content,
     };
-    const utxos = await contract.API.getUTXOs(address,0.2,network);
+    const utxos = await contract.API.getUTXOs(address,0.2,network);//大约每100KB图片0.05tbc手续费
     const txraw = contract.NFT.createCollection(address, privateKey, collection_data, utxos);
     const collection_id = await contract.API.broadcastTXraw(txraw,network);
     //创建合集下的NFT
@@ -71,7 +70,7 @@ const main = async ()=>{
     const nft = new contract.NFT(contract_id);
     const nftInfo = await contract.API.fetchNFTInfo(contract_id, network);
     nft.initialize(nftInfo);
-    utxos = await contract.API.getUTXOs(address,0.01,network);
+    const utxos = await contract.API.getUTXOs(address,0.01,network);
     const nfttxo = await contract.API.fetchNFTTXO({ script: contract.NFT.buildCodeScript(nftInfo.collectionId, nftInfo.collectionIndex).toBuffer().toString("hex"), network });
     const pre_tx = await contract.API.fetchTXraw(nfttxo.txId, network);
     const pre_pre_tx = await contract.API.fetchTXraw(pre_tx.toObject().inputs[0].prevTxId, network);
@@ -97,7 +96,6 @@ const main = async ()=>{
     }
     tx.sign(privateKey).seal();
     const txid = await contract.API.broadcastTXraw(tx.uncheckedSerialize(), network);
-    await new Promise((resolve) => setTimeout(resolve, 2000));
     const utxos_created: tbc.Transaction.IUnspentOutput[] = [];
     for (let i = 0; i < number; i++) {
         utxos_created.push({
