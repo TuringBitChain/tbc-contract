@@ -116,7 +116,7 @@ class MultiSig {
    * @param utxos An array of unspent transaction outputs to be used as inputs
    * @returns The raw serialized transaction string
    */
-  static buildMultiSigTransaction_sendTBCToP2pkh(
+  static buildMultiSigTransaction_sendTBC(
     address_from: string,
     address_to: string,
     amount_tbc: number,
@@ -130,74 +130,28 @@ class MultiSig {
       count += utxos[i].satoshis;
       amounts.push(utxos[i].satoshis);
     }
+    const fee = Math.ceil(utxos.length / 10) * 1000;
     const tx = new tbc.Transaction().from(utxos);
     tx.addOutput(
       new tbc.Transaction.Output({
         script: tbc.Script.fromASM(script_asm_from),
-        satoshis: count - amount_satoshis - 1000,
+        satoshis: count - amount_satoshis - fee,
       })
-    )
-      .to(address_to, amount_satoshis);
+    );
+    if (address_to.startsWith("1")) {
+      tx.to(address_to, amount_satoshis);
+    } else {
+      const script_asm_to = MultiSig.getMultiSigLockScript(address_to);
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: tbc.Script.fromASM(script_asm_to),
+          satoshis: amount_satoshis,
+        })
+      );
+    }
 
     const txraw = tx.uncheckedSerialize();
     return { txraw, amounts };
-  }
-
-  /**
-   * Build a multi-signature transaction
-   * @param address_from The address from which the transaction is sent
-   * @param address_to The address to which the transaction is sent
-   * @param amount_tbc The amount to be sent in TBC
-   * @param utxos An array of unspent transaction outputs to be used as inputs
-   * @returns The raw serialized transaction string
-   */
-  static buildMultiSigTransaction_sendTBCToMultiSig(
-    address_from: string,
-    address_to: string,
-    amount_tbc: number,
-    utxos: tbc.Transaction.IUnspentOutput[]
-  ): MultiSigTxRaw[] {
-    const script_asm_from = MultiSig.getMultiSigLockScript(address_from);
-    const script_asm_to = MultiSig.getMultiSigLockScript(address_to);
-    const amount_satoshis = Math.floor(amount_tbc * Math.pow(10, 6));
-    let count = 0;
-    let amounts: number[] = [];
-    for (let i = 0; i < utxos.length; i++) {
-      count += utxos[i].satoshis;
-      amounts.push(utxos[i].satoshis);
-    }
-    const tx_source = new tbc.Transaction().from(utxos);
-    tx_source.addOutput(
-      new tbc.Transaction.Output({
-        script: tbc.Script.fromASM(script_asm_to),
-        satoshis: amount_satoshis,
-      })
-    );
-    tx_source
-      .addOutput(
-        new tbc.Transaction.Output({
-          script: tbc.Script.fromASM(script_asm_from),
-          satoshis: count - amount_satoshis - 1000,
-        })
-      );
-    const tx_source_raw = tx_source.uncheckedSerialize();
-    if (count - amount_satoshis - 1100 > 80) {
-      const tx = new tbc.Transaction();
-      tx.addInputFromPrevTx(tx_source, 1)
-        .addOutput(
-          new tbc.Transaction.Output({
-            script: tbc.Script.fromASM(script_asm_from),
-            satoshis: count - amount_satoshis - 1100,
-          })
-        )
-      const tx_raw = tx.uncheckedSerialize();
-      return [
-        { txraw: tx_source_raw, amounts },
-        { txraw: tx_raw, amounts: [count - amount_satoshis - 1000] },
-      ];
-    } else {
-      return [{ txraw: tx_source_raw, amounts }];
-    }
   }
 
   /**
@@ -229,12 +183,12 @@ class MultiSig {
   }
 
   /**
- * Sign multi-signature transactions
- * @param address_from The address from which the transaction is sent
- * @param multiSigTxraws The raw serialized transaction string
- * @param privateKey The private key used to sign the transaction
- * @returns An array of signatures
- */
+   * Sign multi-signature transactions
+   * @param address_from The address from which the transaction is sent
+   * @param multiSigTxraws The raw serialized transaction string
+   * @param privateKey The private key used to sign the transaction
+   * @returns An array of signatures
+   */
   static batchSignMultiSigTransaction_sendTBC(
     address_from: string,
     multiSigTxraws: MultiSigTxRaw[],
@@ -480,7 +434,7 @@ class MultiSig {
     preTXs: tbc.Transaction[],
     prepreTxDatas: string[],
     contractTX: tbc.Transaction,
-    privateKey: tbc.PrivateKey,
+    privateKey: tbc.PrivateKey
   ): MultiSigTxRaw {
     const code = ft.codeScript;
     const tape = ft.tapeScript;
@@ -630,7 +584,6 @@ class MultiSig {
     const txraw = tx.uncheckedSerialize();
 
     return { txraw, amounts: [utxo.satoshis] };
-
   }
 
   /**
@@ -888,9 +841,9 @@ class MultiSig {
     ).toString("hex");
     return new tbc.Script(
       "OP_DUP OP_HASH160" +
-      " 0x14 0x" +
-      publicKeyHash +
-      " OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x08 0x6d756c7469736967"
+        " 0x14 0x" +
+        publicKeyHash +
+        " OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x08 0x6d756c7469736967"
     );
   }
 

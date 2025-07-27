@@ -1,7 +1,7 @@
 ```ts
 import * as tbc from "tbc-lib-js"
 import * as contract from "tbc-contract"
-const network = "testnet 
+const network = "testnet"
 //const network = "mainnet"
 //签名数为1-6 公钥数为3-10 签名数小于等于公钥数 公钥数组按字母序排列 下为2/3多签示例
 
@@ -25,8 +25,7 @@ await contract.API.broadcastTXraw(txraw, network);
 const const amount_tbc = 10//转移的tbc数量
 const script_asm = contract.MultiSig.getMultiSigLockScript(multiSigAddress);
 const umtxos = await contract.API.getUMTXOs(script_asm, amount_tbc+0.001, network);
-//多签转普通地址
-const multiTxraw = contract.MultiSig.buildMultiSigTransaction_sendTBCToP2pkh(multiSigAddress, address_to, amount_tbc, umtxos);
+const multiTxraw = contract.MultiSig.buildMultiSigTransaction_sendTBC(multiSigAddress, address_to, amount_tbc, umtxos);
 const sig1 = contract.MultiSig.signMultiSigTransaction_sendTBC(multiSigAddress, multiTxraw, privateKeyA);
 const sig2 = contract.MultiSig.signMultiSigTransaction_sendTBC(multiSigAddress, multiTxraw, privateKeyB);
 const sig3 = contract.MultiSig.signMultiSigTransaction_sendTBC(multiSigAddress, multiTxraw, privateKeyC);
@@ -36,28 +35,9 @@ for (let i = 0; i < sig1.length; i++) {
 }//sigs可由sig1 sig2或sig1 sig3 或sig2 sig3组成
 const txraw =contract.MultiSig.finishMultiSigTransaction_sendTBC(multiTxraw.txraw, sigs, pubKeys);
 await contract.API.broadcastTXraw(txraw, network);
-//多签转多签地址
-const multiTxraws = contract.MultiSig.buildMultiSigTransaction_sendTBCToMultisig(multiSigAddress, address_to, amount_tbc, umtxos);
-const sig1 = contract.MultiSig.signMultiSigTransaction_sendTBC(multiSigAddress, multiTxraws[0], privateKeyA);
-const sig2 = contract.MultiSig.signMultiSigTransaction_sendTBC(multiSigAddress, multiTxraws[0], privateKeyB);
-const sig3 = contract.MultiSig.signMultiSigTransaction_sendTBC(multiSigAddress, multiTxraws[0], privateKeyC);
-let sigs1: string[][] = [];
-for (let i = 0; i < sig1.length; i++) {
-        sigs1[i] = [sig1[i], sig2[i]];
-}//sigs1可由sig1 sig2或sig1 sig3 或sig2 sig3组成
-const txraw1 =contract.MultiSig.finishMultiSigTransaction_sendTBC(multiTxraws[0].txraw, sigs1, pubKeys);
-const sig4 = contract.MultiSig.signMultiSigTransaction_sendTBC(multiSigAddress, multiTxraws[1], privateKeyA);
-const sig5 = contract.MultiSig.signMultiSigTransaction_sendTBC(multiSigAddress, multiTxraws[1], privateKeyB);
-const sig6 = contract.MultiSig.signMultiSigTransaction_sendTBC(multiSigAddress, multiTxraws[1], privateKeyC);
-let sig2: string[][] = [];
-for (let i = 0; i < sig1.length; i++) {
-        sigs2[i] = [sig1[i], sig2[i]];
-}//sigs2可由sig1 sig2或sig1 sig3 或sig2 sig3组成
-const txraw2 =contract.MultiSig.finishMultiSigTransaction_sendTBC(multiTxraws[1].txraw, sigs2, pubKeys);
-await contract.API.broadcastTXsraw([txraw1,txraw2],network);
 
 //普通地址向多签地址转ft
-const utxo = await contract.API.fetchUTXO(privateKey, 0.01, network); 
+const utxo = await contract.API.fetchUTXO(privateKey, 0.01, network);
 const Token = new contract.FT('ac3e93dff3460aab4956e092e4078e9b7c34c29fc160772adbf1778556726809');
 const TokenInfo = await contract.API.fetchFtInfo(Token.contractTxid, network);
 Token.initialize(TokenInfo);
@@ -76,7 +56,7 @@ await contract.API.broadcastTXraw(transferTX, network);
 
 //普通地址向多签地址同时转ft和tbc
 const tbc_amount = 1; //可选参数 如果转ft同时需要转tbc，可设置tbc数量
-const utxo = await contract.API.fetchUTXO(privateKey, 0.01 + tbc_amount, network); 
+const utxo = await contract.API.fetchUTXO(privateKey, 0.01 + tbc_amount, network);
 const Token = new contract.FT('ac3e93dff3460aab4956e092e4078e9b7c34c29fc160772adbf1778556726809');
 const TokenInfo = await contract.API.fetchFtInfo(Token.contractTxid, network);
 Token.initialize(TokenInfo);
@@ -96,7 +76,7 @@ await contract.API.broadcastTXraw(transferTX, network);
 //多签地址向普通地址/多签地址转ft
 const multiSigAddress = contract.MultiSig.getMultiSigAddress(pubkeys, signatureCount, publicKeyCount);
 const script_asm = contract.MultiSig.getMultiSigLockScript(multiSigAddress);
-const umtxo = await contract.API.fetchUMTXO(script_asm, 0.01, network);
+const umtxo = await contract.API.fetchUMTXO(script_asm, 0.01, network);//从多签地址转ft时，要保证使用的多签utxo的outputindex为0，如果没有这种utxo通过merge utxo调整位置
 const Token = new contract.FT('ac3e93dff3460aab4956e092e4078e9b7c34c29fc160772adbf1778556726809');
 const TokenInfo = await contract.API.fetchFtInfo(Token.contractTxid, network);
 Token.initialize(TokenInfo);
