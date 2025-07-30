@@ -699,6 +699,7 @@ declare module "tbc-contract" {
       publicKeyCount: number;
     };
     static verifyMultiSigAddress(pubKeys: string[], address: string): boolean;
+    static validateMultiSigAddress(address: string): boolean;
     static getMultiSigLockScript(address: string): string;
     static getCombineHash(address: string): string;
   }
