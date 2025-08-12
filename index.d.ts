@@ -82,7 +82,7 @@ declare module "tbc-contract" {
       network?: "testnet" | "mainnet" | string
     ): Promise<string>;
     static broadcastTXsraw(
-      txrawList: Array<{ txHex: string }>,
+      txrawList: Array<{ txraw: string }>,
       network?: "testnet" | "mainnet" | string
     ): Promise<string>;
     static fetchUTXOs(
@@ -111,7 +111,8 @@ declare module "tbc-contract" {
     static fetchNFTs(
       collection_id: string,
       address: string,
-      number: number,
+      start: number,
+      end: number,
       network?: "testnet" | "mainnet" | string
     ): Promise<string[]>;
     static fetchUMTXO(
@@ -154,8 +155,6 @@ declare module "tbc-contract" {
     collectionId: string;
     collectionIndex: number;
     collectionName: string;
-    nftCodeBalance: number;
-    nftP2pkhBalance: number;
     nftName: string;
     nftSymbol: string;
     nft_attributes: string;
@@ -196,7 +195,7 @@ declare module "tbc-contract" {
       datas: NFTData[],
       utxos: Transaction.IUnspentOutput[],
       nfttxos: Transaction.IUnspentOutput[]
-    ): Array<{ txHex: string }>;
+    ): Array<{ txraw: string }>;
     transferNFT(
       address_from: string,
       address_to: string,
@@ -282,7 +281,7 @@ declare module "tbc-contract" {
       utxo: Transaction.IUnspentOutput,
       preTX: Transaction[],
       prepreTxData: string[]
-    ): Array<{ txHex: string }>;
+    ): Array<{ txraw: string }>;
     mergeFT(
       privateKey_from: PrivateKey,
       ftutxo: Transaction.IUnspentOutput[],
@@ -290,7 +289,7 @@ declare module "tbc-contract" {
       preTX: Transaction[],
       prepreTxData: string[],
       localTX: Transaction[]
-    ): Array<{ txHex: string }>;
+    ): Array<{ txraw: string }>;
     getFTunlock(
       privateKey_from: PrivateKey,
       currentTX: Transaction,
@@ -548,7 +547,7 @@ declare module "tbc-contract" {
       privateKey_from: PrivateKey,
       utxo: Transaction.IUnspentOutput,
       times?: number
-    ): Promise<Array<{ txHex: string }>>;
+    ): Promise<Array<{ txraw: string }>>;
     updatePoolNFT(
       increment: number,
       ft_a_decimal: number,
