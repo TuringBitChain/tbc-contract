@@ -76,7 +76,7 @@ const txs = Token.mergeFT(privateKeyA, ftutxos, utxo, preTXs, prepreTxDatas, loc
 ```ts
 //从本地merge交易中构建池交易数据
 for (const tx of mergeTX) {
-    const txObj = new tbc.Transaction(tx.txHex);
+    const txObj = new tbc.Transaction(tx.txraw);
     preTXs.push(txObj);
 }
 const ftutxo = buildUTXO(preTXs[preTXs.length - 1], 0, true);
@@ -88,7 +88,7 @@ const ftPrePreTxData = [buildFtPrePreTxData(ftPreTX[0], 0, preTXs)];
 ```ts
 let ftAmount = 50000;
 const tx = await poolUse.swaptoTBC_baseToken_local(privateKeyA, addressA, ftutxo, ftPreTX, ftPrePreTxData, ftAmount, lpPlan);
-txs.push({ txHex: tx });
+txs.push({ txraw: tx });
 ```
 
 ### 2.手动输入交易费utxo
@@ -104,7 +104,7 @@ const tbcutxo: tbc.Transaction.IUnspentOutput = {
 // or从交易中构建
 const tbcutxo = buildUTXO(tx, vout, false);
 const txSawp = await poolUse.swaptoTBC_baseToken_local(privateKeyA, addressA, ftutxo, ftPreTX, ftPrePreTxData, ftAmount, lpPlan, tbcutxo);
-txs.push({ txHex: txSawp });
+txs.push({ txraw: txSawp });
 ```
 
 ### 更进一步，使用POOL中换出的TBC UTXO
@@ -112,7 +112,7 @@ txs.push({ txHex: txSawp });
 const tbcutxo_fromPool = buildUTXO(new tbc.Transaction(txSawp), 2, false);
 //使用tbcutxo_fromPool执行需要的操作，如批量转账等
 const txSendTBC = function1();
-txs.push({ txHex: txSendTBC });
+txs.push({ txraw: txSendTBC });
 ```
 
 ### 批量广播
