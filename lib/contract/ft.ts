@@ -364,11 +364,11 @@ class FT {
      * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
      * @param {tbc.Transaction[]} preTX - 之前的交易列表。
      * @param {string[]} prepreTxData - 之前交易的数据列表。
-     * @returns {Array<{ txHex: string }>} 返回包含未检查交易原始数据的数组。
+     * @returns {Array<{ txraw: string }>} 返回包含未检查交易原始数据的数组。
      */
-    batchTransfer(privateKey_from: tbc.PrivateKey, receiveAddressAmount: Map<string, number>, ftutxo: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[]): Array<{ txHex: string }> {
+    batchTransfer(privateKey_from: tbc.PrivateKey, receiveAddressAmount: Map<string, number>, ftutxo: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[]): Array<{ txraw: string }> {
         const privateKey = privateKey_from;
-        let txsraw: Array<{ txHex: string }> = [];
+        let txsraw: Array<{ txraw: string }> = [];
         let tx = new tbc.Transaction();
         let ftutxoBalance = 0n;
         for (const utxo of ftutxo) {
@@ -398,7 +398,7 @@ class FT {
         return txsraw;
     }
 
-    _batchTransfer(privateKey_from: tbc.PrivateKey, address_to: string, amount: number, preTX: tbc.Transaction[], prepreTxData: string[], txsraw: Array<{ txHex: string }>, ftutxoBalance: bigint, ftutxo?: tbc.Transaction.IUnspentOutput[], utxo?: tbc.Transaction.IUnspentOutput): tbc.Transaction {
+    _batchTransfer(privateKey_from: tbc.PrivateKey, address_to: string, amount: number, preTX: tbc.Transaction[], prepreTxData: string[], txsraw: Array<{ txraw: string }>, ftutxoBalance: bigint, ftutxo?: tbc.Transaction.IUnspentOutput[], utxo?: tbc.Transaction.IUnspentOutput): tbc.Transaction {
         const privateKey = privateKey_from;
         const address_from = privateKey.toAddress().toString();
         const code = this.codeScript;
@@ -470,7 +470,7 @@ class FT {
         tx.sign(privateKey);
         tx.seal();
         const txraw = tx.uncheckedSerialize();
-        txsraw.push({ txHex: txraw });
+        txsraw.push({ txraw: txraw });
         return tx;
     }
 
@@ -483,15 +483,15 @@ class FT {
      * @param {tbc.Transaction[]} preTX - 之前的交易列表。
      * @param {string[]} prepreTxData - 之前交易的数据列表。
      * @param {tbc.Transaction[]} localTX - 本地交易列表。
-     * @returns {Array<{ txHex: string }>} 返回一个 txHex 数组。
+     * @returns {Array<{ txraw: string }>} 返回一个 txraw 数组。
      */
-    mergeFT(privateKey_from: tbc.PrivateKey, ftutxo: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[], localTX: tbc.Transaction[]): Array<{ txHex: string }> {
+    mergeFT(privateKey_from: tbc.PrivateKey, ftutxo: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[], localTX: tbc.Transaction[]): Array<{ txraw: string }> {
         const privateKey = privateKey_from;
         const preTxCopy = preTX;
         let ftutxos = ftutxo.slice(0, 5);
         let preTXs = preTX.slice(0, 5);
         let prepreTxDatas = prepreTxData.slice(0, 5);
-        let txsraw: Array<{ txHex: string }> = [];
+        let txsraw: Array<{ txraw: string }> = [];
         let tx = new tbc.Transaction();
 
         for (let i = 0; ftutxos.length > 1; i++) {
@@ -513,7 +513,7 @@ class FT {
         const nonEmpty = preTXs.length;
         const newutxo = buildUTXO(utxoTX, 2, false);
         for (const txraw of txsraw) {
-            const tx = new tbc.Transaction(txraw.txHex);
+            const tx = new tbc.Transaction(txraw.txraw);
             preTXs.push(tx);
             ftutxos.push(buildUTXO(tx, 0, true));
         }
@@ -540,14 +540,14 @@ class FT {
      * @param {tbc.Transaction[]} preTX - 之前的交易列表。
      * @param {string[]} prepreTxData - 之前交易的数据列表。
      * @param {number} times - merge执行次数。
-     * @returns {Array<{ txHex: string }>} 返回一个 txHex 数组。
+     * @returns {Array<{ txraw: string }>} 返回一个 txraw 数组。
      */
-    mergeFT_(privateKey_from: tbc.PrivateKey, ftutxo: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[], times?: number): Array<{ txHex: string }> {
+    mergeFT_(privateKey_from: tbc.PrivateKey, ftutxo: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[], times?: number): Array<{ txraw: string }> {
         const privateKey = privateKey_from;
         let ftutxos = ftutxo.slice(0, 5);
         let preTXs = preTX.slice(0, 5);
         let prepreTxDatas = prepreTxData.slice(0, 5);
-        let txsraw: Array<{ txHex: string }> = [];
+        let txsraw: Array<{ txraw: string }> = [];
         let tx = new tbc.Transaction();
 
         for (let i = 0; i < (times ?? 1) && ftutxos.length > 1; i++) {
@@ -574,11 +574,11 @@ class FT {
      * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
      * @param {tbc.Transaction[]} preTX - 之前的交易列表。
      * @param {string[]} prepreTxData - 之前交易的数据列表。
-     * @param {Array<{ txHex: string }>} txsraw - 之前交易的 txHex 列表。
+     * @param {Array<{ txraw: string }>} txsraw - 之前交易的 txraw 列表。
      * @param {tbc.Transaction.IUnspentOutput} utxo - 首次merge的utxo。
      * @returns {tbc.Transaction} 返回一个交易。
      */
-    _mergeFT(privateKey_from: tbc.PrivateKey, ftutxo: tbc.Transaction.IUnspentOutput[], preTX: tbc.Transaction[], prepreTxData: string[], txsraw: Array<{ txHex: string }>, utxo?: tbc.Transaction.IUnspentOutput): tbc.Transaction {
+    _mergeFT(privateKey_from: tbc.PrivateKey, ftutxo: tbc.Transaction.IUnspentOutput[], preTX: tbc.Transaction[], prepreTxData: string[], txsraw: Array<{ txraw: string }>, utxo?: tbc.Transaction.IUnspentOutput): tbc.Transaction {
         const privateKey = privateKey_from;
         const address = privateKey.toAddress().toString();
         const ftutxos = ftutxo;
@@ -623,7 +623,7 @@ class FT {
         tx.sign(privateKey);
         tx.seal();
         const txraw = tx.uncheckedSerialize();
-        txsraw.push({ txHex: txraw });
+        txsraw.push({ txraw: txraw });
         return tx;
     }
 
