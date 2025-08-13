@@ -1869,8 +1869,8 @@ class poolNFT2 {
     const ftlpHash = tbc.crypto.Hash.sha256(Buffer.from(ftlpCode, "hex"))
       .reverse()
       .toString("hex");
-    const url_testnet = `http://192.168.50.109:18081/api/tbc/pool/lputxo/script/${ftlpHash}`;
-    const url_mainnet = `http://192.168.50.109:18081/api/tbc/pool/lputxo/script/${ftlpHash}`;
+    const url_testnet = `http://192.168.50.109:18081/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
+    const url_mainnet = `http://192.168.50.109:18081/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
     let url = "";
     if (this.network == "testnet") {
       url = url_testnet;
@@ -1879,7 +1879,7 @@ class poolNFT2 {
     } else {
       url =
         (this.network.endsWith("/") ? this.network : this.network + "/") +
-        `pool/lputxo/script/${ftlpHash}`;
+        `pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
     }
     try {
       const response = await (await fetch(url)).json();
@@ -1933,8 +1933,8 @@ class poolNFT2 {
       FTA.tapeScript.length / 2
     ).toBuffer();
     const ftlpHash = tbc.crypto.Hash.sha256(ftlpCode).reverse().toString("hex");
-    const url_testnet = `http://192.168.50.109:18081/api/tbc/pool/lputxo/script/${ftlpHash}`;
-    const url_mainnet = `http://192.168.50.109:18081/api/tbc/pool/lputxo/script/${ftlpHash}`;
+    const url_testnet = `http://192.168.50.109:18081/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
+    const url_mainnet = `http://192.168.50.109:18081/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
     let url = "";
     if (this.network == "testnet") {
       url = url_testnet;
@@ -1943,7 +1943,7 @@ class poolNFT2 {
     } else {
       url =
         (this.network.endsWith("/") ? this.network : this.network + "/") +
-        `pool/lputxo/script/${ftlpHash}`;
+        `pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
     }
     try {
       const response = await (await fetch(url)).json();
@@ -2023,8 +2023,8 @@ class poolNFT2 {
     const ftlpCodeHash = tbc.crypto.Hash.sha256(ftlpCodeScript.toBuffer())
       .reverse()
       .toString("hex");
-    const url_testnet = `http://192.168.50.109:18081/api/tbc/pool/lputxo/script/${ftlpCodeHash}`;
-    const url_mainnet = `http://192.168.50.109:18081/api/tbc/pool/lputxo/script/${ftlpCodeHash}`;
+    const url_testnet = `http://192.168.50.109:18081/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpCodeHash}`;
+    const url_mainnet = `http://192.168.50.109:18081/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpCodeHash}`;
     let url = "";
     if (this.network == "testnet") {
       url = url_testnet;
@@ -2033,7 +2033,7 @@ class poolNFT2 {
     } else {
       url =
         (this.network.endsWith("/") ? this.network : this.network + "/") +
-        `pool/lputxo/script/${ftlpCodeHash}`;
+        `pool/lputxo/scriptpubkeyhash/${ftlpCodeHash}`;
     }
     const fttxo_codeScript = ftlpCodeScript.toBuffer().toString("hex");
     try {
