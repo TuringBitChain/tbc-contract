@@ -658,7 +658,7 @@ class API {
     let base_url = network
       ? API.getBaseURL(network)
       : API.getBaseURL("mainnet");
-    const url = base_url + `pool/lputxo/script/${ftlpHash}`;
+    const url = base_url + `pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
     try {
       const response = await (await fetch(url)).json();
       const data = response.data;
@@ -692,7 +692,7 @@ class API {
     let base_url = network
       ? API.getBaseURL(network)
       : API.getBaseURL("mainnet");
-    const url = base_url + `pool/lputxo/script/${ftlpHash}`;
+    const url = base_url + `pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
     try {
       const response = await (await fetch(url)).json();
       let data = response.data.utxos[0];
@@ -772,7 +772,7 @@ class API {
     let base_url = network
       ? API.getBaseURL(network)
       : API.getBaseURL("mainnet");
-    const url = base_url + `tbc/broadcasttx`;
+    const url = base_url + `broadcasttx`;
     try {
       const response = await fetch(url, {
         method: "POST",
@@ -820,7 +820,7 @@ class API {
     let base_url = network
       ? API.getBaseURL(network)
       : API.getBaseURL("mainnet");
-    const url = base_url + `tbc/broadcasttxs`;
+    const url = base_url + `broadcasttxs`;
 
     try {
       const response = await fetch(url, {
@@ -966,7 +966,7 @@ class API {
     )
       .reverse()
       .toString("hex");
-    const url = base_url + `utxo/script/${script_hash}`;
+    const url = base_url + `utxo/scriptpubkeyhash/${script_hash}`;
     try {
       const response = await fetch(url);
       if (!response.ok) {
@@ -1029,7 +1029,7 @@ class API {
     )
       .reverse()
       .toString("hex");
-    const url = base_url + `utxo/script/${script_hash}`;
+    const url = base_url + `utxo/scriptpubkeyhash/${script_hash}`;
     try {
       const response = await fetch(url);
       if (!response.ok) {
