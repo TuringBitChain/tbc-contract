@@ -141,6 +141,25 @@ declare module "tbc-contract" {
       amount: bigint,
       network?: "testnet" | "mainnet" | string
     ): Promise<Transaction.IUnspentOutput[]>;
+    static fetchBlockHeaders(network?: "testnet" | "mainnet" | string): Promise<
+      Array<{
+        hash: string;
+        confirmations: number;
+        height: number;
+        version: number;
+        versionHex: string;
+        merkleroot: string;
+        num_tx: number;
+        time: number;
+        mediantime: number;
+        nonce: number;
+        bits: string;
+        difficulty: number;
+        chainwork: string;
+        previousblockhash?: string;
+        nextblockhash?: string;
+      }>
+    >;
   }
 
   interface CollectionData {
@@ -477,7 +496,8 @@ declare module "tbc-contract" {
       utxo: Transaction.IUnspentOutput,
       tag: string,
       serviceFeeRate?: number,
-      lpPlan?: 1 | 2
+      lpPlan?: 1 | 2,
+      withLockTime?: boolean
     ): Promise<string[]>;
     createPoolNftWithLock(
       privateKey_from: PrivateKey,
@@ -487,7 +507,8 @@ declare module "tbc-contract" {
       lpCostTBC: number,
       pubKeyLock: string[],
       serviceFeeRate?: number,
-      lpPlan?: 1 | 2
+      lpPlan?: 1 | 2,
+      withLockTime?: boolean
     ): Promise<string[]>;
     initPoolNFT(
       privateKey_from: PrivateKey,
@@ -496,13 +517,34 @@ declare module "tbc-contract" {
       tbc_amount: number,
       ft_a: number
     ): Promise<string>;
+    initPoolNFTWithLockTime(
+      privateKey_from: PrivateKey,
+      address_to: string,
+      utxo: Transaction.IUnspentOutput,
+      tbc_amount: number,
+      ft_a: number,
+      lock_time: number
+    ): Promise<string>;
     increaseLP(
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
       amount_tbc: number
     ): Promise<string>;
+    increaseLpWithLockTime(
+      privateKey_from: PrivateKey,
+      address_to: string,
+      utxo: Transaction.IUnspentOutput,
+      amount_tbc: number,
+      lock_time: number
+    ): Promise<string>;
     consumeLP(
+      privateKey_from: PrivateKey,
+      address_to: string,
+      utxo: Transaction.IUnspentOutput,
+      amount_lp: number
+    ): Promise<string>;
+    consumeLpWithLockTime(
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
@@ -593,6 +635,11 @@ declare module "tbc-contract" {
     getFtlpCode(
       poolNftCodeHash: string,
       address: string,
+      tapeSize: number
+    ): Script;
+    getFtlpCodeWithLockTime(
+      poolNftCodeHash: string,
+      address: any,
       tapeSize: number
     ): Script;
   }
