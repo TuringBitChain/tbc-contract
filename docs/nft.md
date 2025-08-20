@@ -42,7 +42,7 @@ const main = async ()=>{
         file?: content,//file可为空，为空引用合集的照片
     };
     let utxos:tbc.Transaction.IUnspentOutput[] = [];
-    if (nft_data){
+    if (nft_data.file){
         utxos = await contract.API.getUTXOs(address,0.2,network);
     }else{
         utxos = await contract.API.getUTXOs(address,0.001,network);
