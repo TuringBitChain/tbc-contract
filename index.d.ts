@@ -580,7 +580,10 @@ declare module "tbc-contract" {
       ftlpCode: string,
       amount: bigint
     ): Promise<Transaction.IUnspentOutput>;
-    fetchFtlpBalance(address: string): Promise<bigint>;
+    fetchFtlpBalance(
+      address: string,
+      withLockTime?: boolean
+    ): Promise<bigint>;
     getLpIncome(address: string): Promise<bigint>;
     mergeFTLP(
       privateKey_from: PrivateKey,
