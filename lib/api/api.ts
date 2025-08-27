@@ -51,8 +51,8 @@ interface FTUnspentOutput {
 }
 
 class API {
-  private static mainnetURL: string = "http://192.168.50.109:18081/api/tbc/";
-  private static testnetURL: string = "http://192.168.50.109:18081/api/tbc/";
+  private static mainnetURL: string = "https://api.tbcdev.org/api/tbc/";
+  private static testnetURL: string = "https://api.tbcdev.org/api/tbc/";
 
   /**
    * Get the base URL for the specified network.

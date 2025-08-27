@@ -1771,8 +1771,8 @@ class poolNFT2 {
    * 5. 如果请求失败，抛出一个错误。
    */
   async fetchPoolNftInfo(contractTxid: string): Promise<PoolNFTInfo> {
-    const url_testnet = `http://192.168.50.109:18081/api/tbc/pool/poolinfo/poolid/${contractTxid}`;
-    const url_mainnet = `http://192.168.50.109:18081/api/tbc/pool/poolinfo/poolid/${contractTxid}`;
+    const url_testnet = `https://api.tbcdev.org/api/tbc/pool/poolinfo/poolid/${contractTxid}`;
+    const url_mainnet = `https://api.tbcdev.org/api/tbc/pool/poolinfo/poolid/${contractTxid}`;
     let url = "";
     if (this.network == "testnet") {
       url = url_testnet;
@@ -1869,8 +1869,8 @@ class poolNFT2 {
     const ftlpHash = tbc.crypto.Hash.sha256(Buffer.from(ftlpCode, "hex"))
       .reverse()
       .toString("hex");
-    const url_testnet = `http://192.168.50.109:18081/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
-    const url_mainnet = `http://192.168.50.109:18081/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
+    const url_testnet = `https://api.tbcdev.org/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
+    const url_mainnet = `https://api.tbcdev.org/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
     let url = "";
     if (this.network == "testnet") {
       url = url_testnet;
@@ -1933,8 +1933,8 @@ class poolNFT2 {
       FTA.tapeScript.length / 2
     ).toBuffer();
     const ftlpHash = tbc.crypto.Hash.sha256(ftlpCode).reverse().toString("hex");
-    const url_testnet = `http://192.168.50.109:18081/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
-    const url_mainnet = `http://192.168.50.109:18081/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
+    const url_testnet = `https://api.tbcdev.org/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
+    const url_mainnet = `https://api.tbcdev.org/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
     let url = "";
     if (this.network == "testnet") {
       url = url_testnet;
@@ -2023,8 +2023,8 @@ class poolNFT2 {
     const ftlpCodeHash = tbc.crypto.Hash.sha256(ftlpCodeScript.toBuffer())
       .reverse()
       .toString("hex");
-    const url_testnet = `http://192.168.50.109:18081/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpCodeHash}`;
-    const url_mainnet = `http://192.168.50.109:18081/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpCodeHash}`;
+    const url_testnet = `https://api.tbcdev.org/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpCodeHash}`;
+    const url_mainnet = `https://api.tbcdev.org/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpCodeHash}`;
     let url = "";
     if (this.network == "testnet") {
       url = url_testnet;
