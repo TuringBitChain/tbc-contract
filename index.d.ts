@@ -484,6 +484,10 @@ declare module "tbc-contract" {
     contractTxid: string;
     network: "testnet" | "mainnet" | string;
     service_fee_rate: number;
+    service_provider: string;
+    lp_plan: number;
+    with_lock: boolean;
+    with_lock_time: boolean;
 
     constructor(config?: {
       txid?: string;
@@ -515,7 +519,8 @@ declare module "tbc-contract" {
       address_to: string,
       utxo: Transaction.IUnspentOutput,
       tbc_amount: number,
-      ft_a: number
+      ft_a: number,
+      lock_time?: number
     ): Promise<string>;
     initPoolNFTWithLockTime(
       privateKey_from: PrivateKey,
@@ -529,7 +534,8 @@ declare module "tbc-contract" {
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
-      amount_tbc: number
+      amount_tbc: number,
+      lock_time?: number
     ): Promise<string>;
     increaseLpWithLockTime(
       privateKey_from: PrivateKey,
@@ -555,14 +561,14 @@ declare module "tbc-contract" {
       address_to: string,
       utxo: Transaction.IUnspentOutput,
       amount_tbc: number,
-      lpPlan: 1 | 2
+      lpPlan?: 1 | 2
     ): Promise<string>;
     swaptoTBC_baseToken(
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
       amount_token: number,
-      lpPlan: 1 | 2
+      lpPlan?: 1 | 2
     ): Promise<string>;
     swaptoTBC_baseToken_local(
       privateKey_from: PrivateKey,
@@ -577,14 +583,15 @@ declare module "tbc-contract" {
     fetchPoolNftInfo(contractTxid: string): Promise<PoolNFTInfo>;
     fetchPoolNftUTXO(contractTxid: string): Promise<Transaction.IUnspentOutput>;
     fetchFtlpUTXO(
-      ftlpCode: string,
+      address: string,
       amount: bigint
     ): Promise<Transaction.IUnspentOutput>;
-    fetchFtlpBalance(
-      address: string,
-      withLockTime?: boolean
-    ): Promise<bigint>;
-    getLpIncome(address: string): Promise<bigint>;
+    fetchFtlpBalance(address: string): Promise<bigint>;
+    fetchFtlpUTXOList(address: string): Promise<Transaction.IUnspentOutput[]>;
+    fetchFtlpLockTime(
+      address: string
+    ): Promise<Array<{ ftBalance: bigint; lockTime: number }>>;
+    getLpIncome(address: string, recordData: bigint): Promise<bigint>;
     mergeFTLP(
       privateKey_from: PrivateKey,
       utxo: Transaction.IUnspentOutput
@@ -620,6 +627,12 @@ declare module "tbc-contract" {
       option: 1 | 2 | 3 | 4,
       swapOption?: 1 | 2
     ): Promise<Script>;
+    getPoolNftExtraInfo(): Promise<{
+      serviceFeeRate: number;
+      lpPlan: number;
+      withLock: boolean;
+      withLockTime: boolean;
+    }>;
     getPoolNftCode(
       txid: string,
       vout: number,
@@ -642,7 +655,7 @@ declare module "tbc-contract" {
     ): Script;
     getFtlpCodeWithLockTime(
       poolNftCodeHash: string,
-      address: any,
+      address: string,
       tapeSize: number
     ): Script;
   }

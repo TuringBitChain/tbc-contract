@@ -12,18 +12,31 @@ const fee = 0.01;   //可能的交易手续费，根据需要取值
 const serviceRate = 25; //swap手续费率，默认千分之二点五
 const lpPlan = 2;  //lp手续费方案, 方案1: LP 0.25%  swap服务商 0.09%  协议0.01%; 方案2: LP 0.05%  swap服务商 0.29%  协议0.01%
 const tag = "tbc"; //池子标签，用于区分创建者
+const isLockTime = true; //是否具备锁仓功能
 async function main() {
     try {
         // Step 1: 创建 poolNFT
         const pool = new poolNFT2({network: network});
         pool.initCreate(ftContractTxid);
         const utxo = await API.fetchUTXO(privateKeyA, fee, network);
-        const tx1 = await pool.createPoolNFT(privateKeyA, utxo, tag, serviceRate, lpPlan);
-        // or 创建带锁的 poolNFT (最多十个公钥)
-        const pubKeyLock = ["pubkey1","pubkey2"];
-        const lpCostAddress = "";//设置添加流动性扣款地址
-        const lpCostTBC = 5;//设置添加流动性扣款TBC数量
-        const tx1 = await pool.createPoolNftWithLock(privateKeyA, utxo, tag, lpCostAddress, lpCostTBC, pubKeyLock, serviceRate, lpPlan);
+        {
+            {
+                const tx1 = await pool.createPoolNFT(privateKeyA, utxo, tag, serviceRate, lpPlan);
+                // or 创建带锁仓的 poolNFT
+                const tx1 = await pool.createPoolNFT(privateKeyA, utxo, tag, serviceRate, lpPlan, isLockTime);
+            }
+            // or 创建带锁的 poolNFT (最多十个公钥)
+            const pubKeyLock = ["pubkey1","pubkey2"];
+            const lpCostAddress = "";//设置添加流动性扣款地址
+            const lpCostTBC = 5;//设置添加流动性扣款TBC数量
+            {
+                const tx1 = await pool.createPoolNftWithLock(privateKeyA, utxo, tag, lpCostAddress, lpCostTBC, pubKeyLock, serviceRate, lpPlan);
+                // or 创建带锁和锁仓的 poolNFT (最多十个公钥)
+                const tx1 = await pool.createPoolNftWithLock(privateKeyA, utxo, tag, lpCostAddress, lpCostTBC, pubKeyLock, serviceRate, lpPlan, isLockTime);
+            }
+            
+        }
+        
         await API.broadcastTXraw(tx1[0], network);
         console.log("poolNFT Contract ID:");
         await API.broadcastTXraw(tx1[1], network);
@@ -38,7 +51,10 @@ async function main() {
                 let ftAmount = 1000;
                 // 准备 utxo
                 const utxo = await API.fetchUTXO(privateKeyA, tbcAmount + fee, network);
-                let tx2 = await poolUse.initPoolNFT(privateKeyA, addressA, utxo, tbcAmount, ftAmount);
+                const tx2 = await poolUse.initPoolNFT(privateKeyA, addressA, utxo, tbcAmount, ftAmount);
+                // or 锁仓至指定区块高度或UTC时间
+                const lockTime = 907022; //锁仓至907022区块高度或utc时间(例 Unix 1756363612)
+                const tx2 = await poolUse.initPoolNFT(privateKeyA, addressA, utxo, tbcAmount, ftAmount, lockTime);
                 await API.broadcastTXraw(tx2, network);
             }
 
@@ -48,6 +64,9 @@ async function main() {
                 // 准备 utxo
                 const utxo = await API.fetchUTXO(privateKeyA, tbcAmount + fee, network);
                 const tx3 = await poolUse.increaseLP(privateKeyA, addressA, utxo, tbcAmount);
+                // or 锁仓至指定区块高度或UTC时间
+                const lockTime = 907022; //锁仓至907022区块高度或utc时间(例 Unix 1756363612)
+                const tx3 = await poolUse.increaseLP(privateKeyA, addressA, utxo, tbcAmount, lockTime);
                 await API.broadcastTXraw(tx3, network);
             }
 
@@ -107,28 +126,14 @@ async function main() {
             {
                 const poolNftInfo = await poolUse.fetchPoolNftInfo(poolUse.contractTxid);
                 const poolNftUTXO = await poolUse.fetchPoolNftUTXO(poolUse.contractTxid);
+                const poolNftExtraInfo = await poolUse.getPoolNftExtraInfo();
             }
 
-            // 获取 FT-LP UTXO
+            // 获取 FT-LP UTXO 、余额和锁仓时间
             {
-                const FTA = new FT(poolUse.ft_a_contractTxid);
-                const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, network);
-                FTA.initialize(FTAInfo);
-
-                let amount = 0.1;
-                let lpAmountBN = BigInt(Math.floor(amount * Math.pow(10, 6)));
-                const ftlpCode = poolUse.getFtlpCode(
-                    tbc.crypto.Hash.sha256(Buffer.from(poolUse.poolnft_code, 'hex')).toString('hex'),
-                    addressA,
-                    FTA.tapeScript.length / 2
-                );
-                
-                const ftutxo_lp = await poolUse.fetchFtlpUTXO(ftlpCode.toBuffer().toString('hex'), lpAmountBN);
-            }
-
-            // 获取指定地址 LP 收益数值
-            {
-                const lpIncome = await poolUse.getLpIncome(addressA);
+                const ftutxo_lp = await poolUse.fetchFtlpUTXO(addressA, lpAmountBN);
+                const ftlpBalance = await poolUse.fetchFtlpBalance(addressA);
+                const ftlpLockTime = await poolUse.fetchFtlpLockTime(addressA);
             }
 
             // 合并 FT-LP 的操作，一次合并最多5合一
