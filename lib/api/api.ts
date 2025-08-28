@@ -53,7 +53,7 @@ interface FTUnspentOutput {
 }
 
 class API {
-  private static mainnetURL: string = 'https://turingwallet.xyz/v1/tbc/main/';
+  private static mainnetURL: string = 'https://api.turingwallet.xyz/v1/tbc/main/';
   private static testnetURL: string = 'https://tbcdev.org/v1/tbc/main/';
 
   /**
