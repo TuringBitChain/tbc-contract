@@ -1362,7 +1362,7 @@ class poolNFT {
      */
     async fetchPoolNFTInfo(contractTxid: string): Promise<PoolNFTInfo> {
         const url_testnet = `https://tbcdev.org/v1/tbc/main/ft/pool/nft/info/contract/id/${contractTxid}`;
-        const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/pool/nft/info/contract/id/${contractTxid}`;
+        const url_mainnet = `https://api.turingwallet.xyz/v1/tbc/main/ft/pool/nft/info/contract/id/${contractTxid}`;
         let url = "";
         if (this.network == "testnet") {
             url = url_testnet;
@@ -1448,7 +1448,7 @@ class poolNFT {
     async fetchFtlpUTXO(ftlpCode: string, amount: bigint): Promise<tbc.Transaction.IUnspentOutput> {
         const ftlpHash = tbc.crypto.Hash.sha256(Buffer.from(ftlpCode, 'hex')).reverse().toString('hex');
         const url_testnet = `https://tbcdev.org/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpHash}`;
-        const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpHash}`;
+        const url_mainnet = `https://api.turingwallet.xyz/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpHash}`;
         let url = "";
         if (this.network == "testnet") {
             url = url_testnet;
@@ -1519,7 +1519,7 @@ class poolNFT {
         const ftlpCodeScript = this.getFTLPcode(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex')).toString('hex'), address, FTA.tapeScript.length / 2);
         const ftlpCodeHash = tbc.crypto.Hash.sha256(ftlpCodeScript.toBuffer()).reverse().toString('hex');
         const url_testnet = `https://tbcdev.org/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpCodeHash}`;
-        const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpCodeHash}`;
+        const url_mainnet = `https://api.turingwallet.xyz/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpCodeHash}`;
         let url = "";
         if (this.network == "testnet") {
             url = url_testnet;
@@ -1631,7 +1631,7 @@ class poolNFT {
         const hash = poolnft_codehash160 + '01';
         const contractTxid = this.ft_a_contractTxid;
         const url_testnet = `https://tbcdev.org/v1/tbc/main/ft/utxo/combine/script/${hash}/contract/${contractTxid}`;
-        const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/utxo/combine/script/${hash}/contract/${contractTxid}`;
+        const url_mainnet = `https://api.turingwallet.xyz/v1/tbc/main/ft/utxo/combine/script/${hash}/contract/${contractTxid}`;
         let url = "";
         if (this.network == "testnet") {
             url = url_testnet;

@@ -1897,7 +1897,7 @@ class poolNFT2 {
    */
   async fetchPoolNftInfo(contractTxid: string): Promise<PoolNFTInfo> {
     const url_testnet = `https://tbcdev.org/v1/tbc/main/ft/pool/nft/info/contract/id/${contractTxid}`;
-    const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/pool/nft/info/contract/id/${contractTxid}`;
+    const url_mainnet = `https://api.turingwallet.xyz/v1/tbc/main/ft/pool/nft/info/contract/id/${contractTxid}`;
     let url = "";
     if (this.network == "testnet") {
       url = url_testnet;
@@ -2069,7 +2069,7 @@ class poolNFT2 {
           ).toBuffer();
     const ftlpHash = tbc.crypto.Hash.sha256(ftlpCode).reverse().toString("hex");
     const url_testnet = `https://tbcdev.org/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpHash}`;
-    const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpHash}`;
+    const url_mainnet = `https://api.turingwallet.xyz/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpHash}`;
     let url = "";
     if (this.network == "testnet") {
       url = url_testnet;
@@ -2229,7 +2229,7 @@ class poolNFT2 {
       .reverse()
       .toString("hex");
     const url_testnet = `https://tbcdev.org/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpCodeHash}`;
-    const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpCodeHash}`;
+    const url_mainnet = `https://api.turingwallet.xyz/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpCodeHash}`;
     let url = "";
     if (this.network == "testnet") {
       url = url_testnet;
@@ -3457,7 +3457,7 @@ class poolNFT2 {
       .reverse()
       .toString("hex");
     const url_testnet = `https://tbcdev.org/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpCodeHash}`;
-    const url_mainnet = `https://turingwallet.xyz/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpCodeHash}`;
+    const url_mainnet = `https://api.turingwallet.xyz/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpCodeHash}`;
     let url = "";
     if (this.network == "testnet") {
       url = url_testnet;
