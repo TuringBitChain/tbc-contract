@@ -192,6 +192,12 @@ declare module "tbc-contract" {
   }
 
   export class NFT {
+    collection_id:string;
+    collection_index:number;
+    collection_name:string;
+    transfer_count:number;
+    contract_id:string;
+    nftData:NFTData;
     constructor(contract_id: string);
     initialize(nftInfo: NFTInfo);
     static createCollection(
