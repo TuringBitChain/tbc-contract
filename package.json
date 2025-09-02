@@ -4,9 +4,7 @@
   "main": "index.js",
   "types": "index.d.ts",
   "scripts": {
-    "build": "tsc",
-    "obfuscate": "node obfuscate.js",
-    "prepublish": "npm run build && npm run obfuscate"
+    "build": "tsc"
   },
   "author": "Edmund",
   "dependencies": {
@@ -14,8 +12,5 @@
     "tbc-lib-js": "1.0.28"
   },
   "license": "OpenTBC",
-  "description": "A TBC smart contract SDK.",
-  "devDependencies": {
-    "javascript-obfuscator": "^4.1.1"
-  }
+  "description": "A TBC smart contract SDK."
 }
