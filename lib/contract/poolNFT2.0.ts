@@ -20,29 +20,6 @@ const FT = require("./ft");
 const partial_sha256 = require("tbc-lib-js/lib/util/partial-sha256");
 const BN = tbc.crypto.BN;
 
-interface PoolNFTInfo {
-  ft_lp_amount: bigint;
-  ft_a_amount: bigint;
-  tbc_amount: bigint;
-  ft_lp_partialhash: string;
-  ft_a_partialhash: string;
-  ft_a_contractTxid: string;
-  service_fee_rate: number;
-  service_provider: string;
-  poolnft_code: string;
-  pool_version: number;
-  currentContractTxid: string;
-  currentContractVout: number;
-  currentContractSatoshi: number;
-}
-
-interface poolNFTDifference {
-  ft_lp_difference: bigint;
-  ft_a_difference: bigint;
-  tbc_amount_difference: bigint;
-  tbc_amount_full_difference: bigint;
-}
-
 class poolNFT2 {
   ft_lp_amount: bigint;
   ft_a_amount: bigint;
@@ -56,6 +33,9 @@ class poolNFT2 {
   network: "testnet" | "mainnet" | string;
   service_fee_rate: number;
   service_provider: string;
+  lp_plan: number;
+  with_lock: boolean;
+  with_lock_time: boolean;
   private tbc_amount_full: bigint;
   private ft_a_number: number;
   private poolnft_code_dust = 1000;
@@ -104,6 +84,10 @@ class poolNFT2 {
     this.poolnft_code = poolNFTInfo.poolnft_code;
     this.pool_version = poolNFTInfo.pool_version;
     this.tbc_amount_full = BigInt(poolNFTInfo.currentContractSatoshi);
+    const extraInfo = await this.getPoolNftExtraInfo();
+    this.lp_plan = extraInfo.lpPlan;
+    this.with_lock = extraInfo.withLock;
+    this.with_lock_time = extraInfo.withLockTime;
   }
 
   /**
@@ -114,6 +98,7 @@ class poolNFT2 {
    * @param {string} tag - 池 NFT 的标签。
    * @param {number} serviceFeeRate - 可选的服务费用率，默认为 25。
    * @param {1 | 2} lpPlan - 可选的lp手续费方案，默认为 1。
+   * @param {boolean} withLockTime - 是否使用时间锁，默认为 false。
    * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的原始交易数据。
    *
    * 该函数执行以下主要步骤：
@@ -131,7 +116,8 @@ class poolNFT2 {
     utxo: tbc.Transaction.IUnspentOutput,
     tag: string,
     serviceFeeRate?: number,
-    lpPlan?: 1 | 2
+    lpPlan?: 1 | 2,
+    withLockTime?: boolean
   ): Promise<string[]> {
     const privateKey = privateKey_from;
     const publicKeyHash =
@@ -159,13 +145,22 @@ class poolNFT2 {
     this.poolnft_code = this.getPoolNftCode(txSource.hash, 0, lpPlan || 1, tag)
       .toBuffer()
       .toString("hex");
-    const ftlpCode = this.getFtlpCode(
-      tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex")).toString(
-        "hex"
-      ),
-      privateKey.toAddress().toString(),
-      FTA.tapeScript.length / 2
-    );
+    const ftlpCode =
+      withLockTime ?? false
+        ? this.getFtlpCodeWithLockTime(
+            tbc.crypto.Hash.sha256(
+              Buffer.from(this.poolnft_code, "hex")
+            ).toString("hex"),
+            privateKey.toAddress().toString(),
+            FTA.tapeScript.length / 2
+          )
+        : this.getFtlpCode(
+            tbc.crypto.Hash.sha256(
+              Buffer.from(this.poolnft_code, "hex")
+            ).toString("hex"),
+            privateKey.toAddress().toString(),
+            FTA.tapeScript.length / 2
+          );
     this.ft_lp_partialhash = partial_sha256.calculate_partial_hash(
       ftlpCode.toBuffer().subarray(0, 1536)
     );
@@ -173,7 +168,11 @@ class poolNFT2 {
       Buffer.from(FTA.codeScript, "hex").subarray(0, 1536)
     );
     this.service_fee_rate = serviceFeeRate ?? this.service_fee_rate;
-    const poolnftTapeScript = this.getPoolNftTape();
+    const poolnftTapeScript = this.getPoolNftTape(
+      lpPlan || 1,
+      false,
+      withLockTime || false
+    );
 
     const tx = new tbc.Transaction()
       .addInputFromPrevTx(txSource, 0)
@@ -220,6 +219,7 @@ class poolNFT2 {
    * @param {string} tag - 池 NFT 的标签。
    * @param {number} serviceFeeRate - 可选的服务费用率，默认为 25。
    * @param {1 | 2} lpPlan - 可选的lp手续费方案，默认为 1。
+   * @param {boolean} withLockTime - 是否使用时间锁，默认为 false。
    * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的原始交易数据。
    *
    * 该函数执行以下主要步骤：
@@ -240,7 +240,8 @@ class poolNFT2 {
     lpCostTBC: number,
     pubKeyLock: string[],
     serviceFeeRate?: number,
-    lpPlan?: 1 | 2
+    lpPlan?: 1 | 2,
+    withLockTime?: boolean
   ): Promise<string[]> {
     const privateKey = privateKey_from;
     const publicKeyHash =
@@ -276,13 +277,22 @@ class poolNFT2 {
     )
       .toBuffer()
       .toString("hex");
-    const ftlpCode = this.getFtlpCode(
-      tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex")).toString(
-        "hex"
-      ),
-      privateKey.toAddress().toString(),
-      FTA.tapeScript.length / 2
-    );
+    const ftlpCode =
+      withLockTime ?? false
+        ? this.getFtlpCodeWithLockTime(
+            tbc.crypto.Hash.sha256(
+              Buffer.from(this.poolnft_code, "hex")
+            ).toString("hex"),
+            privateKey.toAddress().toString(),
+            FTA.tapeScript.length / 2
+          )
+        : this.getFtlpCode(
+            tbc.crypto.Hash.sha256(
+              Buffer.from(this.poolnft_code, "hex")
+            ).toString("hex"),
+            privateKey.toAddress().toString(),
+            FTA.tapeScript.length / 2
+          );
     this.ft_lp_partialhash = partial_sha256.calculate_partial_hash(
       ftlpCode.toBuffer().subarray(0, 1536)
     );
@@ -290,7 +300,11 @@ class poolNFT2 {
       Buffer.from(FTA.codeScript, "hex").subarray(0, 1536)
     );
     this.service_fee_rate = serviceFeeRate ?? this.service_fee_rate;
-    const poolnftTapeScript = this.getPoolNftTape();
+    const poolnftTapeScript = this.getPoolNftTape(
+      lpPlan || 1,
+      true,
+      withLockTime || false
+    );
 
     const tx = new tbc.Transaction()
       .addInputFromPrevTx(txSource, 0)
@@ -335,8 +349,9 @@ class poolNFT2 {
    * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
    * @param {string} address_to - NFT 接收地址。
    * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
-   * @param {number} [tbc_amount] - 可选的 TBC 数量，用于交易。
-   * @param {number} [ft_a] - 可选的 FT-A 数量，用于交易。
+   * @param {number} tbc_amount - 初始 TBC 数量。
+   * @param {number} ft_a - 初始 FT-A 数量。
+   * @param {number} lock_time - 可选的锁定时间，仅在启用时间锁时使用。
    * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
    *
    * 该函数执行以下主要步骤：
@@ -357,7 +372,8 @@ class poolNFT2 {
     address_to: string,
     utxo: tbc.Transaction.IUnspentOutput,
     tbc_amount: number,
-    ft_a: number
+    ft_a: number,
+    lock_time?: number
   ): Promise<string> {
     const privateKey = privateKey_from;
     const FTA = new FT(this.ft_a_contractTxid);
@@ -430,7 +446,8 @@ class poolNFT2 {
       tapeAmountSetIn,
       1
     );
-    const poolnftTapeScript = this.getPoolNftTape();
+    const poolnftTapeScript = await this.updatePoolNftTape();
+    // const poolnftTapeScript = this.getPoolNftTape(1, false, false);
     const poolnft = await this.fetchPoolNftUTXO(this.contractTxid);
     const tx = new tbc.Transaction()
       .from(poolnft)
@@ -467,25 +484,60 @@ class poolNFT2 {
       })
     );
     //FTLP
-    const nameHex = Buffer.from(FTA.name, "utf8").toString("hex");
-    const symbolHex = Buffer.from(FTA.symbol, "utf8").toString("hex");
-    const ftlp_amount = new tbc.crypto.BN(amount_lpbn.toString());
-    const amountwriter = new tbc.encoding.BufferWriter();
-    amountwriter.writeUInt64LEBN(ftlp_amount);
-    for (let i = 1; i < 6; i++) {
-      amountwriter.writeUInt64LEBN(new tbc.crypto.BN(0));
+    let ftlpCodeScript: tbc.Script;
+    let ftlpTapeScript: tbc.Script;
+    if (this.with_lock_time) {
+      if (lock_time === undefined) {
+        throw new Error("Lock time is required");
+      }
+      if (lock_time < 0 || lock_time > 4294967295) {
+        throw new Error("Invalid lock time, must be between 0 and 4294967295");
+      }
+      const ftlp_amount = new tbc.crypto.BN(amount_lpbn.toString());
+      const amountwriter = new tbc.encoding.BufferWriter();
+      amountwriter.writeUInt64LEBN(ftlp_amount);
+      for (let i = 1; i < 6; i++) {
+        amountwriter.writeUInt64LEBN(new tbc.crypto.BN(0));
+      }
+      const ftlpTapeAmount = amountwriter.toBuffer().toString("hex");
+
+      const lockTimeWriter = new tbc.encoding.BufferWriter();
+      lockTimeWriter.writeUInt32LE(lock_time);
+      const lockTimeHex = lockTimeWriter.toBuffer().toString("hex");
+      // Build the tape script
+      const fillSize = FTA.tapeScript.length / 2 - 62;
+      const opZeroArray = Array(fillSize).fill("OP_0").join(" ");
+      ftlpTapeScript = tbc.Script.fromASM(
+        `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`
+      );
+      const tapeSize = ftlpTapeScript.toBuffer().length;
+      ftlpCodeScript = this.getFtlpCodeWithLockTime(
+        poolnft_codehash.toString("hex"),
+        address_to,
+        tapeSize
+      );
+    } else {
+      const nameHex = Buffer.from(FTA.name, "utf8").toString("hex");
+      const symbolHex = Buffer.from(FTA.symbol, "utf8").toString("hex");
+      const ftlp_amount = new tbc.crypto.BN(amount_lpbn.toString());
+      const amountwriter = new tbc.encoding.BufferWriter();
+      amountwriter.writeUInt64LEBN(ftlp_amount);
+      for (let i = 1; i < 6; i++) {
+        amountwriter.writeUInt64LEBN(new tbc.crypto.BN(0));
+      }
+      const ftlpTapeAmount = amountwriter.toBuffer().toString("hex");
+      // Build the tape script
+      ftlpTapeScript = tbc.Script.fromASM(
+        `OP_FALSE OP_RETURN ${ftlpTapeAmount} 06 ${nameHex} ${symbolHex} 4654617065`
+      );
+      const tapeSize = ftlpTapeScript.toBuffer().length;
+      ftlpCodeScript = this.getFtlpCode(
+        poolnft_codehash.toString("hex"),
+        address_to,
+        tapeSize
+      );
     }
-    const ftlpTapeAmount = amountwriter.toBuffer().toString("hex");
-    // Build the tape script
-    const ftlpTapeScript = tbc.Script.fromASM(
-      `OP_FALSE OP_RETURN ${ftlpTapeAmount} 06 ${nameHex} ${symbolHex} 4654617065`
-    );
-    const tapeSize = ftlpTapeScript.toBuffer().length;
-    const ftlpCodeScript = this.getFtlpCode(
-      poolnft_codehash.toString("hex"),
-      address_to,
-      tapeSize
-    );
+
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftlpCodeScript,
@@ -568,6 +620,7 @@ class poolNFT2 {
    * @param {string} address_to - LP 接收地址。
    * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
    * @param {number} amount_tbc - 增加的 TBC 数量。
+   * @param {number} lock_time - 可选的锁定时间，仅在启用时间锁时使用。
    * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
    *
    * 该函数执行以下主要步骤：
@@ -586,9 +639,11 @@ class poolNFT2 {
     privateKey_from: tbc.PrivateKey,
     address_to: string,
     utxo: tbc.Transaction.IUnspentOutput,
-    amount_tbc: number
+    amount_tbc: number,
+    lock_time?: number
   ): Promise<string> {
-    const lockStatus = isLock(this.poolnft_code.length);
+    const lockStatus =
+      this.with_lock === true ? 1 : 0 || isLock(this.poolnft_code.length);
     // console.log(`Lock status: ${lockStatus}`);
     if (lockStatus) amount_tbc -= 5;
     if (amount_tbc <= 0) throw new Error("Invalid TBC amount input");
@@ -660,7 +715,7 @@ class poolNFT2 {
         satoshis: poolnft.satoshis + Number(changeDate.tbc_amount_difference),
       })
     );
-    const poolnftTapeScript = this.getPoolNftTape();
+    const poolnftTapeScript = await this.updatePoolNftTape();
     tx.addOutput(
       new tbc.Transaction.Output({
         script: poolnftTapeScript,
@@ -686,27 +741,63 @@ class poolNFT2 {
       })
     );
     // FTLP
-    const nameHex = Buffer.from(FTA.name, "utf8").toString("hex");
-    const symbolHex = Buffer.from(FTA.symbol, "utf8").toString("hex");
-    const ftlp_amount = new tbc.crypto.BN(
-      changeDate.ft_lp_difference.toString()
-    );
-    const amountwriter = new tbc.encoding.BufferWriter();
-    amountwriter.writeUInt64LEBN(ftlp_amount);
-    for (let i = 1; i < 6; i++) {
-      amountwriter.writeUInt64LEBN(new tbc.crypto.BN(0));
+    let ftlpCodeScript: tbc.Script;
+    let ftlpTapeScript: tbc.Script;
+    if (this.with_lock_time) {
+      if (lock_time === undefined) {
+        throw new Error("Lock time is required");
+      }
+      if (lock_time < 0 || lock_time > 4294967295) {
+        throw new Error("Invalid lock time, must be between 0 and 4294967295");
+      }
+      const ftlp_amount = new tbc.crypto.BN(
+        changeDate.ft_lp_difference.toString()
+      );
+      const amountwriter = new tbc.encoding.BufferWriter();
+      amountwriter.writeUInt64LEBN(ftlp_amount);
+      for (let i = 1; i < 6; i++) {
+        amountwriter.writeUInt64LEBN(new tbc.crypto.BN(0));
+      }
+      const ftlpTapeAmount = amountwriter.toBuffer().toString("hex");
+
+      const lockTimeWriter = new tbc.encoding.BufferWriter();
+      lockTimeWriter.writeUInt32LE(lock_time);
+      const lockTimeHex = lockTimeWriter.toBuffer().toString("hex");
+      // Build the tape script
+      const fillSize = FTA.tapeScript.length / 2 - 62;
+      const opZeroArray = Array(fillSize).fill("OP_0").join(" ");
+      ftlpTapeScript = tbc.Script.fromASM(
+        `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`
+      );
+      const tapeSize = ftlpTapeScript.toBuffer().length;
+      ftlpCodeScript = this.getFtlpCodeWithLockTime(
+        poolnft_codehash.toString("hex"),
+        address_to,
+        tapeSize
+      );
+    } else {
+      const nameHex = Buffer.from(FTA.name, "utf8").toString("hex");
+      const symbolHex = Buffer.from(FTA.symbol, "utf8").toString("hex");
+      const ftlp_amount = new tbc.crypto.BN(
+        changeDate.ft_lp_difference.toString()
+      );
+      const amountwriter = new tbc.encoding.BufferWriter();
+      amountwriter.writeUInt64LEBN(ftlp_amount);
+      for (let i = 1; i < 6; i++) {
+        amountwriter.writeUInt64LEBN(new tbc.crypto.BN(0));
+      }
+      const ftlpTapeAmount = amountwriter.toBuffer().toString("hex");
+      // Build the tape script
+      ftlpTapeScript = tbc.Script.fromASM(
+        `OP_FALSE OP_RETURN ${ftlpTapeAmount} 06 ${nameHex} ${symbolHex} 4654617065`
+      );
+      const tapeSize = ftlpTapeScript.toBuffer().length;
+      ftlpCodeScript = this.getFtlpCode(
+        poolnft_codehash.toString("hex"),
+        address_to,
+        tapeSize
+      );
     }
-    const ftlpTapeAmount = amountwriter.toBuffer().toString("hex");
-    // Build the tape script
-    const ftlpTapeScript = tbc.Script.fromASM(
-      `OP_FALSE OP_RETURN ${ftlpTapeAmount} 06 ${nameHex} ${symbolHex} 4654617065`
-    );
-    const tapeSize = ftlpTapeScript.toBuffer().length;
-    const ftlpCodeScript = this.getFtlpCode(
-      poolnft_codehash.toString("hex"),
-      address_to,
-      tapeSize
-    );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftlpCodeScript,
@@ -796,7 +887,7 @@ class poolNFT2 {
    * 消耗流动性池中的 LP，并返回未检查的交易原始数据。
    *
    * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
-   * @param {string} address_to - LP 转移接收地址。
+   * @param {string} address_to - 资产接收地址。
    * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
    * @param {number} amount_lp - 要消耗的 LP 数量。
    * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
@@ -835,17 +926,27 @@ class poolNFT2 {
     const lpTapeAmountSetIn: bigint[] = [];
     const ftPreTX: tbc.Transaction[] = [];
     const ftPrePreTxData: string[] = [];
-    const ftlpCode = this.getFtlpCode(
-      tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex")).toString(
-        "hex"
-      ),
-      privateKey.toAddress().toString(),
-      FTA.tapeScript.length / 2
-    );
+    const ftlpCode =
+      this.with_lock_time ?? false
+        ? this.getFtlpCodeWithLockTime(
+            tbc.crypto.Hash.sha256(
+              Buffer.from(this.poolnft_code, "hex")
+            ).toString("hex"),
+            privateKey.toAddress().toString(),
+            FTA.tapeScript.length / 2
+          )
+        : this.getFtlpCode(
+            tbc.crypto.Hash.sha256(
+              Buffer.from(this.poolnft_code, "hex")
+            ).toString("hex"),
+            privateKey.toAddress().toString(),
+            FTA.tapeScript.length / 2
+          );
+    // const ftlpCode = this.getFtlpCode(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex')).toString('hex'), privateKey.toAddress().toString(), FTA.tapeScript.length / 2);
     let fttxo_lp: tbc.Transaction.IUnspentOutput;
     try {
       fttxo_lp = await this.fetchFtlpUTXO(
-        ftlpCode.toBuffer().toString("hex"),
+        privateKey.toAddress().toString(),
         changeDate.ft_lp_difference
       );
     } catch (error: any) {
@@ -930,7 +1031,7 @@ class poolNFT2 {
           poolnft.satoshis - Number(changeDate.tbc_amount_full_difference),
       })
     );
-    const poolnftTapeScript = this.getPoolNftTape();
+    const poolnftTapeScript = await this.updatePoolNftTape();
     tx.addOutput(
       new tbc.Transaction.Output({
         script: poolnftTapeScript,
@@ -958,20 +1059,34 @@ class poolNFT2 {
       Number(changeDate.tbc_amount_full_difference)
     );
     //FTLP_Burn
-    const nameHex = Buffer.from(FTA.name, "utf8").toString("hex");
-    const symbolHex = Buffer.from(FTA.symbol, "utf8").toString("hex");
+    let ftlpCodeScript = FT.buildFTtransferCode(
+      ftlpCode.toBuffer().toString("hex"),
+      "1BitcoinEaterAddressDontSendf59kuE"
+    );
+    let ftlpTapeScript: tbc.Script;
     const amountwriter = new tbc.encoding.BufferWriter();
     for (let i = 0; i < 6; i++) {
       amountwriter.writeUInt64LEBN(new tbc.crypto.BN(0));
     }
     const ftlpTapeAmount = amountwriter.toBuffer().toString("hex");
-    let ftlpTapeScript = tbc.Script.fromASM(
-      `OP_FALSE OP_RETURN ${ftlpTapeAmount} 06 ${nameHex} ${symbolHex} 4654617065`
-    );
-    const ftlpCodeScript = FT.buildFTtransferCode(
-      ftlpCode.toBuffer().toString("hex"),
-      "1BitcoinEaterAddressDontSendf59kuE"
-    );
+    if (this.with_lock_time) {
+      tx.setInputSequence(1, 4294967294);
+      tx.setLockTime((await API.fetchBlockHeaders(this.network))[0].height - 2);
+      const lockTimeHex = Buffer.from("00000000", "hex").toString("hex");
+      const fillSize = FTA.tapeScript.length / 2 - 62;
+      const opZeroArray = Array(fillSize).fill("OP_0").join(" ");
+      ftlpTapeScript = tbc.Script.fromASM(
+        `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`
+      );
+      // ftlpCodeScript = FT.buildFTtransferCode(ftlpCode.toBuffer().toString('hex'), '1BitcoinEaterAddressDontSendf59kuE');
+    } else {
+      const nameHex = Buffer.from(FTA.name, "utf8").toString("hex");
+      const symbolHex = Buffer.from(FTA.symbol, "utf8").toString("hex");
+      ftlpTapeScript = tbc.Script.fromASM(
+        `OP_FALSE OP_RETURN ${ftlpTapeAmount} 06 ${nameHex} ${symbolHex} 4654617065`
+      );
+      // ftlpCodeScript = FT.buildFTtransferCode(ftlpCode.toBuffer().toString('hex'), '1BitcoinEaterAddressDontSendf59kuE');
+    }
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftlpCodeScript,
@@ -1088,6 +1203,7 @@ class poolNFT2 {
     tx.sign(privateKey);
     await tx.sealAsync();
     const txraw = tx.uncheckedSerialize();
+    // console.log(txraw);
     return txraw;
   }
 
@@ -1123,7 +1239,10 @@ class poolNFT2 {
     const FTA = new FT(this.ft_a_contractTxid);
     const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
     FTA.initialize(FTAInfo);
-    lpPlan = lpPlan || 1;
+    lpPlan =
+      this.lp_plan === 1 || this.lp_plan === 2
+        ? (this.lp_plan as 1 | 2)
+        : lpPlan || 1;
     if (amount_tbc <= 0) {
       throw new Error("Invalid TBC amount input");
     }
@@ -1220,7 +1339,7 @@ class poolNFT2 {
         satoshis: poolnft.satoshis + Number(amount_tbcbn_swap_lp),
       })
     );
-    const poolnftTapeScript = this.getPoolNftTape();
+    const poolnftTapeScript = await this.updatePoolNftTape();
     tx.addOutput(
       new tbc.Transaction.Output({
         script: poolnftTapeScript,
@@ -1352,7 +1471,10 @@ class poolNFT2 {
     const FTA = new FT(this.ft_a_contractTxid);
     const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
     FTA.initialize(FTAInfo);
-    lpPlan = lpPlan || 1;
+    lpPlan =
+      this.lp_plan === 1 || this.lp_plan === 2
+        ? (this.lp_plan as 1 | 2)
+        : lpPlan || 1;
     const amount_ftbn = BigInt(
       Math.floor(amount_token * Math.pow(10, FTA.decimal))
     );
@@ -1443,7 +1565,7 @@ class poolNFT2 {
         satoshis: poolnft.satoshis - Number(tbc_amount_decrement_swap_lp),
       })
     );
-    const poolnftTapeScript = this.getPoolNftTape();
+    const poolnftTapeScript = await this.updatePoolNftTape();
     tx.addOutput(
       new tbc.Transaction.Output({
         script: poolnftTapeScript,
@@ -1574,7 +1696,10 @@ class poolNFT2 {
     const FTA = new FT(this.ft_a_contractTxid);
     const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
     FTA.initialize(FTAInfo);
-    lpPlan = lpPlan || 1;
+    lpPlan =
+      this.lp_plan === 1 || this.lp_plan === 2
+        ? (this.lp_plan as 1 | 2)
+        : lpPlan || 1;
     const amount_ftbn = BigInt(
       Math.floor(amount_token * Math.pow(10, FTA.decimal))
     );
@@ -1635,7 +1760,7 @@ class poolNFT2 {
         satoshis: poolnft.satoshis - Number(tbc_amount_decrement_swap_lp),
       })
     );
-    const poolnftTapeScript = this.getPoolNftTape();
+    const poolnftTapeScript = await this.updatePoolNftTape();
     tx.addOutput(
       new tbc.Transaction.Output({
         script: poolnftTapeScript,
@@ -1772,7 +1897,7 @@ class poolNFT2 {
    */
   async fetchPoolNftInfo(contractTxid: string): Promise<PoolNFTInfo> {
     const url_testnet = `https://api.tbcdev.org/api/tbc/pool/poolinfo/poolid/${contractTxid}`;
-    const url_mainnet = `https://api.tbcdev.org/api/tbc/pool/poolinfo/poolid/${contractTxid}`;
+    const url_mainnet = `https://api.turingbitchain.io/api/tbc/pool/poolinfo/poolid/${contractTxid}`;
     let url = "";
     if (this.network == "testnet") {
       url = url_testnet;
@@ -1843,57 +1968,29 @@ class poolNFT2 {
   /**
    * 根据 FT-LP 代码和指定金额获取相应的未花费交易输出 (UTXO)。
    *
-   * @param {string} ftlpCode - FT-LP 的代码，以十六进制字符串形式提供。
+   * @param {string} address - 地址。
    * @param {bigint} amount - 要获取的 FT-LP 数量（以 BigInt 表示）。
    * @returns {Promise<tbc.Transaction.IUnspentOutput>} 返回一个 Promise，解析为包含 FT-LP UTXO 的对象。
-   *
-   * 该函数执行以下主要步骤：
-   * 1. 计算 FT-LP 代码的 SHA-256 哈希值，并构建请求 URL（根据网络环境选择测试网或主网）。
-   * 2. 发送 HTTP 请求以获取与指定 FT-LP 代码相关的 UTXO 列表。
-   * 3. 遍历 UTXO 列表，查找余额大于或等于所需金额的 UTXO。
-   * 4. 如果找到合适的 UTXO，则返回该 UTXO；否则，检查所有 UTXO 的总余额：
-   *    - 如果总余额小于所需金额，抛出错误 "Insufficient FT-LP amount"。
-   *    - 如果总余额足够但没有单个 UTXO 满足条件，抛出错误 "Please merge FT-LP UTXOs"。
-   * 5. 返回包含以下信息的 FT-LP UTXO 对象：
-   *    - `txId`: UTXO 的交易 ID。
-   *    - `outputIndex`: UTXO 的输出索引。
-   *    - `script`: FT-LP 的代码脚本。
-   *    - `satoshis`: UTXO 的余额（以 satoshis 为单位）。
    *
    * @throws {Error} 如果请求失败或未能找到足够的 UTXO，将抛出错误。
    */
   async fetchFtlpUTXO(
-    ftlpCode: string,
+    address: string,
     amount: bigint
   ): Promise<tbc.Transaction.IUnspentOutput> {
-    const ftlpHash = tbc.crypto.Hash.sha256(Buffer.from(ftlpCode, "hex"))
-      .reverse()
-      .toString("hex");
-    const url_testnet = `https://api.tbcdev.org/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
-    const url_mainnet = `https://api.tbcdev.org/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
-    let url = "";
-    if (this.network == "testnet") {
-      url = url_testnet;
-    } else if (this.network == "mainnet") {
-      url = url_mainnet;
-    } else {
-      url =
-        (this.network.endsWith("/") ? this.network : this.network + "/") +
-        `pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
-    }
     try {
-      const response = await (await fetch(url)).json();
-      let data = response.data.utxos[0];
-      for (let i = 0; i < response.data.utxos.length; i++) {
-        if (response.data.utxos[i].lp_balance >= amount) {
-          data = response.data.utxos[i];
+      const ftUtxoList = await this.fetchFtlpUTXOList(address);
+      let ftlp = ftUtxoList[0];
+      for (let i = 0; i < ftUtxoList.length; i++) {
+        if (ftUtxoList[i].ftBalance >= amount) {
+          ftlp = ftUtxoList[i];
           break;
         }
       }
       let ftlpBalance = BigInt(0);
-      if (data.lp_balance < amount) {
-        for (let i = 0; i < response.data.utxos.length; i++) {
-          ftlpBalance += BigInt(response.data.utxos[i].lp_balance);
+      if (ftlp.ftBalance < amount) {
+        for (let i = 0; i < ftUtxoList.length; i++) {
+          ftlpBalance += BigInt(ftUtxoList[i].ftBalance);
         }
         if (ftlpBalance < amount) {
           throw new Error("Insufficient FT-LP amount");
@@ -1901,13 +1998,6 @@ class poolNFT2 {
           throw new Error("Please merge FT-LP UTXOs");
         }
       }
-      const ftlp: tbc.Transaction.IUnspentOutput = {
-        txId: data.txid,
-        outputIndex: data.index,
-        script: ftlpCode,
-        satoshis: data.tbc_balance,
-        ftBalance: data.lp_balance,
-      };
       return ftlp;
     } catch (error: any) {
       throw new Error(error.message);
@@ -1922,19 +2012,63 @@ class poolNFT2 {
    * @throws {Error} 如果请求失败，抛出错误信息。
    */
   async fetchFtlpBalance(address: string): Promise<bigint> {
+    try {
+      const ftUtxoList = await this.fetchFtlpUTXOList(address);
+      let ftlpBalance = BigInt(0);
+      for (let i = 0; i < ftUtxoList.length; i++) {
+        ftlpBalance += BigInt(ftUtxoList[i].ftBalance);
+      }
+      return ftlpBalance;
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  }
+
+  /**
+   * 获取指定地址的所有FTLP未花费交易输出(UTXO)列表。
+   *
+   * @param {string} address - 要查询FTLP UTXO的地址。
+   * @returns {Promise<tbc.Transaction.IUnspentOutput[]>} 返回一个Promise，解析为FTLP UTXO数组。
+   * @throws {Error} 如果获取失败，抛出错误信息。
+   *
+   * 该函数执行以下主要步骤：
+   * 1. 初始化FT实例并获取相关信息，包括合约交易ID和网络信息。
+   * 2. 根据是否带时间锁生成相应的FTLP代码脚本。
+   * 3. 计算FTLP代码的哈希值用于查询。
+   * 4. 根据网络类型构建查询URL（测试网、主网或自定义网络）。
+   * 5. 发送HTTP请求获取该地址下所有的FTLP UTXO数据。
+   * 6. 将响应数据转换为标准的UTXO格式并返回。
+   *
+   * 返回的UTXO对象包含：
+   * - txId: 交易ID
+   * - outputIndex: 输出索引
+   * - script: FTLP脚本（十六进制字符串）
+   * - satoshis: UTXO的satoshis数量
+   * - ftBalance: FTLP余额
+   */
+  async fetchFtlpUTXOList(address: string): Promise<tbc.Transaction.IUnspentOutput[]> {
     const FTA = new FT(this.ft_a_contractTxid);
     const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
     FTA.initialize(FTAInfo);
-    const ftlpCode = this.getFtlpCode(
-      tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex")).toString(
-        "hex"
-      ),
-      address,
-      FTA.tapeScript.length / 2
-    ).toBuffer();
+    const ftlpCode =
+      this.with_lock_time ?? false
+        ? this.getFtlpCodeWithLockTime(
+            tbc.crypto.Hash.sha256(
+              Buffer.from(this.poolnft_code, "hex")
+            ).toString("hex"),
+            address,
+            FTA.tapeScript.length / 2
+          ).toBuffer()
+        : this.getFtlpCode(
+            tbc.crypto.Hash.sha256(
+              Buffer.from(this.poolnft_code, "hex")
+            ).toString("hex"),
+            address,
+            FTA.tapeScript.length / 2
+          ).toBuffer();
     const ftlpHash = tbc.crypto.Hash.sha256(ftlpCode).reverse().toString("hex");
     const url_testnet = `https://api.tbcdev.org/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
-    const url_mainnet = `https://api.tbcdev.org/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
+    const url_mainnet = `https://api.turingbitchain.io/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
     let url = "";
     if (this.network == "testnet") {
       url = url_testnet;
@@ -1945,14 +2079,73 @@ class poolNFT2 {
         (this.network.endsWith("/") ? this.network : this.network + "/") +
         `pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
     }
+    const response = await (await fetch(url)).json();
+    const ftUtxoList = response.data.utxos;
+    const ftUtxoArray: tbc.Transaction.IUnspentOutput[] = ftUtxoList.map(data => ({
+      txId: data.txid,
+      outputIndex: data.index,
+      script: ftlpCode.toString("hex"),
+      satoshis: data.tbc_balance,
+      ftBalance: data.lp_balance,
+    }));
+    return ftUtxoArray;
+  }
+
+  /**
+   * 获取指定地址的FTLP锁定时间信息列表。
+   *
+   * @param {string} address - 要查询FTLP锁定时间的地址。
+   * @returns {Promise<Array<{ftBalance: bigint, lockTime: number}>>} 返回一个Promise，解析为包含FTLP余额和锁定时间信息的数组。
+   * @throws {Error} 如果查询失败，抛出错误信息。
+   *
+   * 该函数执行以下主要步骤：
+   * 1. 获取指定地址的所有FTLP UTXO列表。
+   * 2. 批量处理每个UTXO，提取其对应的锁定时间信息。
+   * 3. 对于每个UTXO：
+   *    - 获取交易ID和输出索引
+   *    - 提取FTLP余额
+   *    - 从交易的tape脚本中读取锁定时间
+   *    - 根据锁定时间值判断是区块高度锁定还是时间戳锁定
+   * 4. 输出锁定信息到控制台（区块高度或UTC时间）
+   * 5. 返回包含所有FTLP余额和对应锁定时间的数组
+   *
+   * 锁定时间解释：
+   * - 如果 lockTime < 500000000：表示按区块高度锁定
+   * - 如果 lockTime >= 500000000：表示按Unix时间戳锁定
+   */
+  async fetchFtlpLockTime(address: string): Promise<Array<{ftBalance: bigint, lockTime: number}>> {
     try {
-      const response = await (await fetch(url)).json();
-      const data = response.data.utxos;
-      let ftlpBalance = BigInt(0);
-      for (let i = 0; i < data.length; i++) {
-        ftlpBalance += BigInt(data[i].lp_balance);
-      }
-      return ftlpBalance;
+      const ftUtxoList = await this.fetchFtlpUTXOList(address);
+      let lockTimeList: Array<{ftBalance: bigint, lockTime: number}> = [];
+      const batchSize = 1;
+      const lockTimeResults = await fetchInBatches<
+        tbc.Transaction.IUnspentOutput,
+        {ftBalance: bigint, lockTime: number}
+      >(
+        ftUtxoList,
+        batchSize,
+        async (batch) => {
+          const results = await Promise.all(
+        batch.map(async (utxo) => {
+          const txid = utxo.txId;
+          const index = utxo.outputIndex + 1;
+          const lpBalance = utxo.ftBalance;
+          const ftlpTapeScript = (await API.fetchTXraw(txid, this.network)).outputs[index].script;
+          const lockTime = new tbc.encoding.BufferReader(ftlpTapeScript.chunks[3].buf).readInt32LE();
+          if (lockTime < 500000000) 
+            console.log(lpBalance, "Freeze before block height:", lockTime);
+          else
+            console.log(lpBalance, "Freeze before UTC time:", new Date(lockTime * 1000).toISOString());
+          return { ftBalance: lpBalance, lockTime };
+        })
+          );
+          return results;
+        },
+        "fetchFtlpLockTime"
+      );
+      
+      lockTimeList = lockTimeResults.flat();
+      return lockTimeList;
     } catch (error: any) {
       throw new Error(error.message);
     }
@@ -2013,62 +2206,52 @@ class poolNFT2 {
     FTA.initialize(FTAInfo);
     const privateKey = privateKey_from;
     const address = privateKey.toAddress().toString();
-    const ftlpCodeScript = this.getFtlpCode(
-      tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex")).toString(
-        "hex"
-      ),
-      address,
-      FTA.tapeScript.length / 2
-    );
-    const ftlpCodeHash = tbc.crypto.Hash.sha256(ftlpCodeScript.toBuffer())
-      .reverse()
-      .toString("hex");
-    const url_testnet = `https://api.tbcdev.org/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpCodeHash}`;
-    const url_mainnet = `https://api.tbcdev.org/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpCodeHash}`;
-    let url = "";
-    if (this.network == "testnet") {
-      url = url_testnet;
-    } else if (this.network == "mainnet") {
-      url = url_mainnet;
-    } else {
-      url =
-        (this.network.endsWith("/") ? this.network : this.network + "/") +
-        `pool/lputxo/scriptpubkeyhash/${ftlpCodeHash}`;
-    }
-    const fttxo_codeScript = ftlpCodeScript.toBuffer().toString("hex");
+    // const ftlpCodeScript = this.getFtlpCode(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex')).toString('hex'), address, FTA.tapeScript.length / 2);
+    const ftlpCode =
+      this.with_lock_time ?? false
+        ? this.getFtlpCodeWithLockTime(
+            tbc.crypto.Hash.sha256(
+              Buffer.from(this.poolnft_code, "hex")
+            ).toString("hex"),
+            address,
+            FTA.tapeScript.length / 2
+          ).toBuffer()
+        : this.getFtlpCode(
+            tbc.crypto.Hash.sha256(
+              Buffer.from(this.poolnft_code, "hex")
+            ).toString("hex"),
+            address,
+            FTA.tapeScript.length / 2
+          ).toBuffer();
+    
+    const ftutxo_codeScript = ftlpCode.toString("hex");
     try {
-      const response = await (await fetch(url)).json();
-      const data = response.data.utxos;
-      let fttxo: tbc.Transaction.IUnspentOutput[] = [];
-      if (data.length === 0) {
+      const ftUtxoList = await this.fetchFtlpUTXOList(address);
+      // console.log(response.ftUtxoList);
+      let ftutxo: tbc.Transaction.IUnspentOutput[] = [];
+      if (ftUtxoList.length === 0) {
         throw new Error("No FT UTXO available");
       }
-      if (data.length === 1) {
+      if (ftUtxoList.length === 1) {
         console.log("Merge Success!");
         return true;
       } else {
-        for (let i = 0; i < data.length && i < 5; i++) {
-          fttxo.push({
-            txId: data[i].txid,
-            outputIndex: data[i].index,
-            script: fttxo_codeScript,
-            satoshis: data[i].tbc_balance,
-            ftBalance: data[i].lp_balance,
-          });
+        for (let i = 0; i < ftUtxoList.length && i < 5; i++) {
+          ftutxo.push(ftUtxoList[i]);
         }
       }
       const tapeAmountSetIn: bigint[] = [];
       const ftPreTX: tbc.Transaction[] = [];
       const ftPrePreTxData: string[] = [];
       let tapeAmountSum = BigInt(0);
-      for (let i = 0; i < fttxo.length; i++) {
-        tapeAmountSetIn.push(fttxo[i].ftBalance!);
-        tapeAmountSum += BigInt(fttxo[i].ftBalance!);
-        ftPreTX.push(await API.fetchTXraw(fttxo[i].txId, this.network));
+      for (let i = 0; i < ftutxo.length; i++) {
+        tapeAmountSetIn.push(ftutxo[i].ftBalance!);
+        tapeAmountSum += BigInt(ftutxo[i].ftBalance!);
+        ftPreTX.push(await API.fetchTXraw(ftutxo[i].txId, this.network));
         ftPrePreTxData.push(
           await API.fetchFtPrePreTxData(
             ftPreTX[i],
-            fttxo[i].outputIndex,
+            ftutxo[i].outputIndex,
             this.network
           )
         );
@@ -2083,15 +2266,32 @@ class poolNFT2 {
       ) {
         throw new Error("Change amount is not zero");
       }
-      const tx = new tbc.Transaction().from(fttxo).from(utxo);
-      const codeScript = FT.buildFTtransferCode(fttxo_codeScript, address);
+      const tx = new tbc.Transaction().from(ftutxo).from(utxo);
+      const codeScript = FT.buildFTtransferCode(ftutxo_codeScript, address);
       tx.addOutput(
         new tbc.Transaction.Output({
           script: codeScript,
           satoshis: 500,
         })
       );
-      const tapeScript = FT.buildFTtransferTape(FTA.tapeScript, amountHex);
+      let tapeScript: tbc.Script;
+      if (this.with_lock_time) {
+        const amountwriter = new tbc.encoding.BufferWriter();
+        for (let i = 0; i < 6; i++) {
+          amountwriter.writeUInt64LEBN(new tbc.crypto.BN(0));
+        }
+        const ftlpTapeAmount = amountwriter.toBuffer().toString("hex");
+        const lockTimeHex = Buffer.from("00000000", "hex").toString("hex");
+        const fillSize = FTA.tapeScript.length / 2 - 62;
+        const opZeroArray = Array(fillSize).fill("OP_0").join(" ");
+        const ftlpTapeScript = tbc.Script.fromASM(
+          `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`
+        );
+        tapeScript = FT.buildFTtransferTape(ftlpTapeScript.toHex(), amountHex);
+      } else {
+        tapeScript = FT.buildFTtransferTape(FTA.tapeScript, amountHex);
+      }
+
       tx.addOutput(
         new tbc.Transaction.Output({
           script: tapeScript,
@@ -2100,7 +2300,8 @@ class poolNFT2 {
       );
       tx.feePerKb(80);
       tx.change(privateKey.toAddress());
-      for (let i = 0; i < fttxo.length; i++) {
+      for (let i = 0; i < ftutxo.length; i++) {
+        if (this.with_lock_time) tx.setInputSequence(i, 4294967294);
         await tx.setInputScriptAsync(
           {
             inputIndex: i,
@@ -2112,13 +2313,17 @@ class poolNFT2 {
               ftPreTX[i],
               ftPrePreTxData[i],
               i,
-              fttxo[i].outputIndex
+              ftutxo[i].outputIndex
             );
             return unlockingScript;
           }
         );
       }
       tx.sign(privateKey);
+      if (this.with_lock_time)
+        tx.setLockTime(
+          (await API.fetchBlockHeaders(this.network))[0].height - 2
+        );
       await tx.sealAsync();
       const txraw = tx.uncheckedSerialize();
       console.log("Merge FTLPUTXO:");
@@ -2321,7 +2526,7 @@ class poolNFT2 {
           satoshis: poolnft.satoshis,
         })
       );
-      const poolnftTapeScript = this.getPoolNftTape();
+      const poolnftTapeScript = await this.updatePoolNftTape();
       tx.addOutput(
         new tbc.Transaction.Output({
           script: poolnftTapeScript,
@@ -2403,6 +2608,953 @@ class poolNFT2 {
       return tx;
     } catch (error: any) {
       throw new Error("Merge Faild!." + error.message);
+    }
+  }
+
+  /**
+   * @deprecated 此方法已弃用，请勿使用。
+   * 初始化带时间锁的池 NFT 的创建过程。
+   *
+   * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
+   * @param {string} address_to - NFT 接收地址。
+   * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
+   * @param {number} tbc_amount - TBC 数量。
+   * @param {number} ft_a - FT-A 数量。
+   * @param {number} lock_time - 时间锁参数。
+   * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
+   *
+   * 该函数执行以下主要步骤：
+   * 1. 初始化 FT 实例并获取相关信息，包括合约交易 ID 和网络信息。
+   * 2. 根据输入参数计算 LP 和 FT-A 的金额，确保输入有效并处理不同情况。
+   * 3. 检查 UTXO 是否有足够的 TBC 金额，抛出错误如果不足。
+   * 4. 计算池 NFT 代码的哈希值，并验证 FT-A 的最大金额限制。
+   * 5. 获取 FT-A 的 UTXO 和相关交易数据，确保有足够的 FT-A 金额进行交易。
+   * 6. 构建用于池 NFT 和 FT-A 转移的脚本，并设置相关输出。
+   * 7. 构建带锁时间的 FT LP 脚本，包含锁定信息，并添加到交易中。
+   * 8. 根据需要添加找零输出，确保所有金额正确处理。
+   * 9. 设置每千字节的交易费用，并指定找零地址。
+   * 10. 异步设置输入脚本以解锁相应的 UTXO，并签名交易。
+   * 11. 封装交易并返回序列化后的未检查交易数据以供发送。
+   */
+  async initPoolNFTWithLockTime(
+    privateKey_from: tbc.PrivateKey,
+    address_to: string,
+    utxo: tbc.Transaction.IUnspentOutput,
+    tbc_amount: number,
+    ft_a: number,
+    lock_time: number
+  ): Promise<string> {
+    const privateKey = privateKey_from;
+    const FTA = new FT(this.ft_a_contractTxid);
+    const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    FTA.initialize(FTAInfo);
+    let amount_lpbn = BigInt(0);
+    if (tbc_amount > 0 && ft_a > 0) {
+      amount_lpbn = BigInt(Math.floor(tbc_amount * Math.pow(10, 6)));
+      this.tbc_amount = BigInt(Math.floor(tbc_amount * Math.pow(10, 6)));
+      this.ft_lp_amount = this.tbc_amount;
+      this.ft_a_number = ft_a;
+      this.ft_a_amount = BigInt(
+        Math.floor(this.ft_a_number * Math.pow(10, FTA.decimal))
+      );
+    } else {
+      throw new Error("Invalid amount Input");
+    }
+
+    const tapeAmountSetIn: bigint[] = [];
+    if (utxo.satoshis < Number(this.tbc_amount)) {
+      throw new Error("Insufficient TBC amount, please merge UTXOs");
+    }
+    const poolnft_codehash = tbc.crypto.Hash.sha256(
+      Buffer.from(this.poolnft_code, "hex")
+    );
+    const poolnft_codehash160 =
+      tbc.crypto.Hash.sha256ripemd160(poolnft_codehash).toString("hex");
+    const maxAmount = Math.floor(Math.pow(10, 18 - FTA.decimal));
+    if (this.ft_a_number > maxAmount) {
+      throw new Error(
+        `When decimal is ${FTA.decimal}, the maximum amount cannot exceed ${maxAmount}`
+      );
+    }
+    const ftutxo_codeScript = FT.buildFTtransferCode(
+      FTA.codeScript,
+      privateKey.toAddress().toString()
+    )
+      .toBuffer()
+      .toString("hex");
+
+    let fttxo_a: tbc.Transaction.IUnspentOutput;
+    try {
+      fttxo_a = await API.fetchFtUTXO(
+        this.ft_a_contractTxid,
+        privateKey.toAddress().toString(),
+        this.ft_a_amount,
+        ftutxo_codeScript,
+        this.network
+      );
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+
+    const ftPreTX = await API.fetchTXraw(fttxo_a.txId, this.network);
+    const ftPrePreTxData = await API.fetchFtPrePreTxData(
+      ftPreTX,
+      fttxo_a.outputIndex,
+      this.network
+    );
+    if (fttxo_a.ftBalance! < this.ft_a_amount) {
+      throw new Error("Insufficient FT-A amount, please merge FT-A UTXOs");
+    }
+    tapeAmountSetIn.push(fttxo_a.ftBalance!);
+    let tapeAmountSum = BigInt(0);
+    for (let i = 0; i < tapeAmountSetIn.length; i++) {
+      tapeAmountSum += BigInt(tapeAmountSetIn[i]);
+    }
+    const { amountHex, changeHex } = FT.buildTapeAmount(
+      this.ft_a_amount,
+      tapeAmountSetIn,
+      1
+    );
+    const poolnftTapeScript = await this.updatePoolNftTape();
+    const poolnft = await this.fetchPoolNftUTXO(this.contractTxid);
+    const tx = new tbc.Transaction()
+      .from(poolnft)
+      .from(fttxo_a)
+      .from(utxo)
+      //poolNft
+      .addOutput(
+        new tbc.Transaction.Output({
+          script: tbc.Script.fromHex(this.poolnft_code),
+          satoshis: this.poolnft_code_dust + Number(this.tbc_amount),
+        })
+      )
+      .addOutput(
+        new tbc.Transaction.Output({
+          script: poolnftTapeScript,
+          satoshis: 0,
+        })
+      );
+    //FTAbyC
+    const ftCodeScript = FT.buildFTtransferCode(
+      FTA.codeScript,
+      poolnft_codehash160
+    );
+    const ftTapeScript = FT.buildFTtransferTape(FTA.tapeScript, amountHex);
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: ftCodeScript,
+        satoshis: fttxo_a.satoshis,
+      })
+    ).addOutput(
+      new tbc.Transaction.Output({
+        script: ftTapeScript,
+        satoshis: 0,
+      })
+    );
+    //FTLP
+    const ftlp_amount = new tbc.crypto.BN(amount_lpbn.toString());
+    const amountwriter = new tbc.encoding.BufferWriter();
+    amountwriter.writeUInt64LEBN(ftlp_amount);
+    for (let i = 1; i < 6; i++) {
+      amountwriter.writeUInt64LEBN(new tbc.crypto.BN(0));
+    }
+    const ftlpTapeAmount = amountwriter.toBuffer().toString("hex");
+    if (lock_time < 0 || lock_time > 4294967295) {
+      throw new Error("Invalid lock time, must be between 0 and 4294967295");
+    }
+    const lockTimeWriter = new tbc.encoding.BufferWriter();
+    lockTimeWriter.writeUInt32LE(lock_time);
+    const lockTimeHex = lockTimeWriter.toBuffer().toString("hex");
+    // Build the tape script
+    const fillSize = FTA.tapeScript.length / 2 - 62;
+    const opZeroArray = Array(fillSize).fill("OP_0").join(" ");
+    const ftlpTapeScript = tbc.Script.fromASM(
+      `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`
+    );
+    const tapeSize = ftlpTapeScript.toBuffer().length;
+    const ftlpCodeScript = this.getFtlpCodeWithLockTime(
+      poolnft_codehash.toString("hex"),
+      address_to,
+      tapeSize
+    );
+    // console.log(partial_sha256.calculate_partial_hash(ftlpCodeScript.toBuffer().subarray(0, 1536)));
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: ftlpCodeScript,
+        satoshis: 500,
+      })
+    );
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: ftlpTapeScript,
+        satoshis: 0,
+      })
+    );
+    if (this.ft_a_amount < tapeAmountSum) {
+      const changeCodeScript = FT.buildFTtransferCode(
+        FTA.codeScript,
+        privateKey.toAddress().toString()
+      );
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: changeCodeScript,
+          satoshis: fttxo_a.satoshis,
+        })
+      );
+      const changeTapeScript = FT.buildFTtransferTape(
+        FTA.tapeScript,
+        changeHex
+      );
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: changeTapeScript,
+          satoshis: 0,
+        })
+      );
+    }
+    tx.feePerKb(80);
+    tx.change(privateKey.toAddress());
+    await tx.setInputScriptAsync(
+      {
+        inputIndex: 0,
+      },
+      async (tx) => {
+        const unlockingScript = await this.getPoolNftUnlock(
+          privateKey,
+          tx,
+          0,
+          poolnft.txId,
+          poolnft.outputIndex,
+          0,
+          1
+        );
+        return unlockingScript;
+      }
+    );
+    await tx.setInputScriptAsync(
+      {
+        inputIndex: 1,
+      },
+      async (tx) => {
+        const unlockingScript = await FTA.getFTunlock(
+          privateKey,
+          tx,
+          ftPreTX,
+          ftPrePreTxData,
+          1,
+          fttxo_a.outputIndex
+        );
+        return unlockingScript;
+      }
+    );
+    tx.sign(privateKey);
+    await tx.sealAsync();
+    // console.log(tx.verify());
+    const txraw = tx.uncheckedSerialize();
+    return txraw;
+  }
+
+  /**
+   * @deprecated 此方法已弃用，请勿使用。
+   * 增加带时间锁的流动性池中的 LP。
+   *
+   * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
+   * @param {string} address_to - LP 接收地址。
+   * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
+   * @param {number} amount_tbc - 增加的 TBC 数量。
+   * @param {number} lock_time - 时间锁参数。
+   * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
+   *
+   * 该函数执行以下主要步骤：
+   * 1. 初始化 FT 实例并获取相关信息，包括合约交易 ID 和网络信息。
+   * 2. 将输入的 TBC 数量转换为 BigInt，并更新流动性池的数据。
+   * 3. 计算池 NFT 的哈希值，并验证是否有足够的 FT-A 和 TBC 金额进行交易。
+   * 4. 获取 FT-A 的 UTXO 和相关交易数据，确保有足够的 FT-A 金额进行流动性增加。
+   * 5. 构建用于池 NFT 和 FT-A 转移的脚本，并设置相关输出。
+   * 6. 构建带锁时间的 FT LP 脚本，包含锁定信息，并添加到交易中。
+   * 7. 根据需要添加找零输出，确保所有金额正确处理。
+   * 8. 设置每千字节的交易费用，并指定找零地址。
+   * 9. 异步设置输入脚本以解锁相应的 UTXO，并签名交易。
+   * 10. 封装交易并返回序列化后的未检查交易数据以供发送。
+   */
+  async increaseLpWithLockTime(
+    privateKey_from: tbc.PrivateKey,
+    address_to: string,
+    utxo: tbc.Transaction.IUnspentOutput,
+    amount_tbc: number,
+    lock_time: number
+  ): Promise<string> {
+    const lockStatus =
+      this.with_lock === true ? 1 : 0 || isLock(this.poolnft_code.length);
+    // console.log(`Lock status: ${lockStatus}`);
+    if (lockStatus) amount_tbc -= 5;
+    if (amount_tbc <= 0) throw new Error("Invalid TBC amount input");
+    const privateKey = privateKey_from;
+    const FTA = new FT(this.ft_a_contractTxid);
+    const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    FTA.initialize(FTAInfo);
+    const amount_tbcbn = BigInt(Math.floor(amount_tbc * Math.pow(10, 6)));
+    const changeDate = this.updatePoolNFT(amount_tbc, FTA.decimal, 2);
+    const poolnft_codehash = tbc.crypto.Hash.sha256(
+      Buffer.from(this.poolnft_code, "hex")
+    );
+    const poolnft_codehash160 =
+      tbc.crypto.Hash.sha256ripemd160(poolnft_codehash).toString("hex");
+    const tapeAmountSetIn: bigint[] = [];
+    const ftutxo_codeScript = FT.buildFTtransferCode(
+      FTA.codeScript,
+      privateKey.toAddress().toString()
+    )
+      .toBuffer()
+      .toString("hex");
+
+    let fttxo_a: tbc.Transaction.IUnspentOutput;
+    try {
+      fttxo_a = await API.fetchFtUTXO(
+        this.ft_a_contractTxid,
+        privateKey.toAddress().toString(),
+        changeDate.ft_a_difference,
+        ftutxo_codeScript,
+        this.network
+      );
+    } catch (error: any) {
+      const errorMessage =
+        error.message === "Insufficient FTbalance, please merge FT UTXOs"
+          ? "Insufficient FT-A amount, please merge FT-A UTXOs"
+          : error.message;
+
+      throw new Error(errorMessage);
+    }
+
+    const ftPreTX = await API.fetchTXraw(fttxo_a.txId, this.network);
+    const ftPrePreTxData = await API.fetchFtPrePreTxData(
+      ftPreTX,
+      fttxo_a.outputIndex,
+      this.network
+    );
+    tapeAmountSetIn.push(fttxo_a.ftBalance!);
+    let tapeAmountSum = BigInt(0);
+    for (let i = 0; i < tapeAmountSetIn.length; i++) {
+      tapeAmountSum += BigInt(tapeAmountSetIn[i]);
+    }
+    if (changeDate.ft_a_difference > tapeAmountSum) {
+      throw new Error("Insufficient balance, please merge FT UTXOs");
+    }
+    let { amountHex, changeHex } = FT.buildTapeAmount(
+      changeDate.ft_a_difference,
+      tapeAmountSetIn,
+      1
+    );
+    if (utxo.satoshis < Number(amount_tbcbn)) {
+      throw new Error("Insufficient TBC amount, please merge UTXOs");
+    }
+    const poolnft = await this.fetchPoolNftUTXO(this.contractTxid);
+    // Construct the transaction
+    const tx = new tbc.Transaction().from(poolnft).from(fttxo_a).from(utxo);
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: tbc.Script.fromHex(this.poolnft_code),
+        satoshis: poolnft.satoshis + Number(changeDate.tbc_amount_difference),
+      })
+    );
+    const poolnftTapeScript = await this.updatePoolNftTape();
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: poolnftTapeScript,
+        satoshis: 0,
+      })
+    );
+    // FTAbyC
+    const ftabycCodeScript = FT.buildFTtransferCode(
+      FTA.codeScript,
+      poolnft_codehash160
+    );
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: ftabycCodeScript,
+        satoshis: fttxo_a.satoshis,
+      })
+    );
+    const ftabycTapeScript = FT.buildFTtransferTape(FTA.tapeScript, amountHex);
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: ftabycTapeScript,
+        satoshis: 0,
+      })
+    );
+    // FTLP
+    const ftlp_amount = new tbc.crypto.BN(
+      changeDate.ft_lp_difference.toString()
+    );
+    const amountwriter = new tbc.encoding.BufferWriter();
+    amountwriter.writeUInt64LEBN(ftlp_amount);
+    for (let i = 1; i < 6; i++) {
+      amountwriter.writeUInt64LEBN(new tbc.crypto.BN(0));
+    }
+    const ftlpTapeAmount = amountwriter.toBuffer().toString("hex");
+    if (lock_time < 0 || lock_time > 4294967295) {
+      throw new Error("Invalid lock time, must be between 0 and 4294967295");
+    }
+    const lockTimeWriter = new tbc.encoding.BufferWriter();
+    lockTimeWriter.writeUInt32LE(lock_time);
+    const lockTimeHex = lockTimeWriter.toBuffer().toString("hex");
+    // Build the tape script
+    const fillSize = FTA.tapeScript.length / 2 - 62;
+    const opZeroArray = Array(fillSize).fill("OP_0").join(" ");
+    const ftlpTapeScript = tbc.Script.fromASM(
+      `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`
+    );
+    const tapeSize = ftlpTapeScript.toBuffer().length;
+    const ftlpCodeScript = this.getFtlpCodeWithLockTime(
+      poolnft_codehash.toString("hex"),
+      address_to,
+      tapeSize
+    );
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: ftlpCodeScript,
+        satoshis: 500,
+      })
+    );
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: ftlpTapeScript,
+        satoshis: 0,
+      })
+    );
+    // P2PKH (若带锁则扣除)
+    if (lockStatus) {
+      const lpCostAddress = getLpCostAddress(this.poolnft_code);
+      const lpCostAmount = getLpCostAmount(this.poolnft_code);
+      // console.log(`Lock address: ${lpCostAddress}` + `, Lock amount: ${lpCostAmount}`);
+      tx.to(lpCostAddress, lpCostAmount);
+    }
+    if (changeDate.ft_a_difference < tapeAmountSum) {
+      // FTAbyA_change
+      const ftabya_changeCodeScript = FT.buildFTtransferCode(
+        FTA.codeScript,
+        privateKey.toAddress().toString()
+      );
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: ftabya_changeCodeScript,
+          satoshis: fttxo_a.satoshis,
+        })
+      );
+      const ftabya_changeTapeScript = FT.buildFTtransferTape(
+        FTA.tapeScript,
+        changeHex
+      );
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: ftabya_changeTapeScript,
+          satoshis: 0,
+        })
+      );
+    }
+    tx.feePerKb(80);
+    tx.change(privateKey.toAddress());
+    await tx.setInputScriptAsync(
+      {
+        inputIndex: 0,
+      },
+      async (tx) => {
+        const unlockingScript = await this.getPoolNftUnlock(
+          privateKey,
+          tx,
+          0,
+          poolnft.txId,
+          poolnft.outputIndex,
+          lockStatus,
+          1
+        );
+        return unlockingScript;
+      }
+    );
+    await tx.setInputScriptAsync(
+      {
+        inputIndex: 1,
+      },
+      async (tx) => {
+        const unlockingScript = await FTA.getFTunlock(
+          privateKey,
+          tx,
+          ftPreTX,
+          ftPrePreTxData,
+          1,
+          fttxo_a.outputIndex
+        );
+        return unlockingScript;
+      }
+    );
+    tx.sign(privateKey);
+    await tx.sealAsync();
+    // console.log(tx.verify());
+    // console.log(tx.toObject());
+    const txraw = tx.uncheckedSerialize();
+    return txraw;
+  }
+
+  /**
+   * @deprecated 此方法已弃用，请勿使用。
+   * 消耗带时间锁流动性池中的 LP。
+   *
+   * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
+   * @param {string} address_to - LP 转移接收地址。
+   * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
+   * @param {number} amount_lp - 要消耗的 LP 数量。
+   * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
+   *
+   * 该函数执行以下主要步骤：
+   * 1. 初始化 FT 实例并获取相关信息，包括合约交易 ID 和网络信息。
+   * 2. 将输入的 LP 数量转换为 BigInt，并验证是否有足够的 LP 可供消耗。
+   * 3. 更新池 NFT 的状态，并计算相关的哈希值。
+   * 4. 获取带锁的流动性池 UTXO 和 FT UTXO，确保有足够的余额进行交易。
+   * 5. 构建用于流动性池和 FT 转移的脚本，并设置相关输出。
+   * 6. 构建带锁时间的 FT LP 脚本，包含锁定信息，并添加到交易中。
+   * 7. 根据需要添加找零输出，确保所有金额正确处理。
+   * 8. 设置每千字节的交易费用，并指定找零地址。
+   * 9. 异步设置输入脚本以解锁相应的 UTXO，并签名交易。
+   * 10. 设置输入序列和锁定时间。
+   * 11. 封装交易并返回序列化后的未检查交易数据以供发送。
+   */
+  async consumeLpWithLockTime(
+    privateKey_from: tbc.PrivateKey,
+    address_to: string,
+    utxo: tbc.Transaction.IUnspentOutput,
+    amount_lp: number
+  ): Promise<string> {
+    const privateKey = privateKey_from;
+    const FTA = new FT(this.ft_a_contractTxid);
+    const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    FTA.initialize(FTAInfo);
+    const amount_lpbn = BigInt(Math.floor(amount_lp * Math.pow(10, 6)));
+    if (this.ft_lp_amount < amount_lpbn) {
+      throw new Error("Invalid FT-LP amount input");
+    }
+    const changeDate = this.updatePoolNFT(amount_lp, FTA.decimal, 1);
+    const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(
+      tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex"))
+    ).toString("hex");
+    const tapeAmountSetIn: bigint[] = [];
+    const lpTapeAmountSetIn: bigint[] = [];
+    const ftPreTX: tbc.Transaction[] = [];
+    const ftPrePreTxData: string[] = [];
+    const ftlpCode = this.getFtlpCodeWithLockTime(
+      tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex")).toString(
+        "hex"
+      ),
+      privateKey.toAddress().toString(),
+      FTA.tapeScript.length / 2
+    );
+    let fttxo_lp: tbc.Transaction.IUnspentOutput;
+    try {
+      fttxo_lp = await this.fetchFtlpUTXO(
+        privateKey.toAddress().toString(),
+        changeDate.ft_lp_difference
+      );
+      // fttxo_lp = {
+      //     txId: "8d946b6459eed3c98fa50c286b5d6d223217cdf8c73e99dc4f8ae9ab51753f69",
+      //     outputIndex: 4,
+      //     satoshis: 500,
+      //     script: "",
+      //     ftBalance: 3000000n
+      // };
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+    ftPreTX.push(await API.fetchTXraw(fttxo_lp.txId, this.network));
+    ftPrePreTxData.push(
+      await API.fetchFtPrePreTxData(
+        ftPreTX[0],
+        fttxo_lp.outputIndex,
+        this.network
+      )
+    );
+
+    lpTapeAmountSetIn.push(fttxo_lp.ftBalance);
+    const ftutxo_codeScript = FT.buildFTtransferCode(
+      FTA.codeScript,
+      poolnft_codehash160
+    )
+      .toBuffer()
+      .toString("hex");
+    let fttxo_c: tbc.Transaction.IUnspentOutput[];
+    try {
+      fttxo_c = await API.fetchFtUTXOsforPool(
+        this.ft_a_contractTxid,
+        poolnft_codehash160,
+        changeDate.ft_a_difference,
+        3,
+        ftutxo_codeScript,
+        this.network
+      );
+    } catch (error: any) {
+      const errorMessage =
+        error.message === "Insufficient FTbalance, please merge FT UTXOs"
+          ? "Insufficient PoolFT, please merge FT UTXOs"
+          : error.message;
+      throw new Error(errorMessage);
+    }
+
+    let tapeAmountSum = BigInt(0);
+    for (let i = 0; i < fttxo_c.length; i++) {
+      ftPreTX.push(await API.fetchTXraw(fttxo_c[i].txId, this.network));
+      ftPrePreTxData.push(
+        await API.fetchFtPrePreTxData(
+          ftPreTX[i + 1],
+          fttxo_c[i].outputIndex,
+          this.network
+        )
+      );
+      tapeAmountSetIn.push(fttxo_c[i].ftBalance);
+      tapeAmountSum += BigInt(tapeAmountSetIn[i]);
+    }
+
+    // Build the amount and change hex strings for the tape
+    let { amountHex, changeHex } = FT.buildTapeAmount(
+      changeDate.ft_a_difference,
+      tapeAmountSetIn,
+      2
+    );
+    const ftAbyA = amountHex;
+    const ftAbyC = changeHex;
+    ({ amountHex, changeHex } = FT.buildTapeAmount(
+      changeDate.ft_lp_difference,
+      lpTapeAmountSetIn,
+      1
+    ));
+    const ftlpBurn = amountHex;
+    const ftlpChange = changeHex;
+    const poolnft = await this.fetchPoolNftUTXO(this.contractTxid);
+    const contractTX = await API.fetchTXraw(poolnft.txId, this.network);
+    // Construct the transaction
+    const tx = new tbc.Transaction()
+      .from(poolnft)
+      .from(fttxo_lp)
+      .from(fttxo_c)
+      .from(utxo);
+    //poolNft
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: tbc.Script.fromHex(this.poolnft_code),
+        satoshis:
+          poolnft.satoshis - Number(changeDate.tbc_amount_full_difference),
+      })
+    );
+    const poolnftTapeScript = await this.updatePoolNftTape();
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: poolnftTapeScript,
+        satoshis: 0,
+      })
+    );
+    //FTAbyA
+    const ftCodeScript = FT.buildFTtransferCode(FTA.codeScript, address_to);
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: ftCodeScript,
+        satoshis: 500,
+      })
+    );
+    const ftTapeScript = FT.buildFTtransferTape(FTA.tapeScript, ftAbyA);
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: ftTapeScript,
+        satoshis: 0,
+      })
+    );
+    //P2PKH
+    tx.to(
+      privateKey.toAddress().toString(),
+      Number(changeDate.tbc_amount_full_difference)
+    );
+    //FTLP_Burn
+    const amountwriter = new tbc.encoding.BufferWriter();
+    for (let i = 0; i < 6; i++) {
+      amountwriter.writeUInt64LEBN(new tbc.crypto.BN(0));
+    }
+    const ftlpTapeAmount = amountwriter.toBuffer().toString("hex");
+    const lockTimeHex = Buffer.from("00000000", "hex").toString("hex");
+    const fillSize = FTA.tapeScript.length / 2 - 62;
+    const opZeroArray = Array(fillSize).fill("OP_0").join(" ");
+    let ftlpTapeScript = tbc.Script.fromASM(
+      `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`
+    );
+    const ftlpCodeScript = FT.buildFTtransferCode(
+      ftlpCode.toBuffer().toString("hex"),
+      "1BitcoinEaterAddressDontSendf59kuE"
+    );
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: ftlpCodeScript,
+        satoshis: fttxo_lp.satoshis,
+      })
+    );
+    ftlpTapeScript = FT.buildFTtransferTape(
+      ftlpTapeScript.toBuffer().toString("hex"),
+      ftlpBurn
+    );
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: ftlpTapeScript,
+        satoshis: 0,
+      })
+    );
+    // FTLP_change
+    if (fttxo_lp.ftBalance! > changeDate.ft_lp_difference) {
+      const ftlp_changeCodeScript = FT.buildFTtransferCode(
+        ftlpCode.toBuffer().toString("hex"),
+        address_to
+      );
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: ftlp_changeCodeScript,
+          satoshis: fttxo_lp.satoshis,
+        })
+      );
+      const ftlp_changeTapeScript = FT.buildFTtransferTape(
+        ftlpTapeScript.toBuffer().toString("hex"),
+        ftlpChange
+      );
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: ftlp_changeTapeScript,
+          satoshis: 0,
+        })
+      );
+    }
+    // FTAbyC_change
+    if (changeDate.ft_a_difference < tapeAmountSum) {
+      const ftabycCodeScript = FT.buildFTtransferCode(
+        FTA.codeScript,
+        poolnft_codehash160
+      );
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: ftabycCodeScript,
+          satoshis: 500,
+        })
+      );
+      const ftabycTapeScript = FT.buildFTtransferTape(FTA.tapeScript, ftAbyC);
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: ftabycTapeScript,
+          satoshis: 0,
+        })
+      );
+    }
+    tx.feePerKb(80);
+    tx.change(privateKey.toAddress());
+    await tx.setInputScriptAsync(
+      {
+        inputIndex: 0,
+      },
+      async (tx) => {
+        const unlockingScript = await this.getPoolNftUnlock(
+          privateKey,
+          tx,
+          0,
+          poolnft.txId,
+          poolnft.outputIndex,
+          isLock(this.poolnft_code.length),
+          2
+        );
+        return unlockingScript;
+      }
+    );
+    tx.setInputSequence(1, 4294967294);
+    await tx.setInputScriptAsync(
+      {
+        inputIndex: 1,
+      },
+      async (tx) => {
+        const unlockingScript = await FTA.getFTunlock(
+          privateKey,
+          tx,
+          ftPreTX[0],
+          ftPrePreTxData[0],
+          1,
+          fttxo_lp.outputIndex
+        );
+        return unlockingScript;
+      }
+    );
+    for (let i = 0; i < fttxo_c.length; i++) {
+      await tx.setInputScriptAsync(
+        {
+          inputIndex: i + 2,
+        },
+        async (tx) => {
+          const unlockingScript = await FTA.getFTunlockSwap(
+            privateKey,
+            tx,
+            ftPreTX[i + 1],
+            ftPrePreTxData[i + 1],
+            contractTX,
+            i + 2,
+            fttxo_c[i].outputIndex
+          );
+          return unlockingScript;
+        }
+      );
+    }
+    tx.sign(privateKey);
+    tx.setLockTime((await API.fetchBlockHeaders(this.network))[0].height - 2);
+    // .setInputSequence(0, 4294967294);
+
+    await tx.sealAsync();
+    // console.log(tx.verify());
+    const txraw = tx.uncheckedSerialize();
+    // console.log(txraw);
+    return txraw;
+  }
+
+  /**
+   * @deprecated 此方法已弃用，请勿使用。
+   */
+  async lockFTLP(
+    privateKey_from: tbc.PrivateKey,
+    utxo: tbc.Transaction.IUnspentOutput,
+    lock_time: number
+  ): Promise<string> {
+    const FTA = new FT(this.ft_a_contractTxid);
+    const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    FTA.initialize(FTAInfo);
+    const privateKey = privateKey_from;
+    const address = privateKey.toAddress().toString();
+    const ftlpCodeScript = this.getFtlpCodeWithLockTime(
+      tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex")).toString(
+        "hex"
+      ),
+      address,
+      FTA.tapeScript.length / 2
+    );
+    const ftlpCodeHash = tbc.crypto.Hash.sha256(ftlpCodeScript.toBuffer())
+      .reverse()
+      .toString("hex");
+    const url_testnet = `https://tbcdev.org/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpCodeHash}`;
+    const url_mainnet = `https://api.turingwallet.xyz/v1/tbc/main/ft/lp/unspent/by/script/hash${ftlpCodeHash}`;
+    let url = "";
+    if (this.network == "testnet") {
+      url = url_testnet;
+    } else if (this.network == "mainnet") {
+      url = url_mainnet;
+    } else {
+      url =
+        (this.network.endsWith("/") ? this.network : this.network + "/") +
+        "ft/lp/unspent/by/script/hash" +
+        ftlpCodeHash;
+    }
+    const ftutxo_codeScript = ftlpCodeScript.toBuffer().toString("hex");
+    try {
+      const response = await (await fetch(url)).json();
+      let ftutxo: tbc.Transaction.IUnspentOutput[] = [];
+      if (response.ftUtxoList.length === 0) {
+        throw new Error("No FT UTXO available");
+      }
+      for (let i = 0; i < response.ftUtxoList.length && i < 5; i++) {
+        ftutxo.push({
+          txId: response.ftUtxoList[i].utxoId,
+          outputIndex: response.ftUtxoList[i].utxoVout,
+          script: ftutxo_codeScript,
+          satoshis: response.ftUtxoList[i].utxoBalance,
+          ftBalance: response.ftUtxoList[i].ftBalance,
+        });
+      }
+      const tapeAmountSetIn: bigint[] = [];
+      const ftPreTX: tbc.Transaction[] = [];
+      const ftPrePreTxData: string[] = [];
+      let tapeAmountSum = BigInt(0);
+      for (let i = 0; i < ftutxo.length; i++) {
+        tapeAmountSetIn.push(ftutxo[i].ftBalance!);
+        tapeAmountSum += BigInt(ftutxo[i].ftBalance!);
+        ftPreTX.push(await API.fetchTXraw(ftutxo[i].txId, this.network));
+        ftPrePreTxData.push(
+          await API.fetchFtPrePreTxData(
+            ftPreTX[i],
+            ftutxo[i].outputIndex,
+            this.network
+          )
+        );
+      }
+      const { amountHex, changeHex } = FT.buildTapeAmount(
+        tapeAmountSum,
+        tapeAmountSetIn
+      );
+      if (
+        changeHex !=
+        "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      ) {
+        throw new Error("Change amount is not zero");
+      }
+      const tx = new tbc.Transaction().from(ftutxo).from(utxo);
+      const codeScript = FT.buildFTtransferCode(ftutxo_codeScript, address);
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: codeScript,
+          satoshis: 500,
+        })
+      );
+
+      const amountwriter = new tbc.encoding.BufferWriter();
+      for (let i = 0; i < 6; i++) {
+        amountwriter.writeUInt64LEBN(new tbc.crypto.BN(0));
+      }
+      const ftlpTapeAmount = amountwriter.toBuffer().toString("hex");
+      const lockTimeHex = Buffer.from("00000000", "hex").toString("hex");
+      const fillSize = FTA.tapeScript.length / 2 - 62;
+      const opZeroArray = Array(fillSize).fill("OP_0").join(" ");
+      const ftlpTapeScript = tbc.Script.fromASM(
+        `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`
+      );
+      const tapeScript = FT.buildFTtransferTape(
+        ftlpTapeScript.toHex(),
+        amountHex
+      );
+      // const originalBuffer = originalTapeScript.toBuffer();
+      // const lockTime = Buffer.from('0400000000', 'hex');
+      // const modifiedBuffer = Buffer.concat([
+      //     originalBuffer.slice(0, 51),
+      //     lockTime,
+      //     originalBuffer.slice(51)
+      // ]);
+      // const tapeScript = tbc.Script.fromBuffer(modifiedBuffer);
+
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: tapeScript,
+          satoshis: 0,
+        })
+      );
+      tx.feePerKb(80);
+      tx.change(privateKey.toAddress());
+      for (let i = 0; i < ftutxo.length; i++) {
+        tx.setInputSequence(i, 4294967294);
+        tx.setInputScript(
+          {
+            inputIndex: i,
+          },
+          (tx) => {
+            const unlockingScript = FTA.getFTunlock(
+              privateKey,
+              tx,
+              ftPreTX[i],
+              ftPrePreTxData[i],
+              i,
+              ftutxo[i].outputIndex
+            );
+            return unlockingScript;
+          }
+        );
+      }
+      tx.sign(privateKey);
+      tx.setLockTime(lock_time);
+      tx.seal();
+      const txraw = tx.uncheckedSerialize();
+      return txraw;
+    } catch (error: any) {
+      throw new Error(error.message);
     }
   }
 
@@ -2859,7 +4011,11 @@ class poolNFT2 {
     }
   }
 
-  private getPoolNftTape(): tbc.Script {
+  private getPoolNftTape(
+    lpPlan: 1 | 2,
+    withLock?: boolean,
+    withLockTime?: boolean
+  ): tbc.Script {
     const writer = new tbc.encoding.BufferWriter();
     writer.writeUInt64LEBN(new tbc.crypto.BN(this.ft_lp_amount));
     writer.writeUInt64LEBN(new tbc.crypto.BN(this.ft_a_amount));
@@ -2868,12 +4024,62 @@ class poolNFT2 {
     const serviceFeeRateHex = this.service_fee_rate
       .toString(16)
       .padStart(2, "0");
+    const lpPlanHex = lpPlan.toString(16).padStart(2, "0");
+    const withLockHex = (withLock ? 1 : 0).toString(16).padStart(2, "0");
+    const withLockTimeHex = (withLockTime ? 1 : 0)
+      .toString(16)
+      .padStart(2, "0");
     const poolnftTapeScript = tbc.Script.fromASM(
       `OP_FALSE OP_RETURN ${
         this.ft_lp_partialhash + this.ft_a_partialhash
-      } ${amountData} ${this.ft_a_contractTxid} ${serviceFeeRateHex} 4e54617065`
+      } ${amountData} ${
+        this.ft_a_contractTxid
+      } ${serviceFeeRateHex} ${lpPlanHex} ${withLockHex} ${withLockTimeHex} 4e54617065`
     );
     return poolnftTapeScript;
+  }
+
+  private async updatePoolNftTape(): Promise<tbc.Script> {
+    let poolnftTapeScriptTemp = await this.fetchPoolNftTape();
+    const writer = new tbc.encoding.BufferWriter();
+    writer.writeUInt64LEBN(new tbc.crypto.BN(this.ft_lp_amount));
+    writer.writeUInt64LEBN(new tbc.crypto.BN(this.ft_a_amount));
+    writer.writeUInt64LEBN(new tbc.crypto.BN(this.tbc_amount));
+    const amountData = writer.toBuffer().toString("hex");
+    poolnftTapeScriptTemp.chunks[3].buf = Buffer.from(amountData, "hex");
+    const poolnftTapeScript = tbc.Script.fromASM(poolnftTapeScriptTemp.toASM());
+    return poolnftTapeScript;
+  }
+
+  private async fetchPoolNftTape(): Promise<tbc.Script> {
+    const poolnftTapeScript = (
+      await API.fetchTXraw(this.contractTxid, this.network)
+    ).outputs[1].script;
+    return poolnftTapeScript;
+  }
+
+  async getPoolNftExtraInfo(): Promise<{
+    serviceFeeRate: number;
+    lpPlan: number;
+    withLock: boolean;
+    withLockTime: boolean;
+  }> {
+    const poolnftTapeScript = await this.fetchPoolNftTape();
+    const extraInfo = {
+      serviceFeeRate: poolnftTapeScript.chunks[5]?.buf
+        ? parseInt(poolnftTapeScript.chunks[5].buf.toString("hex"), 16)
+        : null,
+      lpPlan: poolnftTapeScript.chunks[6]?.buf
+        ? parseInt(poolnftTapeScript.chunks[6].buf.toString("hex"), 16)
+        : null,
+      withLock: poolnftTapeScript.chunks[7]?.buf
+        ? parseInt(poolnftTapeScript.chunks[7].buf.toString("hex"), 16) === 1
+        : null,
+      withLockTime: poolnftTapeScript.chunks[8]?.buf
+        ? parseInt(poolnftTapeScript.chunks[8].buf.toString("hex"), 16) === 1
+        : null,
+    };
+    return extraInfo;
   }
 
   getPoolNftCode(
@@ -2982,33 +4188,6 @@ class poolNFT2 {
       script += "OP_CHECKSIGVERIFY";
       lastCode = tbc.Script.fromASM(script.trim());
     }
-    // switch (pubKeyLock.length) {
-    //     case 1:
-    //         lastCode = tbc.Script.fromASM(`${pubKeyLock[0]} OP_EQUALVERIFY OP_CHECKSIGVERIFY`);
-    //         break;
-    //     case 2:
-    //         lastCode = tbc.Script.fromASM(`OP_DUP ${pubKeyLock[0]} OP_EQUAL OP_IF OP_DROP OP_ELSE ${pubKeyLock[1]} OP_EQUALVERIFY OP_ENDIF OP_CHECKSIGVERIFY`);
-    //         break;
-    //     case 3:
-    //         lastCode = tbc.Script.fromASM(`OP_DUP ${pubKeyLock[0]} OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP ${pubKeyLock[1]} OP_EQUAL OP_IF OP_DROP OP_ELSE ${pubKeyLock[2]} OP_EQUALVERIFY OP_ENDIF OP_ENDIF OP_CHECKSIGVERIFY`);
-    //         break;
-    //     case 4:
-    //         lastCode = tbc.Script.fromASM(`OP_DUP ${pubKeyLock[0]} OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP ${pubKeyLock[1]} OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP ${pubKeyLock[2]} OP_EQUAL OP_IF OP_DROP OP_ELSE ${pubKeyLock[3]} OP_EQUALVERIFY OP_ENDIF OP_ENDIF OP_ENDIF OP_CHECKSIGVERIFY`);
-    //         break;
-    //     case 5:
-    //         lastCode = tbc.Script.fromASM(`OP_DUP ${pubKeyLock[0]} OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP ${pubKeyLock[1]} OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP ${pubKeyLock[2]} OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP ${pubKeyLock[3]} OP_EQUAL OP_IF OP_DROP OP_ELSE ${pubKeyLock[4]} OP_EQUALVERIFY OP_ENDIF OP_ENDIF OP_ENDIF OP_ENDIF OP_CHECKSIGVERIFY`);
-    //         break;
-    //     case 6:
-    //         lastCode = tbc.Script.fromASM(`OP_DUP ${pubKeyLock[0]} OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP ${pubKeyLock[1]} OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP ${pubKeyLock[2]} OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP ${pubKeyLock[3]} OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP ${pubKeyLock[4]} OP_EQUAL OP_IF OP_DROP OP_ELSE ${pubKeyLock[5]} OP_EQUALVERIFY OP_ENDIF OP_ENDIF OP_ENDIF OP_ENDIF OP_CHECKSIGVERIFY`);
-    //         break;
-    //     case 7:
-    //         lastCode = tbc.Script.fromASM(`OP_DUP ${pubKeyLock[0]} OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP ${pubKeyLock[1]} OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP ${pubKeyLock[2]} OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP ${pubKeyLock[3]} OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP ${pubKeyLock[4]} OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP ${pubKeyLock[5]} OP_EQUAL OP_IF OP_DROP OP_ELSE ${pubKeyLock[6]} OP_EQUALVERIFY OP_ENDIF OP_ENDIF OP_ENDIF OP_ENDIF OP_CHECKSIGVERIFY`);
-    //         break;
-    //     case 8:
-    //         lastCode = tbc.Script.fromASM(`OP_DUP ${pubKeyLock[0]} OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP ${pubKeyLock[1]} OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP ${pubKeyLock[2]} OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP ${pubKeyLock[3]} OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP ${pubKeyLock[4]} OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP ${pubKeyLock[5]} OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP ${pubKeyLock[6]} OP_EQUAL OP_IF OP_DROP OP_ELSE ${pubKeyLock[7]} OP_EQUALVERIFY OP_ENDIF OP_ENDIF OP_ENDIF OP_ENDIF OP_CHECKSIGVERIFY`);
-    //         break;
-    // }
-    // const lastCode = tbc.Script.fromASM(`OP_RETURN ${tagHex} 32436f6465`);
     const code = tbc.Script.fromString(
       poolNftCodePre.toString() +
         " " +
@@ -3038,6 +4217,46 @@ class poolNFT2 {
     );
     return ftlpcode;
   }
+
+  getFtlpCodeWithLockTime(
+    poolNftCodeHash: string,
+    address: any,
+    tapeSize: number
+  ): tbc.Script {
+    const codeHash = poolNftCodeHash;
+    const publicKeyHash =
+      tbc.Address.fromString(address).hashBuffer.toString("hex");
+    const hash = publicKeyHash + "00";
+    const tapeSizeHex = getSize(tapeSize).toString("hex");
+
+    const ftlpcode = new tbc.Script(
+      `OP_9 OP_PICK OP_TOALTSTACK OP_1 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_1 OP_SPLIT OP_NIP OP_4 OP_SPLIT OP_DROP OP_BIN2NUM OP_2 OP_PUSH_META OP_BIN2NUM OP_LESSTHANOREQUAL OP_1 OP_EQUALVERIFY OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_5 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_4 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_3 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_2 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_1 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_0 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_FROMALTSTACK OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_TOALTSTACK OP_SHA256 OP_FROMALTSTACK OP_CAT OP_CAT OP_HASH256 OP_6 OP_PUSH_META 0x01 0x20 OP_SPLIT OP_4 OP_SPLIT OP_NIP OP_BIN2NUM 0x04 0xffffffff OP_BIN2NUM OP_NUMNOTEQUAL OP_1 OP_EQUALVERIFY OP_EQUALVERIFY OP_DUP OP_HASH160 OP_FROMALTSTACK OP_EQUALVERIFY OP_CHECKSIGVERIFY OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_ELSE OP_TOALTSTACK OP_PARTIAL_HASH OP_DUP 0x20 0x${codeHash} OP_EQUALVERIFY OP_ENDIF OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_7 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_0 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_SHA256 OP_7 OP_PUSH_META OP_EQUAL OP_NIP OP_PUSHDATA1 0x6a 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff OP_DROP OP_RETURN 0x15 0x${hash} 0x05 0x02436f6465`
+    );
+    return ftlpcode;
+  }
+}
+
+interface PoolNFTInfo {
+  ft_lp_amount: bigint;
+  ft_a_amount: bigint;
+  tbc_amount: bigint;
+  ft_lp_partialhash: string;
+  ft_a_partialhash: string;
+  ft_a_contractTxid: string;
+  service_fee_rate: number;
+  service_provider: string;
+  poolnft_code: string;
+  pool_version: number;
+  currentContractTxid: string;
+  currentContractVout: number;
+  currentContractSatoshi: number;
+}
+
+interface poolNFTDifference {
+  ft_lp_difference: bigint;
+  ft_a_difference: bigint;
+  tbc_amount_difference: bigint;
+  tbc_amount_full_difference: bigint;
 }
 
 module.exports = poolNFT2;
