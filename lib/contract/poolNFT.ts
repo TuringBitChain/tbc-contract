@@ -2051,62 +2051,60 @@ class poolNFT {
     return txraw;
   }
 
-  /**
-   * 根据合约交易 ID 获取池 NFT 的相关信息。
-   *
-   * @param {string} contractTxid - 池 NFT 合约的交易 ID。
-   * @returns {Promise<PoolNFTInfo>} 返回一个 Promise，解析为包含池 NFT 信息的对象。
-   *
-   * 该函数执行以下主要步骤：
-   * 1. 根据网络环境（测试网或主网）构建请求 URL。
-   * 2. 发送 HTTP 请求以获取池 NFT 的信息。
-   * 3. 处理响应数据，将其映射到 `PoolNFTInfo` 对象中，包括：
-   *    - FT-LP 余额
-   *    - FT-A 余额
-   *    - TBC 余额
-   *    - FT-LP 部分哈希
-   *    - FT-A 部分哈希
-   *    - FT-A 合约交易 ID
-   *    - 池 NFT 代码脚本
-   *    - 当前合约交易 ID
-   *    - 当前合约输出索引
-   *    - 当前合约余额
-   * 4. 返回包含上述信息的 `PoolNFTInfo` 对象。
-   * 5. 如果请求失败，抛出一个错误。
-   */
-  async fetchPoolNFTInfo(contractTxid: string): Promise<PoolNFTInfo> {
-    const url_testnet = `https://api.tbcdev.org/api/tbc/pool/poolinfo/poolid/${contractTxid}`;
-    const url_mainnet = `https://api.tbcdev.org/api/tbc/pool/poolinfo/poolid/${contractTxid}`;
-    let url = "";
-    if (this.network == "testnet") {
-      url = url_testnet;
-    } else if (this.network == "mainnet") {
-      url = url_mainnet;
-    } else {
-      url =
-        (this.network.endsWith("/") ? this.network : this.network + "/") +
-        `pool/poolinfo/poolid/${contractTxid}`;
+    /**
+     * 根据合约交易 ID 获取池 NFT 的相关信息。
+     *
+     * @param {string} contractTxid - 池 NFT 合约的交易 ID。
+     * @returns {Promise<PoolNFTInfo>} 返回一个 Promise，解析为包含池 NFT 信息的对象。
+     *
+     * 该函数执行以下主要步骤：
+     * 1. 根据网络环境（测试网或主网）构建请求 URL。
+     * 2. 发送 HTTP 请求以获取池 NFT 的信息。
+     * 3. 处理响应数据，将其映射到 `PoolNFTInfo` 对象中，包括：
+     *    - FT-LP 余额
+     *    - FT-A 余额
+     *    - TBC 余额
+     *    - FT-LP 部分哈希
+     *    - FT-A 部分哈希
+     *    - FT-A 合约交易 ID
+     *    - 池 NFT 代码脚本
+     *    - 当前合约交易 ID
+     *    - 当前合约输出索引
+     *    - 当前合约余额
+     * 4. 返回包含上述信息的 `PoolNFTInfo` 对象。
+     * 5. 如果请求失败，抛出一个错误。
+     */
+    async fetchPoolNFTInfo(contractTxid: string): Promise<PoolNFTInfo> {
+        const url_testnet = `https://api.tbcdev.org/api/tbc/pool/poolinfo/poolid/${contractTxid}`;
+        const url_mainnet = `https://api.turingbitchain.io/api/tbc/pool/poolinfo/poolid/${contractTxid}`;
+        let url = "";
+        if (this.network == "testnet") {
+            url = url_testnet;
+        } else if (this.network == "mainnet") {
+            url = url_mainnet;
+        } else {
+            url = (this.network.endsWith('/') ? this.network : (this.network + '/')) + `pool/poolinfo/poolid/${contractTxid}`;
+        }
+        try {
+            const response = await (await fetch(url)).json();
+            let data = response.data;
+            const poolNftInfo: PoolNFTInfo = {
+                ft_lp_amount: data.lp_balance,
+                ft_a_amount: data.token_balance,
+                tbc_amount: data.tbc_balance,
+                ft_lp_partialhash: data.ft_lp_partial_hash,
+                ft_a_partialhash: data.ft_a_partial_hash,
+                ft_a_contractTxid: data.ft_contract_txid,
+                poolnft_code: data.pool_code_script,
+                currentContractTxid: data.txid,
+                currentContractVout: data.vout,
+                currentContractSatoshi: data.value,
+            }
+            return poolNftInfo;
+        } catch (error: any) {
+            throw new Error("Failed to fetch PoolNFTInfo.");
+        }
     }
-    try {
-      const response = await (await fetch(url)).json();
-      let data = response.data;
-      const poolNftInfo: PoolNFTInfo = {
-        ft_lp_amount: data.lp_balance,
-        ft_a_amount: data.token_balance,
-        tbc_amount: data.tbc_balance,
-        ft_lp_partialhash: data.ft_lp_partial_hash,
-        ft_a_partialhash: data.ft_a_partial_hash,
-        ft_a_contractTxid: data.ft_contract_txid,
-        poolnft_code: data.pool_code_script,
-        currentContractTxid: data.txid,
-        currentContractVout: data.vout,
-        currentContractSatoshi: data.value,
-      };
-      return poolNftInfo;
-    } catch (error: any) {
-      throw new Error("Failed to fetch PoolNFTInfo.");
-    }
-  }
 
   /**
    * 根据合约交易 ID 获取池 NFT 的未花费交易输出 (UTXO)。
@@ -2171,7 +2169,7 @@ class poolNFT {
       .reverse()
       .toString("hex");
     const url_testnet = `https://api.tbcdev.org/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
-    const url_mainnet = `https://api.tbcdev.org/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
+    const url_mainnet = `https://api.turingbitchain.io/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
     let url = "";
     if (this.network == "testnet") {
       url = url_testnet;
@@ -2255,7 +2253,7 @@ class poolNFT {
       .reverse()
       .toString("hex");
     const url_testnet = `https://api.tbcdev.org/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpCodeHash}`;
-    const url_mainnet = `https://api.tbcdev.org/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpCodeHash}`;
+    const url_mainnet = `https://api.turingbitchain.io/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpCodeHash}`;
     let url = "";
     if (this.network == "testnet") {
       url = url_testnet;
@@ -2398,7 +2396,7 @@ class poolNFT {
     const hash = poolnft_codehash160 + "01";
     const contractTxid = this.ft_a_contractTxid;
     const url_testnet = `https://api.tbcdev.org/api/tbc/ft/utxo/combinescript/${hash}/contract/${contractTxid}`;
-    const url_mainnet = `https://api.tbcdev.org/api/tbc/ft/utxo/combinescript/${hash}/contract/${contractTxid}`;
+    const url_mainnet = `https://api.turingbitchain.io/api/tbc/ft/utxo/combinescript/${hash}/contract/${contractTxid}`;
     let url = "";
     if (this.network == "testnet") {
       url = url_testnet;
