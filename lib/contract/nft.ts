@@ -66,19 +66,10 @@ class NFT {
       nft_attributes,
       nftDescription,
       nftTransferTimeCount,
-      nftIcon,
     } = nftInfo;
-    let file: string = "";
-    const writer = new tbc.encoding.BufferWriter();
-    if (
-      nftIcon ===
-      collectionId +
-        writer.writeUInt32LE(collectionIndex).toBuffer().toString("hex")
-    ) {
-      file = nftIcon;
-    } else {
-      file = this.contract_id + "00000000";
-    }
+
+    const file = this.contract_id + "00000000";
+
     this.nftData = {
       nftName,
       symbol: nftSymbol,
