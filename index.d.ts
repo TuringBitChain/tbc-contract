@@ -797,6 +797,7 @@ declare module "tbc-contract" {
     context: string
   ): Promise<R[]>;
 
+  export function getFtBalanceFromTape(tape: string): bigint;
   export function getOpCode(number: number): string;
   export function getLpCostAddress(poolCode: string): string;
   export function getLpCostAmount(poolCode: string): number;
