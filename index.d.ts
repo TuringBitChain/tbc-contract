@@ -191,12 +191,12 @@ declare module "tbc-contract" {
   }
 
   export class NFT {
-    collection_id:string;
-    collection_index:number;
-    collection_name:string;
-    transfer_count:number;
-    contract_id:string;
-    nftData:NFTData;
+    collection_id: string;
+    collection_index: number;
+    collection_name: string;
+    transfer_count: number;
+    contract_id: string;
+    nftData: NFTData;
     constructor(contract_id: string);
     initialize(nftInfo: NFTInfo);
     static createCollection(
@@ -237,6 +237,16 @@ declare module "tbc-contract" {
       utxos: Transaction.IUnspentOutput[],
       pre_tx: Transaction,
       pre_pre_tx: Transaction
+    ): string;
+    transferNFTWithTBC(
+      address_from: string,
+      address_to_nft: string,
+      address_to_tbc: string,
+      privateKey: PrivateKey,
+      utxos: Transaction.IUnspentOutput[],
+      pre_tx: Transaction,
+      pre_pre_tx: Transaction,
+      tbc_amount: number
     ): string;
     static buildCodeScript_v0(tx_hash: string, outputIndex: number): Script;
     static getCurrentTxdata_v0(tx: Transaction): string;

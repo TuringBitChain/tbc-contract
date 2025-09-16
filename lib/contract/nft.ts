@@ -407,6 +407,95 @@ class NFT {
     return tx.uncheckedSerialize();
   }
 
+  transferNFTWithTBC(
+    address_from: string,
+    address_to_nft: string,
+    address_to_tbc: string,
+    privateKey: tbc.PrivateKey,
+    utxos: tbc.Transaction.IUnspentOutput[],
+    pre_tx: tbc.Transaction,
+    pre_pre_tx: tbc.Transaction,
+    tbc_amount: number
+  ): string {
+    const code = NFT.buildCodeScript(this.collection_id, this.collection_index);
+    const amount_satoshis = Math.floor(tbc_amount * Math.pow(10, 6));
+    const tx = new tbc.Transaction()
+      .addInputFromPrevTx(pre_tx, 0)
+      .addInputFromPrevTx(pre_tx, 1)
+      .from(utxos)
+      .addOutput(
+        new tbc.Transaction.Output({
+          script: code,
+          satoshis: 200,
+        })
+      )
+      .addOutput(
+        new tbc.Transaction.Output({
+          script: NFT.buildHoldScript(address_to_nft),
+          satoshis: 100,
+        })
+      )
+      .addOutput(
+        new tbc.Transaction.Output({
+          script: NFT.buildTapeScript(this.nftData),
+          satoshis: 0,
+        })
+      )
+      .addOutput(
+        new tbc.Transaction.Output({
+          script: tbc.Script.buildPublicKeyHashOut(address_to_tbc),
+          satoshis: amount_satoshis,
+        })
+      )
+      .change(address_from);
+    tx.setInputScript(
+      {
+        inputIndex: 0,
+        privateKey,
+      },
+      (tx) => {
+        const Sig = tx.getSignature(0);
+        const SigLength = (Sig.length / 2).toString(16);
+        const sig = SigLength + Sig;
+        const publicKeylength = (
+          privateKey.toPublicKey().toBuffer().toString("hex").length / 2
+        ).toString(16);
+        const publickey =
+          publicKeylength + privateKey.toPublicKey().toBuffer().toString("hex");
+        const currenttxdata = getCurrentTxdata(tx);
+        const prepretxdata = getPrePreTxdata(pre_pre_tx);
+        const pretxdata = getPreTxdata(pre_tx);
+        return new tbc.Script(
+          sig + publickey + currenttxdata + prepretxdata + pretxdata
+        );
+      }
+    ).setInputScript(
+      {
+        inputIndex: 1,
+        privateKey,
+      },
+      (tx) => {
+        const Sig = tx.getSignature(1);
+        const SigLength = (Sig.length / 2).toString(16);
+        const sig = SigLength + Sig;
+        const publicKeylength = (
+          privateKey.toPublicKey().toBuffer().toString("hex").length / 2
+        ).toString(16);
+        const publickey =
+          publicKeylength + privateKey.toPublicKey().toBuffer().toString("hex");
+        return new tbc.Script(sig + publickey);
+      }
+    );
+    const txSize = tx.getEstimateSize();
+    if (txSize < 1000) {
+      tx.fee(80);
+    } else {
+      tx.feePerKb(80);
+    }
+    tx.sign(privateKey).seal();
+    return tx.uncheckedSerialize();
+  }
+
   transferNFT_v0(
     address_from: string,
     address_to: string,
