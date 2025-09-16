@@ -5,3 +5,4 @@ lib/**/*.d.ts
 *.txt
 package-lock.json
 obfuscate.js
+.DS_Store
