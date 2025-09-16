@@ -7,3 +7,4 @@ lib/**/*.ts
 *.log
 *.txt
 obfuscate.js
+.DS_Store
