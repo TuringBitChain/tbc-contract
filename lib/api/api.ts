@@ -1497,13 +1497,10 @@ class API {
       version: number;
       versionHex: string;
       merkleroot: string;
-      num_tx: number;
       time: number;
-      mediantime: number;
       nonce: number;
       bits: string;
       difficulty: number;
-      chainwork: string;
       previousblockhash?: string;
       nextblockhash?: string;
     }>
@@ -1511,29 +1508,26 @@ class API {
     let base_url = network
       ? API.getBaseURL(network)
       : API.getBaseURL("mainnet");
-    const url = base_url + `block/headers`;
+    const url = base_url + `recentblocks/start/${0}/end/${1}`;
     try {
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`Failed to fetch block headers: ${response.statusText}`);
       }
       const data = await response.json();
-      return data.map((header: any) => ({
+      return data.data.map((header: any) => ({
         hash: header.hash,
         confirmations: header.confirmations,
         height: header.height,
         version: header.version,
         versionHex: header.versionHex,
         merkleroot: header.merkleroot,
-        num_tx: header.num_tx,
         time: header.time,
-        mediantime: header.mediantime,
         nonce: header.nonce,
         bits: header.bits,
         difficulty: header.difficulty,
-        chainwork: header.chainwork,
-        previousblockhash: header.previousblockhash,
-        nextblockhash: header.nextblockhash,
+        previousblockhash: header.previoushash,
+        nextblockhash: header.nexthash,
       }));
     } catch (error: any) {
       throw new Error(error.message);
