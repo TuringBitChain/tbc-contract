@@ -77,7 +77,9 @@ const main = async ()=>{
     const txraw = nft.transferNFT(address_from, address_to, privateKey, utxos, pre_tx, pre_pre_tx);
     await contract.API.broadcastTXraw(txraw,network);
     //批量转移nft
-    const number = 100;
+    const start = 0;
+    const end = 100;
+    const number = end-start;
     const utxos = await contract.API.getUTXOs(address, 0.01 * number, network);
     const tx = new tbc.Transaction().from(utxos);
     for (let i = 0; i < number; i++) {
@@ -109,7 +111,7 @@ const main = async ()=>{
     for (let i = 0; i < number; i++) {
         addresses.push(address);
     }
-    const nftContractIds = await contract.API.fetchNFTs(collection_id, address, number, network);
+    const nftContractIds = await contract.API.fetchNFTs(collection_id, address, start, end, network);
     const nftInfoPromises = nftContractIds.map((contractId: string, index: number) =>
         contract.API.fetchNFTInfo(contractId, network)
     );
@@ -145,7 +147,7 @@ const main = async ()=>{
         const txraw = nft.transferNFT(address, addresses[i], privateKey, [utxos_created[i]], preTxs[i], prePreTxs[i], true);
         return txraw;
     });
-    await contract.API.broadcastTXsraw(txraws.map(txHex => ({ txHex })), network);
+    await contract.API.broadcastTXsraw(txraws.map(txraw => ({ txraw })), network);
 }
 
 main();
