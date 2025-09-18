@@ -150,13 +150,10 @@ declare module "tbc-contract" {
         version: number;
         versionHex: string;
         merkleroot: string;
-        num_tx: number;
         time: number;
-        mediantime: number;
         nonce: number;
         bits: string;
         difficulty: number;
-        chainwork: string;
         previousblockhash?: string;
         nextblockhash?: string;
       }>
