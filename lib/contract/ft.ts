@@ -63,7 +63,7 @@ class FT {
                 throw new Error('The maximum value for decimal cannot exceed 18');
             }
             // Calculate the maximum allowable amount based on the decimal
-            const maxAmount = Math.floor(18 * Math.pow(10, 18 - decimal));
+            const maxAmount = Math.floor(21 * Math.pow(10, 14 - decimal));
             if (amount > maxAmount) {
                 throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
             }
@@ -212,7 +212,7 @@ class FT {
         if (decimal > 18) {
             throw new Error('The maximum value for decimal cannot exceed 18');
         }
-        const maxAmount = Math.floor(Math.pow(10, 18 - decimal));
+        const maxAmount = Math.floor(21 * Math.pow(10, 14 - decimal));
         if (ft_amount > maxAmount) {
             throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
         }
@@ -294,7 +294,7 @@ class FT {
         if (decimal > 18) {
             throw new Error('The maximum value for decimal cannot exceed 18');
         }
-        const maxAmount = Math.floor(Math.pow(10, 18 - decimal));
+        const maxAmount = Math.floor(21 * Math.pow(10, 14 - decimal));
         if (amount > maxAmount) {
             throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
         }

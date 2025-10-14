@@ -135,7 +135,7 @@ class poolNFT2 {
       )
       .change(privateKey.toAddress());
     const txSize = txSource.getEstimateSize();
-    txSource.fee(txSize < 1000 ? 80 : Math.ceil(txSize / 1000) * 80);
+    txSource.fee(txSize < 1000 ? 80 : Math.ceil(txSize / 1000 * 80));
     txSource.sign(privateKey).seal();
     const txSourceRaw = txSource.uncheckedSerialize(); //Generate txraw
 
@@ -259,7 +259,7 @@ class poolNFT2 {
       )
       .change(privateKey.toAddress());
     const txSize = txSource.getEstimateSize();
-    txSource.fee(txSize < 1000 ? 80 : Math.ceil(txSize / 1000) * 80);
+    txSource.fee(txSize < 1000 ? 80 : Math.ceil(txSize / 1000 * 80));
     txSource.sign(privateKey).seal();
     const txSourceRaw = txSource.uncheckedSerialize(); //Generate txraw
 

@@ -209,7 +209,7 @@ class API {
       }
       const tx = new tbc.Transaction().from(utxo);
       const txSize = tx.getEstimateSize() + 100;
-      const fee = txSize < 1000 ? 80 : Math.ceil(txSize / 1000) * 80;
+      const fee = txSize < 1000 ? 80 : Math.ceil(txSize / 1000 * 80);
       tx.to(address, sumAmount - fee)
         .fee(fee)
         .change(address)
