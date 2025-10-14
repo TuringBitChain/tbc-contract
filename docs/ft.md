@@ -11,7 +11,7 @@ const addressB = "1FhSD1YezTXbdRGWzNbNvUj6qeKQ6gZDMq";
 const ftName = 'test';
 const ftSymbol = 'test';
 const ftDecimal = 6;
-const ftAmount = 100000000;
+const ftAmount = 100000000;//精度6，上限21亿
 const ftContractTxid = "";
 async function main() {
     try {
