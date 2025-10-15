@@ -17,13 +17,46 @@ class piggyBank {
         return code;
     }
 
-    static freezeTBC(privateKey:tbc.PrivateKey, tbcNumber: number, lockTime: number, utxos:tbc.Transaction.IUnspentOutput[]) {
+    static freezeTBC(address: string, tbcNumber: number, lockTime: number, utxos: tbc.Transaction.IUnspentOutput[]) {
+        const tbcAmount = Math.ceil(tbcNumber * Math.pow(10, 6));
+        const tx = new tbc.Transaction();
+        tx.from(utxos);
+        const txSize = tx.getEstimateSize();
+        const fee = txSize < 1000 ? 80 : Math.ceil(txSize / 1000 * 80);
+        tx.addOutput(
+            new tbc.Transaction.Output({
+                script: piggyBank.getPiggyBankCode(address, lockTime),
+                satoshis: tbcAmount,
+            })
+        )
+        tx.fee(fee)
+        .change(address);
+        return tx.uncheckedSerialize();
+    }
+
+    static async unfreezeTBC(address: string, utxos: tbc.Transaction.IUnspentOutput[], network?: "testnet" | "mainnet" | string) {
+        let sumAmount = 0;
+        for(const utxo of utxos) {
+            sumAmount += utxo.satoshis;
+        }
+        const tx = new tbc.Transaction();
+        tx.from(utxos);
+        const txSize = tx.getEstimateSize() + 100;
+        const fee = txSize < 1000 ? 80 : Math.ceil(txSize / 1000 * 80);
+        tx.to(address, sumAmount - fee)
+        .fee(fee)
+        .change(address);
+        tx.setLockTime((await API.fetchBlockHeaders(network ?? "mainnet"))[0].height);
+        return tx.uncheckedSerialize();
+    }
+
+    static _freezeTBC(privateKey: tbc.PrivateKey, tbcNumber: number, lockTime: number, utxos:tbc.Transaction.IUnspentOutput[]) {
         const address = privateKey.toAddress().toString();
         const tbcAmount = Math.ceil(tbcNumber * Math.pow(10, 6));
         const tx = new tbc.Transaction();
         tx.from(utxos);
         const txSize = tx.getEstimateSize();
-        const fee = txSize < 1000 ? 80 : Math.ceil(txSize / 1000) * 80;
+        const fee = txSize < 1000 ? 80 : Math.ceil(txSize / 1000 * 80);
         tx.addOutput(
             new tbc.Transaction.Output({
                 script: piggyBank.getPiggyBankCode(address, lockTime),
@@ -37,7 +70,7 @@ class piggyBank {
         return tx.uncheckedSerialize();
     }
 
-    static async unfreezeTBC(privateKey:tbc.PrivateKey, utxos:tbc.Transaction.IUnspentOutput[], network?: "testnet" | "mainnet" | string) {
+    static async _unfreezeTBC(privateKey: tbc.PrivateKey, utxos: tbc.Transaction.IUnspentOutput[], network?: "testnet" | "mainnet" | string) {
         const address = privateKey.toAddress().toString();
         let sumAmount = 0;
         for(const utxo of utxos) {
@@ -46,7 +79,7 @@ class piggyBank {
         const tx = new tbc.Transaction();
         tx.from(utxos);
         const txSize = tx.getEstimateSize() + 100;
-        const fee = txSize < 1000 ? 80 : Math.ceil(txSize / 1000) * 80;
+        const fee = txSize < 1000 ? 80 : Math.ceil(txSize / 1000 * 80);
         tx.to(address, sumAmount - fee)
         .fee(fee)
         .change(address);
@@ -72,7 +105,7 @@ class piggyBank {
         return tx.uncheckedSerialize();
     }
 
-    static fetchTBCLockTime(utxo:tbc.Transaction.IUnspentOutput) {
+    static fetchTBCLockTime(utxo: tbc.Transaction.IUnspentOutput) {
         if (utxo.script.length != 106) {
             throw new Error("Invalid Piggy Bank script");
         }
