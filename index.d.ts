@@ -188,12 +188,12 @@ declare module "tbc-contract" {
   }
 
   export class NFT {
-    collection_id:string;
-    collection_index:number;
-    collection_name:string;
-    transfer_count:number;
-    contract_id:string;
-    nftData:NFTData;
+    collection_id: string;
+    collection_index: number;
+    collection_name: string;
+    transfer_count: number;
+    contract_id: string;
+    nftData: NFTData;
     constructor(contract_id: string);
     initialize(nftInfo: NFTInfo);
     static createCollection(
@@ -777,6 +777,21 @@ declare module "tbc-contract" {
     static validateMultiSigAddress(address: string): boolean;
     static getMultiSigLockScript(address: string): string;
     static getCombineHash(address: string): string;
+  }
+
+  export class piggyBank {
+    static freezeTBC(
+      address: string,
+      tbcNumber: number,
+      lockTime: number,
+      utxos: tbc.Transaction.IUnspentOutput[]
+    ): string;
+    static unfreezeTBC(
+      address: string,
+      utxos: tbc.Transaction.IUnspentOutput[],
+      network?: "testnet" | "mainnet" | string
+    ): string;
+    static fetchTBCLockTime(utxo: tbc.Transaction.IUnspentOutput): number;
   }
 
   export function buildUTXO(
