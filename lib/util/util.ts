@@ -130,3 +130,13 @@ export function getLpCostAmount(poolCode: string): number {
 export function isLock(length: number): 0 | 1 {
     return length > 6600 ? 1 : 0;
 }
+
+export function fetchTBCLockTime(utxo: tbc.Transaction.IUnspentOutput): number {
+    if (utxo.script.length != 106) {
+        throw new Error("Invalid Piggy Bank script");
+    }
+    const script = tbc.Script.fromString(utxo.script);
+    const lockTimeChunk = script.chunks[script.chunks.length - 8].buf;
+    const lockTime = lockTimeChunk.readUInt32LE();
+    return lockTime;
+}

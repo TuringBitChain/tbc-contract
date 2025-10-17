@@ -158,6 +158,18 @@ declare module "tbc-contract" {
         nextblockhash?: string;
       }>
     >;
+    static fetchFrozenTBCBalance(
+      address: string,
+      network?: "testnet" | "mainnet" | string
+    ): Promise<number>;
+    static fetchUnfrozenUTXOList(
+      address: string,
+      network?: "testnet" | "mainnet" | string
+    ): Promise<Transaction.IUnspentOutput[]>;
+    static async fetchFrozenUTXOList(
+      address: string,
+      network?: "testnet" | "mainnet" | string
+    ): Promise<Transaction.IUnspentOutput[]>;
   }
 
   interface CollectionData {
@@ -784,14 +796,14 @@ declare module "tbc-contract" {
       address: string,
       tbcNumber: number,
       lockTime: number,
-      utxos: tbc.Transaction.IUnspentOutput[]
+      utxos: Transaction.IUnspentOutput[]
     ): string;
     static unfreezeTBC(
       address: string,
-      utxos: tbc.Transaction.IUnspentOutput[],
+      utxos: Transaction.IUnspentOutput[],
       network?: "testnet" | "mainnet" | string
     ): string;
-    static fetchTBCLockTime(utxo: tbc.Transaction.IUnspentOutput): number;
+    static fetchTBCLockTime(utxo: Transaction.IUnspentOutput): number;
   }
 
   export function buildUTXO(
@@ -823,4 +835,5 @@ declare module "tbc-contract" {
   export function getLpCostAddress(poolCode: string): string;
   export function getLpCostAmount(poolCode: string): number;
   export function isLock(length: number): 0 | 1;
+  export function fetchTBCLockTime(utxo: Transaction.IUnspentOutput): number;
 }

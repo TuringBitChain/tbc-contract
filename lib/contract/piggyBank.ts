@@ -2,12 +2,6 @@ import * as tbc from "tbc-lib-js";
 const API = require("../api/api");
 
 class piggyBank {
-    // network: "testnet" | "mainnet" | string;
-
-    // constructor(network?: "testnet" | "mainnet" | string) {
-    //     this.network = network ? network : "mainnet";
-    // }
-
     static getPiggyBankCode(address: string, lockTime: number) {
         const pubkeyHash = tbc.Address.fromString(address).hashBuffer.toString('hex');
         const BufferWriter = new tbc.encoding.BufferWriter();
@@ -80,6 +74,7 @@ class piggyBank {
         tx.from(utxos);
         const txSize = tx.getEstimateSize() + 100;
         const fee = txSize < 1000 ? 80 : Math.ceil(txSize / 1000 * 80);
+        console.log("sumAmount:", sumAmount);
         tx.to(address, sumAmount - fee)
         .fee(fee)
         .change(address);
