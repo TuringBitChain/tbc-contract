@@ -1,6 +1,7 @@
 import * as tbc from "tbc-lib-js";
 import { getPrePreTxdata } from "../util/ftunlock";
 import { findMinFiveSum } from "../util/utxoSelect";
+import { fetchInBatches, fetchTBCLockTime } from "../util/util";
 
 interface NFTInfo {
   collectionId: string;
@@ -51,8 +52,8 @@ interface FTUnspentOutput {
 }
 
 class API {
-  private static mainnetURL: string = 'https://api.turingbitchain.io/api/tbc/';
-  private static testnetURL: string = 'https://api.tbcdev.org/api/tbc/';
+  private static mainnetURL: string = "https://api.turingbitchain.io/api/tbc/";
+  private static testnetURL: string = "https://api.tbcdev.org/api/tbc/";
 
   /**
    * Get the base URL for the specified network.
@@ -209,7 +210,7 @@ class API {
       }
       const tx = new tbc.Transaction().from(utxo);
       const txSize = tx.getEstimateSize() + 100;
-      const fee = txSize < 1000 ? 80 : Math.ceil(txSize / 1000 * 80);
+      const fee = txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80);
       tx.to(address, sumAmount - fee)
         .fee(fee)
         .change(address)
@@ -1512,7 +1513,9 @@ class API {
     try {
       const response = await fetch(url);
       if (!response.ok) {
-        throw new Error(`Failed to fetch block headers: ${response.statusText}`);
+        throw new Error(
+          `Failed to fetch block headers: ${response.statusText}`
+        );
       }
       const data = await response.json();
       return data.data.map((header: any) => ({
@@ -1529,6 +1532,92 @@ class API {
         previousblockhash: header.previoushash,
         nextblockhash: header.nexthash,
       }));
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  }
+
+  static async fetchFrozenTBCBalance(
+    address: string,
+    network?: "testnet" | "mainnet" | string
+  ): Promise<number> {
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
+    const url = base_url + `frozenBalance/address/${address}/piggyBank`;
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch frozen TBC balance: ${response.statusText}`
+        );
+      }
+      const data = (await response.json()).data.balance;
+      return data;
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  }
+
+  static async fetchUnfrozenUTXOList(
+    address: string,
+    network?: "testnet" | "mainnet" | string
+  ): Promise<tbc.Transaction.IUnspentOutput[]> {
+    let list = await this.fetchFrozenUTXOList(address, network);
+    const currentBlock = (await this.fetchBlockHeaders(network))[0].height;
+    const unfrozenList: tbc.Transaction.IUnspentOutput[] = [];
+    for(const utxo of list) {
+      const lockTime = fetchTBCLockTime(utxo);
+      if (lockTime <= currentBlock) {
+        unfrozenList.push(utxo);
+      }
+    }
+    if (unfrozenList.length === 0) {
+      throw new Error("No unfrozen UTXO available");
+    }
+    return unfrozenList;
+  }
+  
+  static async fetchFrozenUTXOList(
+    address: string,
+    network?: "testnet" | "mainnet" | string
+  ): Promise<tbc.Transaction.IUnspentOutput[]> {
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
+    const url = base_url + `frozenUtxo/address/${address}/piggyBank`;
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch frozen UTXO list: ${response.statusText}`
+        );
+      }
+      const data = (await response.json()).data.utxos;
+      let list = data.map((utxo: any) => ({
+          txId: utxo.txid,
+          outputIndex: utxo.index,
+          script: "",
+          satoshis: utxo.value,
+        }));
+      const batchSize = 5;
+      list = await fetchInBatches<
+        tbc.Transaction.IUnspentOutput,
+        tbc.Transaction.IUnspentOutput
+      >(
+        list,
+        batchSize,
+        (batch) =>
+          Promise.all(
+            batch.map(async (utxo) => {
+              const tx = await API.fetchTXraw(utxo.txId, network);
+              utxo.script = tx.outputs[utxo.outputIndex].script.toHex();
+              return utxo;
+            })
+          ),
+        "fetchFrozenUTXOScript"
+      );
+      return list;
     } catch (error: any) {
       throw new Error(error.message);
     }
