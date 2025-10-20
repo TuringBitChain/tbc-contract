@@ -303,12 +303,7 @@ class API {
     const url =
       base_url + `ft/utxo/combinescript/${hash}/contract/${contractTxid}`;
     try {
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error(
           `Failed to fetch from URL: ${url}, status: ${response.status}`
@@ -514,12 +509,7 @@ class API {
       : API.getBaseURL("mainnet");
     const url = base_url + `ft/info/contract/${contractTxid}`;
     try {
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error(
           `Failed to fetch from URL: ${url}, status: ${response.status}`
@@ -777,9 +767,6 @@ class API {
     try {
       const response = await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           txraw: txraw,
         }),
@@ -826,9 +813,6 @@ class API {
     try {
       const response = await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(txrawList),
       });
 
@@ -1074,12 +1058,7 @@ class API {
       : API.getBaseURL("mainnet");
     const url = base_url + `nft/nftinfo/nftid/${contract_id}`;
     try {
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error(
           "Failed to fetch NFTInfo: ".concat(response.statusText)
@@ -1129,12 +1108,7 @@ class API {
       base_url +
       `nft/nftbycollection/collectionid/${collection_id}/start/${start}/end/${end}`;
     try {
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+      const response = await fetch(url);
 
       if (!response.ok) {
         throw new Error(`Failed to fetch NFTs: ${response.statusText}`);
@@ -1347,12 +1321,7 @@ class API {
       const url =
         base_url + `ft/utxo/combinescript/${hash}/contract/${contractTxid}`;
 
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error(
           `Failed to fetch from URL: ${url}, status: ${response.status}`
@@ -1422,12 +1391,7 @@ class API {
       const url =
         base_url + `ft/utxo/combinescript/${hash}/contract/${contractTxid}`;
 
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error(
           `Failed to fetch from URL: ${url}, status: ${response.status}`
@@ -1566,7 +1530,7 @@ class API {
     let list = await this.fetchFrozenUTXOList(address, network);
     const currentBlock = (await this.fetchBlockHeaders(network))[0].height;
     const unfrozenList: tbc.Transaction.IUnspentOutput[] = [];
-    for(const utxo of list) {
+    for (const utxo of list) {
       const lockTime = fetchTBCLockTime(utxo);
       if (lockTime <= currentBlock) {
         unfrozenList.push(utxo);
@@ -1577,7 +1541,7 @@ class API {
     }
     return unfrozenList;
   }
-  
+
   static async fetchFrozenUTXOList(
     address: string,
     network?: "testnet" | "mainnet" | string
@@ -1595,11 +1559,11 @@ class API {
       }
       const data = (await response.json()).data.utxos;
       let list = data.map((utxo: any) => ({
-          txId: utxo.txid,
-          outputIndex: utxo.index,
-          script: "",
-          satoshis: utxo.value,
-        }));
+        txId: utxo.txid,
+        outputIndex: utxo.index,
+        script: "",
+        satoshis: utxo.value,
+      }));
       const batchSize = 5;
       list = await fetchInBatches<
         tbc.Transaction.IUnspentOutput,
