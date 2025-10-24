@@ -147,14 +147,21 @@ async function main() {
                 }
             }
 
+            // 销毁 FT-LP
+            {
+                const utxo = await API.fetchUTXO(privateKeyA, fee, network); 
+                const tx10 = await poolUse.burnFTLP(privateKeyA, utxo); 
+                await API.broadcastTXraw(tx10, network); 
+            }
+
             //合并池子中的 FT，一次合并最多4合一，合并10次大约30s
             {
                 const times = 10;
                 const mergeFee = 0.005 * times;
                 const utxo = await API.fetchUTXO(privateKeyA, mergeFee, network); 
-                const tx10 = await poolUse.mergeFTinPool(privateKeyA, utxo, times);
-                tx10.length > 0
-                  ? await API.broadcastTXsraw(tx10, network)
+                const tx11 = await poolUse.mergeFTinPool(privateKeyA, utxo, times);
+                tx11.length > 0
+                  ? await API.broadcastTXsraw(tx11, network)
                   : console.log("Merge success");
             }
 
