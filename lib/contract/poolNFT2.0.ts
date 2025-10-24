@@ -347,7 +347,7 @@ class poolNFT2 {
    * 初始化池 NFT 的创建过程，并返回未检查的交易原始数据。
    *
    * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
-   * @param {string} address_to - NFT 接收地址。
+   * @param {string} address_to - FT-LP 接收地址。
    * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
    * @param {number} tbc_amount - 初始 TBC 数量。
    * @param {number} ft_a - 初始 FT-A 数量。
@@ -617,7 +617,7 @@ class poolNFT2 {
    * 增加流动性池中的 LP，并返回未检查的交易原始数据。
    *
    * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
-   * @param {string} address_to - LP 接收地址。
+   * @param {string} address_to - FT-LP 接收地址。
    * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
    * @param {number} amount_tbc - 增加的 TBC 数量。
    * @param {number} lock_time - 可选的锁定时间，仅在启用时间锁时使用。
