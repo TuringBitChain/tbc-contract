@@ -620,6 +620,10 @@ declare module "tbc-contract" {
       privateKey_from: PrivateKey,
       utxo: Transaction.IUnspentOutput
     ): Promise<boolean | string>;
+    burnFTLP(
+      privateKey_from: PrivateKey,
+      utxo: Transaction.IUnspentOutput
+    ): Promise<string>;
     mergeFTinPool(
       privateKey_from: PrivateKey,
       utxo: Transaction.IUnspentOutput,
