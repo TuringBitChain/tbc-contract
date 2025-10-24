@@ -22,7 +22,7 @@ async function main() {
         const utxo = await API.fetchUTXO(privateKeyA, tbcAmount + 0.00008, network);//Fetch UTXO for the transcation
         const tx = new tbc.Transaction()//Build transcation
             .from(utxo)
-            .to(addressB,tbcAmount)
+            .to(addressB, Math.floor(tbcAmount * Math.pow(10, 6)))
             .change(addressA)
         const txSize = tx.getEstimateSize();
         tx.fee(txSize < 1000 ? 80 : Math.ceil(txSize / 1000) * 80);
