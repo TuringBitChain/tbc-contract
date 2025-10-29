@@ -2726,7 +2726,7 @@ class poolNFT2 {
    * 初始化带时间锁的池 NFT 的创建过程。
    *
    * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
-   * @param {string} address_to - NFT 接收地址。
+   * @param {string} address_to - FT-LP 接收地址。
    * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
    * @param {number} tbc_amount - TBC 数量。
    * @param {number} ft_a - FT-A 数量。
