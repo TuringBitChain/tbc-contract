@@ -40,6 +40,9 @@ class piggyBank {
         tx.to(address, sumAmount - fee)
         .fee(fee)
         .change(address);
+        for(let i = 0; i < utxos.length; i++) {
+            tx.setInputSequence(i, 4294967294);
+        }
         tx.setLockTime((await API.fetchBlockHeaders(network ?? "mainnet"))[0].height);
         return tx.uncheckedSerialize();
     }
