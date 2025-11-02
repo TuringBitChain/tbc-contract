@@ -645,7 +645,10 @@ class poolNFT2 {
     const lockStatus =
       this.with_lock === true ? 1 : 0 || isLock(this.poolnft_code.length);
     // console.log(`Lock status: ${lockStatus}`);
-    if (lockStatus) amount_tbc -= 5;
+    if (lockStatus) {
+      const lpCostAmount = getLpCostAmount(this.poolnft_code);
+      amount_tbc -= Number((lpCostAmount / Math.pow(10, 6)).toFixed(6));
+    }
     if (amount_tbc <= 0) throw new Error("Invalid TBC amount input");
     const privateKey = privateKey_from;
     const FTA = new FT(this.ft_a_contractTxid);
