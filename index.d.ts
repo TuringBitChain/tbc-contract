@@ -166,7 +166,7 @@ declare module "tbc-contract" {
       address: string,
       network?: "testnet" | "mainnet" | string
     ): Promise<Transaction.IUnspentOutput[]>;
-    static async fetchFrozenUTXOList(
+    static fetchFrozenUTXOList(
       address: string,
       network?: "testnet" | "mainnet" | string
     ): Promise<Transaction.IUnspentOutput[]>;
