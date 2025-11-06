@@ -76,10 +76,10 @@ export function getCurrentTxdata(tx: tbc.Transaction, inputIndex: number): strin
 
     for (let i = 0; i < tx.outputs.length; i++) {
         const lockingscript = tx.outputs[i].script.toBuffer();
-
-        if (lockingscript.length == 1564) {
+        const scriptLengthByte = lockingscript.length;
+        if (scriptLengthByte == 1564) {
             // For scripts longer than 1500 bytes, calculate partial hash
-            const size = getSize(lockingscript.length); // Size in little-endian
+            const size = getSize(scriptLengthByte); // Size in little-endian
             const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, 1536));
             const suffixdata = lockingscript.subarray(1536);
 
@@ -99,15 +99,29 @@ export function getCurrentTxdata(tx: tbc.Transaction, inputIndex: number): strin
             i++;
         } else {
             // For shorter scripts, include the entire locking script
-            const size = getSize(lockingscript.length);
-            const partialhash = '00';
-            const suffixdata = lockingscript;
-
+            const size = getSize(scriptLengthByte);
+            let partialhash: string;
+            let suffixdata: Buffer;
+            
+            if (scriptLengthByte < 64) {
+                partialhash = '00';
+                suffixdata = lockingscript;
+            } else {
+                const n = Math.floor(scriptLengthByte / 64);
+                const partialLength = 64 * n;
+                partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, partialLength));
+                suffixdata = lockingscript.subarray(partialLength);
+            }
             writer.write(Buffer.from(amountlength, 'hex'));
             writer.writeUInt64LEBN(tx.outputs[i].satoshisBN);
             writer.write(getLengthHex(suffixdata.length)); // Entire locking script
             writer.write(suffixdata);
-            writer.write(Buffer.from(partialhash, 'hex')); // No partial hash
+            if (partialhash.length === 2) {
+                writer.write(Buffer.from(partialhash, 'hex')); // No partial hash
+            } else {
+                writer.write(Buffer.from(hashlength, 'hex'));
+                writer.write(Buffer.from(partialhash, 'hex'));
+            }
             writer.write(getLengthHex(size.length));
             writer.write(size);
         }
@@ -214,8 +228,9 @@ export function getPrePreTxdata(tx: tbc.Transaction, vout: number): string {
     writer.write(Buffer.from(outputs1, 'hex'));
 
     const lockingscript = tx.outputs[vout].script.toBuffer();
-    if (lockingscript.length == 1564) {
-        const size = getSize(lockingscript.length); // Size in little-endian
+    const scriptLengthByte = lockingscript.length;
+    if (scriptLengthByte == 1564) {
+        const size = getSize(scriptLengthByte); // Size in little-endian
         const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, 1536));
         const suffixdata = lockingscript.subarray(1536);
 
@@ -228,15 +243,30 @@ export function getPrePreTxdata(tx: tbc.Transaction, vout: number): string {
         writer.write(getLengthHex(size.length));
         writer.write(size);
     } else {
-        const size = getSize(lockingscript.length); // Size in little-endian
-        const partialhash = '00';
-        const suffixdata = lockingscript;
+        const size = getSize(scriptLengthByte);
+        let partialhash: string;
+        let suffixdata: Buffer;
+        
+        if (scriptLengthByte < 64) {
+            partialhash = '00';
+            suffixdata = lockingscript;
+        } else {
+            const n = Math.floor(scriptLengthByte / 64);
+            const partialLength = 64 * n;
+            partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, partialLength));
+            suffixdata = lockingscript.subarray(partialLength);
+        }
 
         writer.write(Buffer.from(amountlength, 'hex'));
         writer.writeUInt64LEBN(tx.outputs[vout].satoshisBN);
         writer.write(getLengthHex(suffixdata.length)); // Entire locking script
         writer.write(suffixdata);
-        writer.write(Buffer.from(partialhash, 'hex')); // No partial hash
+        if (partialhash.length === 2) {
+            writer.write(Buffer.from(partialhash, 'hex')); // No partial hash
+        } else {
+            writer.write(Buffer.from(hashlength, 'hex'));
+            writer.write(Buffer.from(partialhash, 'hex'));
+        }
         writer.write(getLengthHex(size.length));
         writer.write(size);
     }
