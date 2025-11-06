@@ -1,6 +1,6 @@
 {
   "name": "tbc-contract",
-  "version": "1.4.8",
+  "version": "1.4.9",
   "main": "index.js",
   "types": "index.d.ts",
   "scripts": {
