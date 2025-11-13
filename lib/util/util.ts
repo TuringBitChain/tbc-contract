@@ -140,3 +140,21 @@ export function fetchTBCLockTime(utxo: tbc.Transaction.IUnspentOutput): number {
     const lockTime = lockTimeChunk.readUInt32LE();
     return lockTime;
 }
+
+export function safeJSONParse(text: any): any {
+    // 先匹配所有大数字字段
+    const bigIntPattern = /"(\w+)":\s*(\d{16,})/g;
+    const bigIntFields = {};
+    let match;
+
+    while ((match = bigIntPattern.exec(text)) !== null) {
+        bigIntFields[match[1]] = match[2];
+    }
+
+    return JSON.parse(text, (key, value) => {
+        if (bigIntFields[key] && typeof value === 'number' && !Number.isSafeInteger(value)) {
+            return BigInt(bigIntFields[key]);
+        }
+        return value;
+    });
+}

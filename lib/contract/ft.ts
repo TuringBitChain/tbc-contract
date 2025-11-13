@@ -17,7 +17,7 @@ interface FtInfo {
     contractTxid?: string;
     codeScript: string;
     tapeScript: string;
-    totalSupply: number;
+    totalSupply: bigint;
     decimal: number;
     name: string;
     symbol: string;
@@ -30,7 +30,7 @@ class FT {
     name: string;
     symbol: string;
     decimal: number;
-    totalSupply: number;
+    totalSupply: bigint;
     codeScript: string;
     tapeScript: string;
     contractTxid: string
@@ -43,7 +43,7 @@ class FT {
         this.name = '';
         this.symbol = '';
         this.decimal = 0;
-        this.totalSupply = 0;
+        this.totalSupply = 0n;
         this.codeScript = '';
         this.tapeScript = '';
         this.contractTxid = '';
@@ -63,14 +63,14 @@ class FT {
                 throw new Error('The maximum value for decimal cannot exceed 18');
             }
             // Calculate the maximum allowable amount based on the decimal
-            const maxAmount = Math.floor(21 * Math.pow(10, 14 - decimal));
-            if (amount > maxAmount) {
-                throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
-            }
+            // const maxAmount = Math.floor(21 * Math.pow(10, 14 - decimal));
+            // if (amount > maxAmount) {
+            //     throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
+            // }
             this.name = name;
             this.symbol = symbol;
             this.decimal = decimal;
-            this.totalSupply = amount;
+            this.totalSupply = BigInt(amount);
         } else {
             throw new Error('Invalid constructor arguments');
         }
@@ -99,7 +99,7 @@ class FT {
         const name = this.name;
         const symbol = this.symbol;
         const decimal = this.decimal;
-        const totalSupply = BigInt(Math.floor(this.totalSupply * Math.pow(10, decimal)));
+        const totalSupply = BigInt(this.totalSupply * BigInt(Math.pow(10, decimal)));
 
         // Prepare the amount in BN format and write it into a buffer
         const amountbn = new tbc.crypto.BN(totalSupply.toString());
@@ -196,7 +196,7 @@ class FT {
         if (ft_amount < 0) {
             throw new Error('Invalid amount input');
         }
-        const amountbn = BigInt(Math.floor(ft_amount * Math.pow(10, decimal)));
+        const amountbn = BigInt(Math.round(ft_amount * Math.pow(10, decimal)));
 
         // Calculate the total available balance
         let tapeAmountSum = BigInt(0);
@@ -212,10 +212,10 @@ class FT {
         if (decimal > 18) {
             throw new Error('The maximum value for decimal cannot exceed 18');
         }
-        const maxAmount = Math.floor(21 * Math.pow(10, 14 - decimal));
-        if (ft_amount > maxAmount) {
-            throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
-        }
+        // const maxAmount = Math.floor(21 * Math.pow(10, 14 - decimal));
+        // if (ft_amount > maxAmount) {
+        //     throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
+        // }
         // Build the amount and change hex strings for the tape
         const { amountHex, changeHex } = FT.buildTapeAmount(amountbn, tapeAmountSetIn);
         // Construct the transaction
@@ -236,7 +236,7 @@ class FT {
             satoshis: 0
         }));
         if (tbc_amount) {
-            const amount_satoshis = Math.floor(tbc_amount * Math.pow(10, 6));
+            const amount_satoshis = Math.round(tbc_amount * Math.pow(10, 6));
             tx.to(address_to, amount_satoshis);
         }
         // If there's change, add outputs for the change
@@ -280,7 +280,7 @@ class FT {
         if (amount < 0) {
             throw new Error('Invalid amount input');
         }
-        const amountbn = BigInt(Math.floor(amount * Math.pow(10, decimal)));
+        const amountbn = BigInt(Math.round(amount * Math.pow(10, decimal)));
         let tapeAmountSum = BigInt(0);
         for (let i = 0; i < ftutxo_a.length; i++) {
             tapeAmountSetIn.push(ftutxo_a[i].ftBalance!);
@@ -294,10 +294,10 @@ class FT {
         if (decimal > 18) {
             throw new Error('The maximum value for decimal cannot exceed 18');
         }
-        const maxAmount = Math.floor(21 * Math.pow(10, 14 - decimal));
-        if (amount > maxAmount) {
-            throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
-        }
+        // const maxAmount = Math.floor(21 * Math.pow(10, 14 - decimal));
+        // if (amount > maxAmount) {
+        //     throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
+        // }
         // Build the amount and change hex strings for the tape
         const { amountHex, changeHex } = FT.buildTapeAmount(amountbn, tapeAmountSetIn);
         // Construct the transaction
@@ -390,7 +390,7 @@ class FT {
                 prepreTxData = ["57" + getPrePreTxdata(preTX[0], tx.inputs[0].outputIndex)];
             }
             preTX = [tx];
-            ftutxoBalance -= BigInt(Math.floor(amount * Math.pow(10, this.decimal)));
+            ftutxoBalance -= BigInt(Math.round(amount * Math.pow(10, this.decimal)));
             // ftutxoBalance -= BigInt(new BN(amount).mul(new BN(Math.pow(10, this.decimal))).toString());
             i++;
             console.log("ftutxoBalance", ftutxoBalance);
@@ -409,7 +409,7 @@ class FT {
         if (amount < 0) {
             throw new Error('Invalid amount input');
         }
-        const amountbn = BigInt(Math.floor(amount * Math.pow(10, this.decimal)));
+        const amountbn = BigInt(Math.round(amount * Math.pow(10, this.decimal)));
 
         if (ftutxo) {
             for (let i = 0; i < ftutxo.length; i++) {

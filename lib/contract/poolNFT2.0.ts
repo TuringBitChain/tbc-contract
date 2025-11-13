@@ -14,6 +14,7 @@ import {
   getLpCostAddress,
   getLpCostAmount,
   isLock,
+  safeJSONParse
 } from "../util/util";
 const API = require("../api/api");
 const FT = require("./ft");
@@ -381,12 +382,12 @@ class poolNFT2 {
     FTA.initialize(FTAInfo);
     let amount_lpbn = BigInt(0);
     if (tbc_amount > 0 && ft_a > 0) {
-      amount_lpbn = BigInt(Math.floor(tbc_amount * Math.pow(10, 6)));
-      this.tbc_amount = BigInt(Math.floor(tbc_amount * Math.pow(10, 6)));
+      amount_lpbn = BigInt(Math.round(tbc_amount * Math.pow(10, 6)));
+      this.tbc_amount = BigInt(Math.round(tbc_amount * Math.pow(10, 6)));
       this.ft_lp_amount = this.tbc_amount;
       this.ft_a_number = ft_a;
       this.ft_a_amount = BigInt(
-        Math.floor(this.ft_a_number * Math.pow(10, FTA.decimal))
+        Math.round(this.ft_a_number * Math.pow(10, FTA.decimal))
       );
     } else {
       throw new Error("Invalid amount Input");
@@ -401,12 +402,12 @@ class poolNFT2 {
     );
     const poolnft_codehash160 =
       tbc.crypto.Hash.sha256ripemd160(poolnft_codehash).toString("hex");
-    const maxAmount = Math.floor(Math.pow(10, 18 - FTA.decimal));
-    if (this.ft_a_number > maxAmount) {
-      throw new Error(
-        `When decimal is ${FTA.decimal}, the maximum amount cannot exceed ${maxAmount}`
-      );
-    }
+    // const maxAmount = Math.round(Math.pow(10, 18 - FTA.decimal));
+    // if (this.ft_a_number > maxAmount) {
+    //   throw new Error(
+    //     `When decimal is ${FTA.decimal}, the maximum amount cannot exceed ${maxAmount}`
+    //   );
+    // }
     const ftutxo_codeScript = FT.buildFTtransferCode(
       FTA.codeScript,
       privateKey.toAddress().toString()
@@ -654,7 +655,7 @@ class poolNFT2 {
     const FTA = new FT(this.ft_a_contractTxid);
     const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
     FTA.initialize(FTAInfo);
-    const amount_tbcbn = BigInt(Math.floor(amount_tbc * Math.pow(10, 6)));
+    const amount_tbcbn = BigInt(Math.round(amount_tbc * Math.pow(10, 6)));
     const changeDate = this.updatePoolNFT(amount_tbc, FTA.decimal, 2);
     const poolnft_codehash = tbc.crypto.Hash.sha256(
       Buffer.from(this.poolnft_code, "hex")
@@ -929,7 +930,7 @@ class poolNFT2 {
     const FTA = new FT(this.ft_a_contractTxid);
     const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
     FTA.initialize(FTAInfo);
-    const amount_lpbn = BigInt(Math.floor(amount_lp * Math.pow(10, 6)));
+    const amount_lpbn = BigInt(Math.round(amount_lp * Math.pow(10, 6)));
     if (this.ft_lp_amount < amount_lpbn) {
       throw new Error("Invalid FT-LP amount input");
     }
@@ -1269,7 +1270,7 @@ class poolNFT2 {
       new BN(this.tbc_amount.toString())
     );
     const ft_a_amount = this.ft_a_amount;
-    const amount_tbcbn = BigInt(Math.floor(amount_tbc * Math.pow(10, 6)));
+    const amount_tbcbn = BigInt(Math.round(amount_tbc * Math.pow(10, 6)));
     const serviceFee =
       (amount_tbcbn * BigInt(this.service_fee_rate + 10)) / BigInt(10000);
     const serviceFeeLP =
@@ -1494,7 +1495,7 @@ class poolNFT2 {
         ? (this.lp_plan as 1 | 2)
         : lpPlan || 1;
     const amount_ftbn = BigInt(
-      Math.floor(amount_token * Math.pow(10, FTA.decimal))
+      Math.round(amount_token * Math.pow(10, FTA.decimal))
     );
     if (amount_token <= 0) {
       throw new Error("Invalid FT amount input");
@@ -1719,7 +1720,7 @@ class poolNFT2 {
         ? (this.lp_plan as 1 | 2)
         : lpPlan || 1;
     const amount_ftbn = BigInt(
-      Math.floor(amount_token * Math.pow(10, FTA.decimal))
+      Math.round(amount_token * Math.pow(10, FTA.decimal))
     );
     if (amount_token <= 0) {
       throw new Error("Invalid FT amount input");
@@ -1927,8 +1928,14 @@ class poolNFT2 {
         `pool/poolinfo/poolid/${contractTxid}`;
     }
     try {
-      const response = await (await fetch(url)).json();
-      const data = response.data;
+      // const response = await (await fetch(url)).json();
+
+      const response_new = await fetch(url).then(response => response.text())
+        .then(text => {
+          const result = safeJSONParse(text);
+          return result;
+        });
+      const data = response_new.data;
       const poolNftInfo: PoolNFTInfo = {
         ft_lp_amount: data.lp_balance,
         ft_a_amount: data.token_balance,
@@ -2097,7 +2104,11 @@ class poolNFT2 {
         (this.network.endsWith("/") ? this.network : this.network + "/") +
         `pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
     }
-    const response = await (await fetch(url)).json();
+    const response = await fetch(url).then(response => response.text())
+    .then(text => {
+      const result = safeJSONParse(text);
+      return result;
+    });
     const ftUtxoList = response.data.utxos;
     const ftUtxoArray: tbc.Transaction.IUnspentOutput[] = ftUtxoList.map(data => ({
       txId: data.txid,
@@ -2763,12 +2774,12 @@ class poolNFT2 {
     FTA.initialize(FTAInfo);
     let amount_lpbn = BigInt(0);
     if (tbc_amount > 0 && ft_a > 0) {
-      amount_lpbn = BigInt(Math.floor(tbc_amount * Math.pow(10, 6)));
-      this.tbc_amount = BigInt(Math.floor(tbc_amount * Math.pow(10, 6)));
+      amount_lpbn = BigInt(Math.round(tbc_amount * Math.pow(10, 6)));
+      this.tbc_amount = BigInt(Math.round(tbc_amount * Math.pow(10, 6)));
       this.ft_lp_amount = this.tbc_amount;
       this.ft_a_number = ft_a;
       this.ft_a_amount = BigInt(
-        Math.floor(this.ft_a_number * Math.pow(10, FTA.decimal))
+        Math.round(this.ft_a_number * Math.pow(10, FTA.decimal))
       );
     } else {
       throw new Error("Invalid amount Input");
@@ -2783,12 +2794,12 @@ class poolNFT2 {
     );
     const poolnft_codehash160 =
       tbc.crypto.Hash.sha256ripemd160(poolnft_codehash).toString("hex");
-    const maxAmount = Math.floor(Math.pow(10, 18 - FTA.decimal));
-    if (this.ft_a_number > maxAmount) {
-      throw new Error(
-        `When decimal is ${FTA.decimal}, the maximum amount cannot exceed ${maxAmount}`
-      );
-    }
+    // const maxAmount = Math.round(Math.pow(10, 18 - FTA.decimal));
+    // if (this.ft_a_number > maxAmount) {
+    //   throw new Error(
+    //     `When decimal is ${FTA.decimal}, the maximum amount cannot exceed ${maxAmount}`
+    //   );
+    // }
     const ftutxo_codeScript = FT.buildFTtransferCode(
       FTA.codeScript,
       privateKey.toAddress().toString()
@@ -3006,7 +3017,7 @@ class poolNFT2 {
     const FTA = new FT(this.ft_a_contractTxid);
     const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
     FTA.initialize(FTAInfo);
-    const amount_tbcbn = BigInt(Math.floor(amount_tbc * Math.pow(10, 6)));
+    const amount_tbcbn = BigInt(Math.round(amount_tbc * Math.pow(10, 6)));
     const changeDate = this.updatePoolNFT(amount_tbc, FTA.decimal, 2);
     const poolnft_codehash = tbc.crypto.Hash.sha256(
       Buffer.from(this.poolnft_code, "hex")
@@ -3241,7 +3252,7 @@ class poolNFT2 {
     const FTA = new FT(this.ft_a_contractTxid);
     const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
     FTA.initialize(FTAInfo);
-    const amount_lpbn = BigInt(Math.floor(amount_lp * Math.pow(10, 6)));
+    const amount_lpbn = BigInt(Math.round(amount_lp * Math.pow(10, 6)));
     if (this.ft_lp_amount < amount_lpbn) {
       throw new Error("Invalid FT-LP amount input");
     }
@@ -3965,14 +3976,14 @@ class poolNFT2 {
     const tbc_amount_old = this.tbc_amount;
     const tbc_amount_full_old = this.tbc_amount_full;
     if (option == 1) {
-      const ftLpIncrement = BigInt(Math.floor(increment * Math.pow(10, 6)));
+      const ftLpIncrement = BigInt(Math.round(increment * Math.pow(10, 6)));
       this.updateWhenFtLpChange(ftLpIncrement);
     } else if (option == 2) {
-      const tbcIncrement = BigInt(Math.floor(increment * Math.pow(10, 6)));
+      const tbcIncrement = BigInt(Math.round(increment * Math.pow(10, 6)));
       this.updateWhenTbcAmountChange(tbcIncrement);
     } else {
       const ftAIncrement = BigInt(
-        Math.floor(increment * Math.pow(10, ft_a_decimal))
+        Math.round(increment * Math.pow(10, ft_a_decimal))
       );
       this.updateWhenFtAChange(ftAIncrement);
     }

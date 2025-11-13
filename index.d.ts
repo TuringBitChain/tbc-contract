@@ -273,7 +273,7 @@ declare module "tbc-contract" {
     contractTxid?: string;
     codeScript: string;
     tapeScript: string;
-    totalSupply: number;
+    totalSupply: bigint;
     decimal: number;
     name: string;
     symbol: string;
@@ -283,7 +283,7 @@ declare module "tbc-contract" {
     name: string;
     symbol: string;
     decimal: number;
-    totalSupply: number;
+    totalSupply: bigint;
     codeScript: string;
     tapeScript: string;
     contractTxid: string;
@@ -840,4 +840,5 @@ declare module "tbc-contract" {
   export function getLpCostAmount(poolCode: string): number;
   export function isLock(length: number): 0 | 1;
   export function fetchTBCLockTime(utxo: Transaction.IUnspentOutput): number;
+  export function safeJSONParse(text: any): any;
 }
