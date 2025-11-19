@@ -142,30 +142,17 @@ export function fetchTBCLockTime(utxo: tbc.Transaction.IUnspentOutput): number {
 }
 
 export function safeJSONParse(text: string): any {
-    // 匹配所有大数字字段（15位以上的数字）
-    const bigIntPattern = /"([^"]+)":\s*(\d{15,})/g;
-    const bigIntFields = new Map<string, string>();
-    
-    let match;
-    while ((match = bigIntPattern.exec(text)) !== null) {
-        const fieldName = match[1];
-        const fieldValue = match[2];
-        bigIntFields.set(`${fieldName}_${match.index}`, fieldValue);
-    }
-
-    return JSON.parse(text, (key, value) => {
-        // 检查是否是可能被截断的大数字
-        if (typeof value === 'number') {
-            for (const [mapKey, originalValue] of bigIntFields.entries()) {
-                if (mapKey.startsWith(`${key}_`)) {
-                    bigIntFields.delete(mapKey);
-                    // 如果数字不安全或值很大，转换为 BigInt
-                    if (!Number.isSafeInteger(value) || originalValue.length >= 15) {
-                        return BigInt(originalValue);
-                    }
-                    break;
-                }
-            }
+    // 直接替换大数字字段
+    const replacedText = text.replace(
+        /"(ft_value|tbc_value|lp_balance|token_balance|tbc_balance)":\s*(\d{14,})/g,
+        '"$1":"$2"'
+    );
+    return JSON.parse(replacedText, (key, value) => {
+        // 将特定字段的字符串转换为 BigInt
+        if ((key === 'ft_value' || key === 'tbc_value' || key === 'lp_balance' || 
+             key === 'token_balance' || key === 'tbc_balance') && 
+            typeof value === 'string' && /^\d+$/.test(value)) {
+            return BigInt(value);
         }
         return value;
     });

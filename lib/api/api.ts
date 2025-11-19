@@ -312,6 +312,7 @@ class API {
         const result = safeJSONParse(text);
         return result;
       });
+      // console.log(responseData.data.utxos)
       // if (!responseData.ok) {
       //   throw new Error(
       //     `Failed to fetch from URL: ${url}, status: ${responseData.status}`
