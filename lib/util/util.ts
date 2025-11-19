@@ -142,18 +142,36 @@ export function fetchTBCLockTime(utxo: tbc.Transaction.IUnspentOutput): number {
 }
 
 export function safeJSONParse(text: any): any {
-    // 先匹配所有大数字字段
-    const bigIntPattern = /"(\w+)":\s*(\d{16,})/g;
-    const bigIntFields = {};
-    let match;
+    // 先匹配所有大数字字段及其值
+    const bigIntMap = new Map<string, Map<string, string>>();
 
-    while ((match = bigIntPattern.exec(text)) !== null) {
-        bigIntFields[match[1]] = match[2];
-    }
+    // 按对象分组收集大数字字段
+    const objects = text.split(/}[\s,]*{/);
+    objects.forEach((obj: string, index: number) => {
+        const fieldMap = new Map<string, string>();
+        const localPattern = /"(\w+)":\s*(\d{16,})/g;
+        let localMatch;
+        while ((localMatch = localPattern.exec(obj)) !== null) {
+            fieldMap.set(localMatch[1], localMatch[2]);
+        }
+        if (fieldMap.size > 0) {
+            bigIntMap.set(index.toString(), fieldMap);
+        }
+    });
 
+    let currentObjectIndex = -1;
     return JSON.parse(text, (key, value) => {
-        if (bigIntFields[key] && typeof value === 'number' && !Number.isSafeInteger(value)) {
-            return BigInt(bigIntFields[key]);
+        // 检测到新对象
+        if (key === '' && typeof value === 'object' && value !== null && !Array.isArray(value)) {
+            currentObjectIndex++;
+        }
+        
+        const fieldMap = bigIntMap.get(currentObjectIndex.toString());
+        if (fieldMap && fieldMap.has(key)) {
+            const originalValue = fieldMap.get(key);
+            if (typeof value === 'number' && !Number.isSafeInteger(value)) {
+                return BigInt(originalValue!);
+            }
         }
         return value;
     });
