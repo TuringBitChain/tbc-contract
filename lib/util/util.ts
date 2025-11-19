@@ -141,36 +141,30 @@ export function fetchTBCLockTime(utxo: tbc.Transaction.IUnspentOutput): number {
     return lockTime;
 }
 
-export function safeJSONParse(text: any): any {
-    // 先匹配所有大数字字段及其值
-    const bigIntMap = new Map<string, Map<string, string>>();
+export function safeJSONParse(text: string): any {
+    // 匹配所有大数字字段（15位以上的数字）
+    const bigIntPattern = /"([^"]+)":\s*(\d{15,})/g;
+    const bigIntFields = new Map<string, string>();
+    
+    let match;
+    while ((match = bigIntPattern.exec(text)) !== null) {
+        const fieldName = match[1];
+        const fieldValue = match[2];
+        bigIntFields.set(`${fieldName}_${match.index}`, fieldValue);
+    }
 
-    // 按对象分组收集大数字字段
-    const objects = text.split(/}[\s,]*{/);
-    objects.forEach((obj: string, index: number) => {
-        const fieldMap = new Map<string, string>();
-        const localPattern = /"(\w+)":\s*(\d{16,})/g;
-        let localMatch;
-        while ((localMatch = localPattern.exec(obj)) !== null) {
-            fieldMap.set(localMatch[1], localMatch[2]);
-        }
-        if (fieldMap.size > 0) {
-            bigIntMap.set(index.toString(), fieldMap);
-        }
-    });
-
-    let currentObjectIndex = -1;
     return JSON.parse(text, (key, value) => {
-        // 检测到新对象
-        if (key === '' && typeof value === 'object' && value !== null && !Array.isArray(value)) {
-            currentObjectIndex++;
-        }
-        
-        const fieldMap = bigIntMap.get(currentObjectIndex.toString());
-        if (fieldMap && fieldMap.has(key)) {
-            const originalValue = fieldMap.get(key);
-            if (typeof value === 'number' && !Number.isSafeInteger(value)) {
-                return BigInt(originalValue!);
+        // 检查是否是可能被截断的大数字
+        if (typeof value === 'number') {
+            for (const [mapKey, originalValue] of bigIntFields.entries()) {
+                if (mapKey.startsWith(`${key}_`)) {
+                    bigIntFields.delete(mapKey);
+                    // 如果数字不安全或值很大，转换为 BigInt
+                    if (!Number.isSafeInteger(value) || originalValue.length >= 15) {
+                        return BigInt(originalValue);
+                    }
+                    break;
+                }
             }
         }
         return value;
