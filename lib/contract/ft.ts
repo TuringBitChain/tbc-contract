@@ -671,6 +671,30 @@ class FT {
         return unlockingScript;
     }
 
+    static getFTunlock(sigs: string, pubKey: string, currentTX: tbc.Transaction, preTX: tbc.Transaction, prepreTxData: string, currentUnlockIndex: number, preTxVout: number): tbc.Script {
+        const prepretxdata = prepreTxData;
+        const pretxdata = getPreTxdata(preTX, preTxVout);
+        const currenttxdata = getCurrentTxdata(currentTX, currentUnlockIndex);
+        const signature = sigs;
+        const sig = (signature.length / 2).toString(16).padStart(2, '0') + signature;
+        const publicKey = (pubKey.length / 2).toString(16).padStart(2, '0') + pubKey;
+        const unlockingScript = new tbc.Script(`${currenttxdata}${prepretxdata}${sig}${publicKey}${pretxdata}`);
+        return unlockingScript; 
+    }
+
+    static getFTunlockSwap(sigs: string, pubKey: string, currentTX: tbc.Transaction, preTX: tbc.Transaction, prepreTxData: string, contractTX: tbc.Transaction, currentUnlockIndex: number, preTxVout: number): tbc.Script {
+        const prepretxdata = prepreTxData;
+        const contracttxdata = getContractTxdata(contractTX, currentTX.inputs[0].outputIndex);
+        const pretxdata = getPreTxdata(preTX, preTxVout);
+        const currentinputsdata = getCurrentInputsdata(currentTX);
+        const currenttxdata = getCurrentTxdata(currentTX, currentUnlockIndex);
+        const signature = sigs;
+        const sig = (signature.length / 2).toString(16).padStart(2, '0') + signature;
+        const publicKey = (pubKey.length / 2).toString(16).padStart(2, '0') + pubKey;
+        const unlockingScript = new tbc.Script(`${currenttxdata}${prepretxdata}${sig}${publicKey}${currentinputsdata}${contracttxdata}${pretxdata}`);
+        return unlockingScript;
+    }
+
     /**
      * Builds the code script for minting FT tokens.
      * @param txid - The transaction ID of the UTXO used for minting.
