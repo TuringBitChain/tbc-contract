@@ -351,6 +351,25 @@ declare module "tbc-contract" {
       currentUnlockIndex: number,
       preVout: number
     ): Script;
+    static getFTunlock(
+      sigs: string,
+      pubKey: string,
+      currentTX: Transaction,
+      preTX: Transaction,
+      prepreTxData: string,
+      currentUnlockIndex: number,
+      preTxVout: number
+    ): Script;
+    static getFTunlockSwap(
+      sigs: string,
+      pubKey: string,
+      currentTX: Transaction,
+      preTX: Transaction,
+      prepreTxData: string,
+      contractTX: Transaction,
+      currentUnlockIndex: number,
+      preTxVout: number
+    ): Script;
     getFTmintCode(
       txid: string,
       vout: number,
