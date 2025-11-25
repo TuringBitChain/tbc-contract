@@ -75,7 +75,11 @@ async function main() {
                 let lpAmount = 13;
                 // 准备 utxo
                 const utxo = await API.fetchUTXO(privateKeyA, fee, network);
+                // 若带有锁仓，会自动设置解锁参数为近期的区块高度或三十分钟前，若执行了mergeFTLP应采用自动设置
                 const tx4 = await poolUse.consumeLP(privateKeyA, addressA, utxo, lpAmount);
+                // or 手动设置解锁参数，设置为可解锁的最大高度或时间
+                const lockTime = 907022;
+                const tx4 = await poolUse.consumeLP(privateKeyA, addressA, utxo, lpAmount, lockTime);
                 await API.broadcastTXraw(tx4, network);
             }
 
@@ -139,7 +143,11 @@ async function main() {
             // 合并 FT-LP 的操作，一次合并最多5合一
             {
                 const utxo = await API.fetchUTXO(privateKeyA, fee, network); 
+                // 若带有锁仓，会自动设置解锁参数为近期的区块高度或三十分钟前，若执行了mergeFTLP应采用自动设置
                 const tx9 = await poolUse.mergeFTLP(privateKeyA, utxo); 
+                // or 手动设置解锁参数，设置为可解锁的最大高度或时间
+                const lockTime = 907022;
+                const tx9 = await poolUse.mergeFTLP(privateKeyA, utxo, lockTime); 
                 if (typeof tx9 === 'string') {
                     await API.broadcastTXraw(tx9, network); 
                 } else {

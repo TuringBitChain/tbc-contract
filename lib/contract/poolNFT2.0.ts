@@ -893,6 +893,7 @@ class poolNFT2 {
    * @param {string} address_to - 资产接收地址。
    * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
    * @param {number} amount_lp - 要消耗的 LP 数量。
+   * @param {number} lock_time - 可选的锁定时间，仅在启用时间锁时使用。
    * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
    *
    * 该函数执行以下主要步骤：
@@ -911,12 +912,21 @@ class poolNFT2 {
     privateKey_from: tbc.PrivateKey,
     address_to: string,
     utxo: tbc.Transaction.IUnspentOutput,
-    amount_lp: number
+    amount_lp: number,
+    lock_time?: number
   ): Promise<string> {
     let unlockTX: tbc.Transaction;
     try {
       if (this.with_lock_time) {
-        const unlockTXraw = await this.unlockFTLP(privateKey_from, utxo);
+        if (lock_time) {
+          if (lock_time < 0 || lock_time > 4294967295) {
+            throw new Error("Invalid lock time, must be between 0 and 4294967295");
+          }
+          if (!Number.isInteger(lock_time)) {
+            throw new Error("Lock time must be a positive integer");
+          }
+        }
+        const unlockTXraw = await this.unlockFTLP(privateKey_from, utxo, lock_time);
         const txid = await API.broadcastTXraw(unlockTXraw, this.network);
         if (!txid) throw new Error("Failed to broadcast unlock transaction");
         unlockTX = new tbc.Transaction(unlockTXraw);
@@ -2200,6 +2210,7 @@ class poolNFT2 {
    *
    * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
    * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
+   * @param {number} [lock_time] - 可选的锁定时间参数。
    * @returns {Promise<boolean | string>} 返回一个 Promise，解析为布尔值表示合并是否成功，或返回合并交易的原始数据。
    *
    * 该函数执行以下主要步骤：
@@ -2217,7 +2228,8 @@ class poolNFT2 {
    */
   async mergeFTLP(
     privateKey_from: tbc.PrivateKey,
-    utxo: tbc.Transaction.IUnspentOutput
+    utxo: tbc.Transaction.IUnspentOutput,
+    lock_time?: number
   ): Promise<boolean | string> {
     const FTA = new FT(this.ft_a_contractTxid);
     const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
@@ -2229,6 +2241,7 @@ class poolNFT2 {
       const ftutxo_codeScript = ftUtxoList[0].script;
       // console.log(response.ftUtxoList);
       let ftutxo: tbc.Transaction.IUnspentOutput[] = [];
+      let lockTimeMax = 0;
       if (ftUtxoList.length === 0) {
         throw new Error("No FT UTXO available");
       }
@@ -2236,8 +2249,40 @@ class poolNFT2 {
         console.log("Merge Success!");
         return true;
       } else {
-        for (let i = 0; i < ftUtxoList.length && i < 5; i++) {
-          ftutxo.push(ftUtxoList[i]);
+        if (this.with_lock_time) {
+          const currentBlockHeight = (await API.fetchBlockHeaders(this.network))[0].height - 2; // subtract 2 to ensure safety
+          const currentTime = Math.floor(Date.now() / 1000) - 1800;// subtract 30 minutes to ensure safety
+
+          for (let i = 0; i < ftUtxoList.length && ftutxo.length < 6; i++) {
+            const ftlpTapeScript = (await API.fetchTXraw(ftUtxoList[i].txId, this.network)).outputs[ftUtxoList[i].outputIndex + 1].script;
+            const lockTimeFromTape = new tbc.encoding.BufferReader(ftlpTapeScript.chunks[3].buf).readInt32LE();
+            if (lock_time) {
+              if (lock_time < 500000000 && lockTimeFromTape <= lock_time)
+                ftutxo.push(ftUtxoList[i]);
+              else if (lockTimeFromTape >= 500000000 && lockTimeFromTape <= lock_time) ftutxo.push(ftUtxoList[i]);
+            } else {
+              lockTimeMax = Math.max(lockTimeMax, lockTimeFromTape);
+              if (
+                lockTimeFromTape < 500000000 &&
+                lockTimeFromTape <= currentBlockHeight
+              )
+                ftutxo.push(ftUtxoList[i]);
+              else if (lockTimeFromTape >= 500000000 && lockTimeFromTape <= currentTime) ftutxo.push(ftUtxoList[i]);
+            }
+          }
+
+          if (!lock_time) {
+            lockTimeMax < 500000000
+              ? (lockTimeMax = Math.max(lockTimeMax, currentBlockHeight))
+              : (lockTimeMax = Math.max(lockTimeMax, currentTime));
+          }
+          if (ftutxo.length === 0) {
+            throw new Error("No unlockable FTLP UTXO");
+          }
+        } else {
+          for (let i = 0; i < ftUtxoList.length && i < 5; i++) {
+            ftutxo.push(ftUtxoList[i]);
+          }
         }
       }
       const tapeAmountSetIn: bigint[] = [];
@@ -2322,7 +2367,7 @@ class poolNFT2 {
       tx.sign(privateKey);
       if (this.with_lock_time)
         tx.setLockTime(
-          (await API.fetchBlockHeaders(this.network))[0].height - 2
+          lock_time || lockTimeMax
         );
       await tx.sealAsync();
       const txraw = tx.uncheckedSerialize();
@@ -3537,11 +3582,38 @@ class poolNFT2 {
       const ftUtxoList = await this.fetchFtlpUTXOList(address);
       const ftutxo_codeScript = ftUtxoList[0].script;
       let ftutxo: tbc.Transaction.IUnspentOutput[] = [];
+      let lockTimeMax = 0;
       if (ftUtxoList.length === 0) {
         throw new Error("No FT UTXO available");
       }
-      for (let i = 0; i < ftUtxoList.length && i < 5; i++) {
-        ftutxo.push(ftUtxoList[i]);
+      const currentBlockHeight = (await API.fetchBlockHeaders(this.network))[0].height - 2; // subtract 2 to ensure safety
+      const currentTime = Math.floor(Date.now() / 1000) - 1800;// subtract 30 minutes to ensure safety
+
+      for (let i = 0; i < ftUtxoList.length && ftutxo.length < 6; i++) {
+        const ftlpTapeScript = (await API.fetchTXraw(ftUtxoList[i].txId, this.network)).outputs[ftUtxoList[i].outputIndex + 1].script;
+        const lockTimeFromTape = new tbc.encoding.BufferReader(ftlpTapeScript.chunks[3].buf).readInt32LE();
+        if (lock_time) {
+          if (lock_time < 500000000 && lockTimeFromTape <= lock_time)
+            ftutxo.push(ftUtxoList[i]);
+          else if (lockTimeFromTape >= 500000000 && lockTimeFromTape <= lock_time) ftutxo.push(ftUtxoList[i]);
+        } else {
+          lockTimeMax = Math.max(lockTimeMax, lockTimeFromTape);
+          if (
+            lockTimeFromTape < 500000000 &&
+            lockTimeFromTape <= currentBlockHeight
+          )
+            ftutxo.push(ftUtxoList[i]);
+          else if (lockTimeFromTape >= 500000000 && lockTimeFromTape <= currentTime) ftutxo.push(ftUtxoList[i]);
+        }
+      }
+
+      if (!lock_time) {
+        lockTimeMax < 500000000
+          ? (lockTimeMax = Math.max(lockTimeMax, currentBlockHeight))
+          : (lockTimeMax = Math.max(lockTimeMax, currentTime));
+      }
+      if (ftutxo.length === 0) {
+        throw new Error("No unlockable FTLP UTXO");
       }
       const tapeAmountSetIn: bigint[] = [];
       const ftPreTX: tbc.Transaction[] = [];
@@ -3630,7 +3702,7 @@ class poolNFT2 {
         );
       }
       tx.sign(privateKey);
-      tx.setLockTime(lock_time || (await API.fetchBlockHeaders(this.network))[0].height - 2);
+      tx.setLockTime(lock_time || lockTimeMax);
       tx.seal();
       const txraw = tx.uncheckedSerialize();
       return txraw;
