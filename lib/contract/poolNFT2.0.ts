@@ -2260,6 +2260,7 @@ class poolNFT2 {
               if (lock_time < 500000000 && lockTimeFromTape <= lock_time)
                 ftutxo.push(ftUtxoList[i]);
               else if (lockTimeFromTape >= 500000000 && lockTimeFromTape <= lock_time) ftutxo.push(ftUtxoList[i]);
+              else if (lockTimeFromTape == 0) ftutxo.push(ftUtxoList[i]);
             } else {
               lockTimeMax = Math.max(lockTimeMax, lockTimeFromTape);
               if (
@@ -3596,6 +3597,7 @@ class poolNFT2 {
           if (lock_time < 500000000 && lockTimeFromTape <= lock_time)
             ftutxo.push(ftUtxoList[i]);
           else if (lockTimeFromTape >= 500000000 && lockTimeFromTape <= lock_time) ftutxo.push(ftUtxoList[i]);
+          else if (lockTimeFromTape == 0) ftutxo.push(ftUtxoList[i]);
         } else {
           lockTimeMax = Math.max(lockTimeMax, lockTimeFromTape);
           if (

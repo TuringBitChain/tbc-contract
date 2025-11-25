@@ -364,7 +364,7 @@ export function getCurrentTxOutputsDataforPool1(tx: tbc.Transaction, option: num
                     writer.write(getLengthHex(size.length));
                     writer.write(size);
                     break;
-                //可能的FT-PL或FTAbyC找零
+                //可能的FT-LP或FTAbyC找零
                 case 9:
                     lockingscript = tx.outputs[7].script.toBuffer();
                     if (lockingscript.subarray(1404, 1409).toString('hex') === 'ffffffffff') {
@@ -406,7 +406,7 @@ export function getCurrentTxOutputsDataforPool1(tx: tbc.Transaction, option: num
                         writer.write(Buffer.from('00', 'hex'));
                     }
                     break;
-                //可能的FT-PL或FTAbyC找零 + 普通找零
+                //可能的FT-LP或FTAbyC找零 + 普通找零
                 case 10:
                     lockingscript = tx.outputs[7].script.toBuffer();
                     if (lockingscript.subarray(1404, 1409).toString('hex') === 'ffffffffff') {
@@ -468,7 +468,7 @@ export function getCurrentTxOutputsDataforPool1(tx: tbc.Transaction, option: num
                         writer.write(size);
                     }
                     break;
-                //只有FT-PL、FTAbyC找零
+                //只有FT-LP、FTAbyC找零
                 case 11:
                     for (let i = 7; i < tx.outputs.length; i++) {
                         const lockingscript = tx.outputs[i].script.toBuffer();
@@ -989,10 +989,10 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                     writer.write(getLengthHex(size.length));
                     writer.write(size);
                     break;
-                //可能的FT-PL或FTAbyC找零
+                //可能的FT-LP或FTAbyC找零
                 case 9:
                     lockingscript = tx.outputs[7].script.toBuffer();
-                    if (lockingscript.subarray(1404, 1409).toString('hex') === 'ffffffffff') {
+                    if (lockingscript.subarray(1428, 1433).toString('hex') === 'ffffffffff') {
                         const size = getSize(lockingscript.length); // size小端序
                         const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, 1536));
                         const suffixdata = lockingscript.subarray(1536);
@@ -1031,10 +1031,10 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                         writer.write(Buffer.from('00', 'hex'));
                     }
                     break;
-                //可能的FT-PL或FTAbyC找零 + 普通找零
+                //可能的FT-LP或FTAbyC找零 + 普通找零
                 case 10:
                     lockingscript = tx.outputs[7].script.toBuffer();
-                    if (lockingscript.subarray(1404, 1409).toString('hex') === 'ffffffffff') {
+                    if (lockingscript.subarray(1428, 1433).toString('hex') === 'ffffffffff') {
                         size = getSize(lockingscript.length); // size小端序
                         partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, 1536));
                         suffixdata = lockingscript.subarray(1536);
@@ -1093,7 +1093,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                         writer.write(size);
                     }
                     break;
-                //只有FT-PL、FTAbyC找零
+                //只有FT-LP、FTAbyC找零
                 case 11:
                     for (let i = 7; i < tx.outputs.length; i++) {
                         const lockingscript = tx.outputs[i].script.toBuffer();
