@@ -8,10 +8,10 @@ const amountlength = '08';
 const hashlength = '20';
 
 const ftCodeLength = 1564;
-const buyCodeLength = 832 + 114;
-const sellCodeLength = 768 + 114;
-const buyPartialOffset = 832;
-const sellPartialOffset = 768;
+const buyCodeLength = 906 + 114;
+const sellCodeLength = 778 + 114;
+const buyPartialOffset = 906;
+const sellPartialOffset = 778;
 const ftPartialOffset = 1536;
 
 export function getPreTxdata(tx: tbc.Transaction, vout: number, contractOutputNumber: number): string {
@@ -173,12 +173,18 @@ export function getCurrentTxOutputsData(tx: tbc.Transaction): string {
             i++;
         }
     }
-    for (let i = tx.outputs.length; i < 10; i++) {
-        writer.write(Buffer.from("00", 'hex'));
-        writer.write(Buffer.from("00", 'hex'));
-        writer.write(Buffer.from("00", 'hex'));
+    
+    const paddingCount = tx.outputs.length === 7 ? 10 : tx.outputs.length === 8 ? 6 : 0;
+    for (let i = 0; i < paddingCount; i++) {
         writer.write(Buffer.from("00", 'hex'));
     }
+
+    // for (let i = tx.outputs.length; i < 10; i++) {
+    //     writer.write(Buffer.from("00", 'hex'));
+    //     writer.write(Buffer.from("00", 'hex'));
+    //     writer.write(Buffer.from("00", 'hex'));
+    //     writer.write(Buffer.from("00", 'hex'));
+    // }
     const outputsData = writer.toBuffer().toString('hex');
     return outputsData;
 }
