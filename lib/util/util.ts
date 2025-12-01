@@ -144,13 +144,13 @@ export function fetchTBCLockTime(utxo: tbc.Transaction.IUnspentOutput): number {
 export function safeJSONParse(text: string): any {
     // 直接替换大数字字段
     const replacedText = text.replace(
-        /"(ft_value|tbc_value|lp_balance|token_balance|tbc_balance|balance)":\s*(\d{14,})/g,
+        /"(ft_value|tbc_value|lp_balance|token_balance|tbc_balance|balance|value)":\s*(\d{14,})/g,
         '"$1":"$2"'
     );
     return JSON.parse(replacedText, (key, value) => {
         // 将特定字段的字符串转换为 BigInt
         if ((key === 'ft_value' || key === 'tbc_value' || key === 'lp_balance' || 
-             key === 'token_balance' || key === 'tbc_balance' || key === 'balance') && 
+             key === 'token_balance' || key === 'tbc_balance' || key === 'balance' || key === 'value') && 
             typeof value === 'string' && /^\d+$/.test(value)) {
             return BigInt(value);
         }
