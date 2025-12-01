@@ -655,7 +655,7 @@ class poolNFT2 {
     const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
     FTA.initialize(FTAInfo);
     const amount_tbcbn = BigInt(Math.floor(amount_tbc * Math.pow(10, 6)));
-    const changeDate = this.updatePoolNFT(amount_tbc, FTA.decimal, 2);
+    const changeData = this.updatePoolNFT(amount_tbc, FTA.decimal, 2);
     const poolnft_codehash = tbc.crypto.Hash.sha256(
       Buffer.from(this.poolnft_code, "hex")
     );
@@ -674,7 +674,7 @@ class poolNFT2 {
       fttxo_a = await API.fetchFtUTXO(
         this.ft_a_contractTxid,
         privateKey.toAddress().toString(),
-        changeDate.ft_a_difference,
+        changeData.ft_a_difference,
         ftutxo_codeScript,
         this.network
       );
@@ -698,11 +698,11 @@ class poolNFT2 {
     for (let i = 0; i < tapeAmountSetIn.length; i++) {
       tapeAmountSum += BigInt(tapeAmountSetIn[i]);
     }
-    if (changeDate.ft_a_difference > tapeAmountSum) {
+    if (changeData.ft_a_difference > tapeAmountSum) {
       throw new Error("Insufficient balance, please merge FT UTXOs");
     }
     let { amountHex, changeHex } = FT.buildTapeAmount(
-      changeDate.ft_a_difference,
+      changeData.ft_a_difference,
       tapeAmountSetIn,
       1
     );
@@ -715,7 +715,7 @@ class poolNFT2 {
     tx.addOutput(
       new tbc.Transaction.Output({
         script: tbc.Script.fromHex(this.poolnft_code),
-        satoshis: poolnft.satoshis + Number(changeDate.tbc_amount_difference),
+        satoshis: poolnft.satoshis + Number(changeData.tbc_amount_difference),
       })
     );
     const poolnftTapeScript = await this.updatePoolNftTape();
@@ -754,7 +754,7 @@ class poolNFT2 {
         throw new Error("Invalid lock time, must be between 0 and 4294967295");
       }
       const ftlp_amount = new tbc.crypto.BN(
-        changeDate.ft_lp_difference.toString()
+        changeData.ft_lp_difference.toString()
       );
       const amountwriter = new tbc.encoding.BufferWriter();
       amountwriter.writeUInt64LEBN(ftlp_amount);
@@ -782,7 +782,7 @@ class poolNFT2 {
       const nameHex = Buffer.from(FTA.name, "utf8").toString("hex");
       const symbolHex = Buffer.from(FTA.symbol, "utf8").toString("hex");
       const ftlp_amount = new tbc.crypto.BN(
-        changeDate.ft_lp_difference.toString()
+        changeData.ft_lp_difference.toString()
       );
       const amountwriter = new tbc.encoding.BufferWriter();
       amountwriter.writeUInt64LEBN(ftlp_amount);
@@ -820,7 +820,7 @@ class poolNFT2 {
       // console.log(`Lock address: ${lpCostAddress}` + `, Lock amount: ${lpCostAmount}`);
       tx.to(lpCostAddress, lpCostAmount);
     }
-    if (changeDate.ft_a_difference < tapeAmountSum) {
+    if (changeData.ft_a_difference < tapeAmountSum) {
       // FTAbyA_change
       const ftabya_changeCodeScript = FT.buildFTtransferCode(
         FTA.codeScript,
@@ -933,7 +933,7 @@ class poolNFT2 {
     if (this.ft_lp_amount < amount_lpbn) {
       throw new Error("Invalid FT-LP amount input");
     }
-    const changeDate = this.updatePoolNFT(amount_lp, FTA.decimal, 1);
+    const changeData = this.updatePoolNFT(amount_lp, FTA.decimal, 1);
     const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(
       tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex"))
     ).toString("hex");
@@ -962,7 +962,7 @@ class poolNFT2 {
     try {
       fttxo_lp = await this.fetchFtlpUTXO(
         privateKey.toAddress().toString(),
-        changeDate.ft_lp_difference
+        changeData.ft_lp_difference
       );
     } catch (error: any) {
       throw new Error(error.message);
@@ -988,7 +988,7 @@ class poolNFT2 {
       fttxo_c = await API.fetchFtUTXOsforPool(
         this.ft_a_contractTxid,
         poolnft_codehash160,
-        changeDate.ft_a_difference,
+        changeData.ft_a_difference,
         3,
         ftutxo_codeScript,
         this.network
@@ -1017,14 +1017,14 @@ class poolNFT2 {
 
     // Build the amount and change hex strings for the tape
     let { amountHex, changeHex } = FT.buildTapeAmount(
-      changeDate.ft_a_difference,
+      changeData.ft_a_difference,
       tapeAmountSetIn,
       2
     );
     const ftAbyA = amountHex;
     const ftAbyC = changeHex;
     ({ amountHex, changeHex } = FT.buildTapeAmount(
-      changeDate.ft_lp_difference,
+      changeData.ft_lp_difference,
       lpTapeAmountSetIn,
       1
     ));
@@ -1046,7 +1046,7 @@ class poolNFT2 {
       new tbc.Transaction.Output({
         script: tbc.Script.fromHex(this.poolnft_code),
         satoshis:
-          poolnft.satoshis - Number(changeDate.tbc_amount_full_difference),
+          poolnft.satoshis - Number(changeData.tbc_amount_full_difference),
       })
     );
     const poolnftTapeScript = await this.updatePoolNftTape();
@@ -1074,7 +1074,7 @@ class poolNFT2 {
     //P2PKH
     tx.to(
       privateKey.toAddress().toString(),
-      Number(changeDate.tbc_amount_full_difference)
+      Number(changeData.tbc_amount_full_difference)
     );
     //FTLP_Burn
     let ftlpCodeScript = FT.buildFTtransferCode(
@@ -1122,7 +1122,7 @@ class poolNFT2 {
       })
     );
     // FTLP_change
-    if (fttxo_lp.ftBalance! > changeDate.ft_lp_difference) {
+    if (fttxo_lp.ftBalance! > changeData.ft_lp_difference) {
       const ftlp_changeCodeScript = FT.buildFTtransferCode(
         ftlpCode.toBuffer().toString("hex"),
         address_to
@@ -1145,7 +1145,7 @@ class poolNFT2 {
       );
     }
     // FTAbyC_change
-    if (changeDate.ft_a_difference < tapeAmountSum) {
+    if (changeData.ft_a_difference < tapeAmountSum) {
       const ftabycCodeScript = FT.buildFTtransferCode(
         FTA.codeScript,
         poolnft_codehash160
@@ -3007,7 +3007,7 @@ class poolNFT2 {
     const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
     FTA.initialize(FTAInfo);
     const amount_tbcbn = BigInt(Math.floor(amount_tbc * Math.pow(10, 6)));
-    const changeDate = this.updatePoolNFT(amount_tbc, FTA.decimal, 2);
+    const changeData = this.updatePoolNFT(amount_tbc, FTA.decimal, 2);
     const poolnft_codehash = tbc.crypto.Hash.sha256(
       Buffer.from(this.poolnft_code, "hex")
     );
@@ -3026,7 +3026,7 @@ class poolNFT2 {
       fttxo_a = await API.fetchFtUTXO(
         this.ft_a_contractTxid,
         privateKey.toAddress().toString(),
-        changeDate.ft_a_difference,
+        changeData.ft_a_difference,
         ftutxo_codeScript,
         this.network
       );
@@ -3050,11 +3050,11 @@ class poolNFT2 {
     for (let i = 0; i < tapeAmountSetIn.length; i++) {
       tapeAmountSum += BigInt(tapeAmountSetIn[i]);
     }
-    if (changeDate.ft_a_difference > tapeAmountSum) {
+    if (changeData.ft_a_difference > tapeAmountSum) {
       throw new Error("Insufficient balance, please merge FT UTXOs");
     }
     let { amountHex, changeHex } = FT.buildTapeAmount(
-      changeDate.ft_a_difference,
+      changeData.ft_a_difference,
       tapeAmountSetIn,
       1
     );
@@ -3067,7 +3067,7 @@ class poolNFT2 {
     tx.addOutput(
       new tbc.Transaction.Output({
         script: tbc.Script.fromHex(this.poolnft_code),
-        satoshis: poolnft.satoshis + Number(changeDate.tbc_amount_difference),
+        satoshis: poolnft.satoshis + Number(changeData.tbc_amount_difference),
       })
     );
     const poolnftTapeScript = await this.updatePoolNftTape();
@@ -3097,7 +3097,7 @@ class poolNFT2 {
     );
     // FTLP
     const ftlp_amount = new tbc.crypto.BN(
-      changeDate.ft_lp_difference.toString()
+      changeData.ft_lp_difference.toString()
     );
     const amountwriter = new tbc.encoding.BufferWriter();
     amountwriter.writeUInt64LEBN(ftlp_amount);
@@ -3142,7 +3142,7 @@ class poolNFT2 {
       // console.log(`Lock address: ${lpCostAddress}` + `, Lock amount: ${lpCostAmount}`);
       tx.to(lpCostAddress, lpCostAmount);
     }
-    if (changeDate.ft_a_difference < tapeAmountSum) {
+    if (changeData.ft_a_difference < tapeAmountSum) {
       // FTAbyA_change
       const ftabya_changeCodeScript = FT.buildFTtransferCode(
         FTA.codeScript,
@@ -3245,7 +3245,7 @@ class poolNFT2 {
     if (this.ft_lp_amount < amount_lpbn) {
       throw new Error("Invalid FT-LP amount input");
     }
-    const changeDate = this.updatePoolNFT(amount_lp, FTA.decimal, 1);
+    const changeData = this.updatePoolNFT(amount_lp, FTA.decimal, 1);
     const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(
       tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex"))
     ).toString("hex");
@@ -3264,7 +3264,7 @@ class poolNFT2 {
     try {
       fttxo_lp = await this.fetchFtlpUTXO(
         privateKey.toAddress().toString(),
-        changeDate.ft_lp_difference
+        changeData.ft_lp_difference
       );
       // fttxo_lp = {
       //     txId: "8d946b6459eed3c98fa50c286b5d6d223217cdf8c73e99dc4f8ae9ab51753f69",
@@ -3297,7 +3297,7 @@ class poolNFT2 {
       fttxo_c = await API.fetchFtUTXOsforPool(
         this.ft_a_contractTxid,
         poolnft_codehash160,
-        changeDate.ft_a_difference,
+        changeData.ft_a_difference,
         3,
         ftutxo_codeScript,
         this.network
@@ -3326,14 +3326,14 @@ class poolNFT2 {
 
     // Build the amount and change hex strings for the tape
     let { amountHex, changeHex } = FT.buildTapeAmount(
-      changeDate.ft_a_difference,
+      changeData.ft_a_difference,
       tapeAmountSetIn,
       2
     );
     const ftAbyA = amountHex;
     const ftAbyC = changeHex;
     ({ amountHex, changeHex } = FT.buildTapeAmount(
-      changeDate.ft_lp_difference,
+      changeData.ft_lp_difference,
       lpTapeAmountSetIn,
       1
     ));
@@ -3352,7 +3352,7 @@ class poolNFT2 {
       new tbc.Transaction.Output({
         script: tbc.Script.fromHex(this.poolnft_code),
         satoshis:
-          poolnft.satoshis - Number(changeDate.tbc_amount_full_difference),
+          poolnft.satoshis - Number(changeData.tbc_amount_full_difference),
       })
     );
     const poolnftTapeScript = await this.updatePoolNftTape();
@@ -3380,7 +3380,7 @@ class poolNFT2 {
     //P2PKH
     tx.to(
       privateKey.toAddress().toString(),
-      Number(changeDate.tbc_amount_full_difference)
+      Number(changeData.tbc_amount_full_difference)
     );
     //FTLP_Burn
     const amountwriter = new tbc.encoding.BufferWriter();
@@ -3415,7 +3415,7 @@ class poolNFT2 {
       })
     );
     // FTLP_change
-    if (fttxo_lp.ftBalance! > changeDate.ft_lp_difference) {
+    if (fttxo_lp.ftBalance! > changeData.ft_lp_difference) {
       const ftlp_changeCodeScript = FT.buildFTtransferCode(
         ftlpCode.toBuffer().toString("hex"),
         address_to
@@ -3438,7 +3438,7 @@ class poolNFT2 {
       );
     }
     // FTAbyC_change
-    if (changeDate.ft_a_difference < tapeAmountSum) {
+    if (changeData.ft_a_difference < tapeAmountSum) {
       const ftabycCodeScript = FT.buildFTtransferCode(
         FTA.codeScript,
         poolnft_codehash160
