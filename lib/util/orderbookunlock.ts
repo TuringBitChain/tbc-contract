@@ -8,10 +8,10 @@ const amountlength = '08';
 const hashlength = '20';
 
 const ftCodeLength = 1564;
-const buyCodeLength = 906 + 114;
-const sellCodeLength = 778 + 114;
-const buyPartialOffset = 906;
-const sellPartialOffset = 778;
+const buyCodeLength = 896 + 114;
+const sellCodeLength = 832 + 114;
+const buyPartialOffset = 896;
+const sellPartialOffset = 832;
 const ftPartialOffset = 1536;
 
 export function getPreTxdata(tx: tbc.Transaction, vout: number, contractOutputNumber: number): string {
