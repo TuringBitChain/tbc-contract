@@ -52,7 +52,7 @@ const feeRate = 100n;
         prepreTxData.push(await API.fetchFtPrePreTxData(preTXs[i], ftutxos[i].outputIndex, network));//获取每个ft输入的爷交易
     }
 
-    const buyOrderNoSigs = order.buildBuyOrderTX(holdAddress, saleVolume, unitPrice, feeRate, ftContractTxid, utxos, ftutxos, preTXs, prepreTxData);
+    const buyOrderNoSigs = order.buildBuyOrderTX(holdAddress, saleVolume, unitPrice, feeRate, ftContractTxid, utxos, ftutxos, preTXs);
     const buyOrder = order.fillSigsMakeBuyOrder(buyOrderNoSigs, sigs, publicKey, preTXs, prepreTxData);
     await API.broadcastTXraw(buyOrder, network);
 }
@@ -60,12 +60,13 @@ const feeRate = 100n;
 //撤销买单
 {
     const buyutxo;
+    const buyPreTX: tbc.Transaction = await API.fetchTXraw(buyutxo.txId, network);
     const ftutxo;
     const preTX: tbc.Transaction = await API.fetchTXraw(ftutxo.txId, network);
     const prepreTxData: string = await API.fetchFtPrePreTxData(preTX, ftutxo.outputIndex, network);
     const utxos: tbc.Transaction.IUnspentOutput[] = [];
-    const cancelBuyOrderNoSigs = order.buildCancelBuyOrderTX(buyutxo, ftutxo, preTX, prepreTxData, utxos);
-    const cancelBuyOrder = order.fillSigsCancelBuyOrder(cancelBuyOrderNoSigs, sigs, publicKey, preTX, prepreTxData);
+    const cancelBuyOrderNoSigs = order.buildCancelBuyOrderTX(buyutxo, ftutxo, preTX, utxos);
+    const cancelBuyOrder = order.fillSigsCancelBuyOrder(cancelBuyOrderNoSigs, sigs, publicKey, buyPreTX, preTX, prepreTxData);
     await API.broadcastTXraw(cancelBuyOrder, network);
 }
 
