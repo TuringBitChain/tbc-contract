@@ -789,9 +789,9 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
             //FTAbyC输出
             lockingscript = tx.outputs[2].script.toBuffer()//FTAbyC code部分
             offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
-            size = getSize(lockingscript.length)
-            partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset))
-            suffixdata = lockingscript.subarray(offset)
+            size = getSize(lockingscript.length);
+            partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
+            suffixdata = lockingscript.subarray(offset);
             writer.write(Buffer.from(amountlength, 'hex'));
             writer.writeUInt64LEBN(tx.outputs[2].satoshisBN);
             writer.write(getLengthHex(suffixdata.length));//suffixdata

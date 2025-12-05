@@ -349,7 +349,8 @@ declare module "tbc-contract" {
       prepreTxData: string,
       contractTX: Transaction,
       currentUnlockIndex: number,
-      preVout: number
+      preVout: number,
+      ftVersion?: 1 | 2
     ): Script;
     static getFTunlock(
       sigs: string,
@@ -368,7 +369,8 @@ declare module "tbc-contract" {
       prepreTxData: string,
       contractTX: Transaction,
       currentUnlockIndex: number,
-      preTxVout: number
+      preTxVout: number,
+      ftVersion?: 1 | 2
     ): Script;
     getFTmintCode(
       txid: string,
@@ -645,6 +647,11 @@ declare module "tbc-contract" {
       privateKey_from: PrivateKey,
       utxo: Transaction.IUnspentOutput
     ): Promise<string>;
+    unlockFTLP(
+      privateKey_from: PrivateKey,
+      utxo: Transaction.IUnspentOutput,
+      lock_time?: number
+    ): Promise<string>;
     mergeFTinPool(
       privateKey_from: PrivateKey,
       utxo: Transaction.IUnspentOutput,
@@ -686,6 +693,7 @@ declare module "tbc-contract" {
       txid: string,
       vout: number,
       lpPlan: 1 | 2,
+      ftVersion: 1 | 2,
       tag?: string
     ): Script;
     getPoolNftCodeWithLock(
@@ -695,17 +703,20 @@ declare module "tbc-contract" {
       lpCostAddress: Address | string,
       lpCostTBC: number,
       pubKeyLock: string[],
+      ftVersion: 1 | 2,
       tag?: string
     ): Script;
     getFtlpCode(
       poolNftCodeHash: string,
       address: string,
-      tapeSize: number
+      tapeSize: number,
+      ftVersion?: 1 | 2
     ): Script;
     getFtlpCodeWithLockTime(
       poolNftCodeHash: string,
       address: string,
-      tapeSize: number
+      tapeSize: number,
+      ftVersion?: 1 | 2
     ): Script;
   }
 
@@ -829,6 +840,101 @@ declare module "tbc-contract" {
       network?: "testnet" | "mainnet" | string
     ): string;
     static fetchTBCLockTime(utxo: Transaction.IUnspentOutput): number;
+  }
+
+  export class OrderBook {
+    type: "buy" | "sell";
+    hold_address: string;
+    sale_volume: bigint;
+    fee_rate: bigint;
+    unit_price: bigint;
+    sale_volume_number: number;
+    fee_rate_number: number;
+    unit_price_number: number;
+    ft_a_contract_partialhash: string;
+    ft_a_contract_id: string;
+    contract_version: number;
+
+    buildSellOrderTX(
+      holdAddress: string,
+      saleVolume: bigint,
+      unitPrice: bigint,
+      feeRate: bigint,
+      ftID: string,
+      ftPartialHash: string,
+      utxos: Transaction.IUnspentOutput[]
+    ): string;
+    buildCancelSellOrderTX(
+      sellutxo: Transaction.IUnspentOutput,
+      utxos: Transaction.IUnspentOutput[]
+    ): string;
+    fillSigsSellOrder(
+      sellOrderTxRaw: string,
+      sigs: string[],
+      publicKey: string,
+      type: "make" | "cancel"
+    ): string;
+    buildBuyOrderTX(
+      holdAddress: string,
+      saleVolume: bigint,
+      unitPrice: bigint,
+      feeRate: bigint,
+      ftID: string,
+      utxos: Transaction.IUnspentOutput[],
+      ftutxos: Transaction.IUnspentOutput[],
+      preTXs: Transaction[]
+    ): string;
+    buildCancelBuyOrderTX(
+      buyutxo: Transaction.IUnspentOutput,
+      ftutxo: Transaction.IUnspentOutput,
+      ftPreTX: Transaction,
+      utxos: Transaction.IUnspentOutput[]
+    ): string;
+    fillSigsMakeBuyOrder(
+      buyOrderTxRaw: string,
+      sigs: string[],
+      publicKey: string,
+      preTXs: Transaction[],
+      prepreTxData: string[]
+    ): string;
+    fillSigsCancelBuyOrder(
+      buyOrderTxRaw: string,
+      sigs: string[],
+      publicKey: string,
+      buyPreTX: Transaction,
+      ftPreTX: Transaction,
+      ftPrePreTxData: string
+    ): string;
+    matchOrder(
+      privateKey: PrivateKey,
+      buyutxo: Transaction.IUnspentOutput,
+      buyPreTX: Transaction,
+      ftutxo: Transaction.IUnspentOutput,
+      ftPreTX: Transaction,
+      ftPrePreTxData: string,
+      sellutxo: Transaction.IUnspentOutput,
+      sellPreTX: Transaction,
+      utxos: Transaction.IUnspentOutput[],
+      ftFeeAddress: string,
+      tbcFeeAddress: string
+    ): string;
+    getOrderUnlock(
+      currentTX: Transaction,
+      preTX: Transaction,
+      preTxVout: number
+    ): Script;
+    getSellOrderCode(): Script;
+    getBuyOrderCode(): Script;
+    buildOrderData(): Script;
+    static updateSaleVolume(codeScript: string, newSaleVolume: bigint): Script;
+    static getOrderData(codeScript: string): {
+      holdAddress: string;
+      saleVolume: bigint;
+      ftPartialHash: string;
+      feeRate: bigint;
+      unitPrice: bigint;
+      ftID: string;
+    };
   }
 
   export function buildUTXO(
