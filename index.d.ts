@@ -572,7 +572,8 @@ declare module "tbc-contract" {
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
-      amount_lp: number
+      amount_lp: number,
+      lock_time?: number
     ): Promise<string>;
     consumeLpWithLockTime(
       privateKey_from: PrivateKey,
@@ -618,7 +619,8 @@ declare module "tbc-contract" {
     getLpIncome(address: string, recordData: bigint): Promise<bigint>;
     mergeFTLP(
       privateKey_from: PrivateKey,
-      utxo: Transaction.IUnspentOutput
+      utxo: Transaction.IUnspentOutput,
+      lock_time?: number
     ): Promise<boolean | string>;
     burnFTLP(
       privateKey_from: PrivateKey,
