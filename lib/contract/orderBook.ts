@@ -794,13 +794,13 @@ class OrderBook {
 
     // tx.feePerKb(80);
     // const txSize = tx.getEstimateSize() + 3 * 2000;
-    console.log("tx fee", tx.getFee());
     // tx.fee(txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80));
     tx.sign(privateKey);
     tx.seal();
-    console.log(tx.toObject());
+    console.log("tx fee", tx.getFee());
+    // console.log(tx.toObject());
     // console.log(tx.verifyScript(0));
-    console.log(tx.verify());
+    // console.log(tx.verify());
     const txraw = tx.uncheckedSerialize();
     return txraw;
   }
