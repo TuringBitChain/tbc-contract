@@ -918,6 +918,35 @@ declare module "tbc-contract" {
       ftFeeAddress: string,
       tbcFeeAddress: string
     ): string;
+    async makeSellOrder_privateKeyOnline(
+      privateKey: PrivateKey,
+      saleVolume: bigint,
+      unitPrice: bigint,
+      feeRate: bigint,
+      ftID: string
+    ): Promise<string>;
+    async cancelSellOrder_privateKeyOnline(
+      privateKey: PrivateKey,
+      sellutxo: Transaction.IUnspentOutput,
+    ): Promise<string>;
+    async makeBuyOrder_privateKeyOnline(
+      privateKey: PrivateKey,
+      saleVolume: bigint,
+      unitPrice: bigint,
+      feeRate: bigint,
+      ftID: string
+    ): Promise<string>;
+    async cancelBuyOrder_privateKeyOnline(
+      privateKey: PrivateKey,
+      buyutxo: Transaction.IUnspentOutput,
+    ): Promise<string>;
+    async matchOrderOnline(
+      privateKey: PrivateKey,
+      buyutxo: Transaction.IUnspentOutput,
+      sellutxo: Transaction.IUnspentOutput,
+      ftFeeAddress: string,
+      tbcFeeAddress: string
+    ): Promise<string>;
     getOrderUnlock(
       currentTX: Transaction,
       preTX: Transaction,
