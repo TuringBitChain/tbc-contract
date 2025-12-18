@@ -301,17 +301,17 @@ declare module "tbc-contract" {
     transfer(
       privateKey_from: PrivateKey,
       address_to: string,
-      ft_amount: number,
+      ft_amount: number | string,
       ftutxo_a: Transaction.IUnspentOutput[],
       utxo: Transaction.IUnspentOutput,
       preTX: Transaction[],
       prepreTxData: string[],
-      tbc_amount?: number
+      tbc_amount?: number | string
     ): string;
     transferWithAdditionalInfo(
       privateKey_from: PrivateKey,
       address_to: string,
-      amount: number,
+      amount: number | string,
       ftutxo_a: Transaction.IUnspentOutput[],
       utxo: Transaction.IUnspentOutput,
       preTX: Transaction[],
@@ -320,7 +320,7 @@ declare module "tbc-contract" {
     ): string;
     batchTransfer(
       privateKey_from: PrivateKey,
-      receiveAddressAmount: Map<string, number>,
+      receiveAddressAmount: Map<string, number | string>,
       ftutxo: Transaction.IUnspentOutput[],
       utxo: Transaction.IUnspentOutput,
       preTX: Transaction[],
@@ -843,4 +843,8 @@ declare module "tbc-contract" {
   export function isLock(length: number): 0 | 1;
   export function fetchTBCLockTime(utxo: Transaction.IUnspentOutput): number;
   export function safeJSONParse(text: any): any;
+  export function parseDecimalToBigInt(
+    amount: number | bigint | string,
+    decimal: number
+  ): bigint;
 }
