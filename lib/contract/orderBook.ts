@@ -1533,8 +1533,8 @@ class OrderBook {
     writer.write(Buffer.from(hashLength, "hex"));
     writer.write(Buffer.from(this.ft_a_contract_id, "hex"));
 
-    const sellOrderData = tbc.Script.fromBuffer(writer.toBuffer());
-    return sellOrderData;
+    const orderData = tbc.Script.fromBuffer(writer.toBuffer());
+    return orderData;
   }
 
   static updateSaleVolume(
