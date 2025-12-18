@@ -157,3 +157,11 @@ export function safeJSONParse(text: string): any {
         return value;
     });
 }
+
+export function parseDecimalToBigInt(amount: number | bigint | string, decimal: number): bigint {
+    const amountStr = amount.toString();
+    const [integerPart, fractionalPart = ''] = amountStr.split('.');
+    const paddedFractional = fractionalPart.padEnd(decimal, '0').slice(0, decimal);
+    // console.log(amountStr, integerPart, fractionalPart, paddedFractional);
+    return BigInt(integerPart + paddedFractional);
+}
