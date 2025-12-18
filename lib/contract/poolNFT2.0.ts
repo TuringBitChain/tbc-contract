@@ -648,7 +648,9 @@ class poolNFT2 {
     // console.log(`Lock status: ${lockStatus}`);
     if (lockStatus) {
       const lpCostAmount = getLpCostAmount(this.poolnft_code);
-      amount_tbc -= Number((lpCostAmount / Math.pow(10, 6)).toFixed(6));
+      const lpCostTBC = Number((lpCostAmount / Math.pow(10, 6)).toFixed(6));
+      amount_tbc -= lpCostTBC;
+      if (amount_tbc <= 0) throw new Error(`TBC amount input must be greater than LP cost of ${lpCostTBC}`);
     }
     if (amount_tbc <= 0) throw new Error("Invalid TBC amount input");
     const privateKey = privateKey_from;
@@ -916,6 +918,7 @@ class poolNFT2 {
     amount_lp: number,
     lock_time?: number
   ): Promise<string> {
+    let isNeedUnlock = false;
     let unlockTX: tbc.Transaction;
     try {
       if (this.with_lock_time) {
@@ -928,10 +931,13 @@ class poolNFT2 {
           }
         }
         const unlockTXraw = await this.unlockFTLP(privateKey_from, utxo, lock_time);
-        const txid = await API.broadcastTXraw(unlockTXraw, this.network);
-        if (!txid) throw new Error("Failed to broadcast unlock transaction");
-        unlockTX = new tbc.Transaction(unlockTXraw);
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        if(unlockTXraw != null) {
+          isNeedUnlock = true;
+          const txid = await API.broadcastTXraw(unlockTXraw, this.network)
+          if (!txid) throw new Error("Failed to broadcast unlock transaction");
+          unlockTX = new tbc.Transaction(unlockTXraw);
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        };
       }
     } catch (error) {
       throw error;
@@ -1048,7 +1054,7 @@ class poolNFT2 {
       .from(poolnft)
       .from(fttxo_lp)
       .from(fttxo_c);
-    if (this.with_lock_time)
+    if (this.with_lock_time && isNeedUnlock)
       tx.addInputFromPrevTx(unlockTX, 2);
     else 
       tx.from(utxo);
@@ -2015,18 +2021,40 @@ class poolNFT2 {
   ): Promise<tbc.Transaction.IUnspentOutput> {
     try {
       const ftUtxoList = await this.fetchFtlpUTXOList(address);
-      let ftlp = ftUtxoList[0];
-      for (let i = 0; i < ftUtxoList.length; i++) {
-        if (ftUtxoList[i].ftBalance >= amount) {
-          ftlp = ftUtxoList[i];
+      const checkLockTime = async (
+        utxo: tbc.Transaction.IUnspentOutput
+      ): Promise<boolean> => {
+        if (!this.with_lock_time) return true;
+
+        const ftlpTapeScript = (await API.fetchTXraw(utxo.txId, this.network))
+          .outputs[utxo.outputIndex + 1].script;
+        const lockTimeFromTape = new tbc.encoding.BufferReader(
+          ftlpTapeScript.chunks[3].buf
+        ).readInt32LE();
+        return lockTimeFromTape === 0;
+      };
+
+      let ftlp: tbc.Transaction.IUnspentOutput | null = null;
+
+      for (const utxo of ftUtxoList) {
+        if (utxo.ftBalance >= amount && (await checkLockTime(utxo))) {
+          ftlp = utxo;
           break;
         }
       }
-      let ftlpBalance = BigInt(0);
-      if (ftlp.ftBalance < amount) {
-        for (let i = 0; i < ftUtxoList.length; i++) {
-          ftlpBalance += BigInt(ftUtxoList[i].ftBalance);
-        }
+
+      if (!ftlp) {
+        const validUtxos = await Promise.all(
+          ftUtxoList.map(async (utxo) => ({
+            utxo,
+            isValid: await checkLockTime(utxo),
+          }))
+        );
+
+        const ftlpBalance = validUtxos
+          .filter(({ isValid }) => isValid)
+          .reduce((sum, { utxo }) => sum + BigInt(utxo.ftBalance), BigInt(0));
+
         if (ftlpBalance < amount) {
           throw new Error("Insufficient FT-LP amount");
         } else {
@@ -2268,10 +2296,13 @@ class poolNFT2 {
             const ftlpTapeScript = (await API.fetchTXraw(ftUtxoList[i].txId, this.network)).outputs[ftUtxoList[i].outputIndex + 1].script;
             const lockTimeFromTape = new tbc.encoding.BufferReader(ftlpTapeScript.chunks[3].buf).readInt32LE();
             if (lock_time) {
-              if (lock_time < 500000000 && lockTimeFromTape <= lock_time)
+              if (lockTimeFromTape === 0) {
                 ftutxo.push(ftUtxoList[i]);
-              else if (lockTimeFromTape >= 500000000 && lockTimeFromTape <= lock_time) ftutxo.push(ftUtxoList[i]);
-              else if (lockTimeFromTape == 0) ftutxo.push(ftUtxoList[i]);
+              } else if (lock_time < 500000000 && lockTimeFromTape <= lock_time) {
+                ftutxo.push(ftUtxoList[i]);
+              } else if (lockTimeFromTape >= 500000000 && lockTimeFromTape <= lock_time) {
+                ftutxo.push(ftUtxoList[i]);
+              }
             } else {
               lockTimeMax = Math.max(lockTimeMax, lockTimeFromTape);
               if (
@@ -2285,8 +2316,8 @@ class poolNFT2 {
 
           if (!lock_time) {
             lockTimeMax < 500000000
-              ? (lockTimeMax = Math.max(lockTimeMax, currentBlockHeight))
-              : (lockTimeMax = Math.max(lockTimeMax, currentTime));
+              ? (lockTimeMax = Math.min(lockTimeMax, currentBlockHeight))
+              : (lockTimeMax = Math.min(lockTimeMax, currentTime));
           }
           if (ftutxo.length === 0) {
             throw new Error("No unlockable FTLP UTXO");
@@ -3584,7 +3615,7 @@ class poolNFT2 {
     privateKey_from: tbc.PrivateKey,
     utxo: tbc.Transaction.IUnspentOutput,
     lock_time?: number
-  ): Promise<string> {
+  ): Promise<string> | null {
     const FTA = new FT(this.ft_a_contractTxid);
     const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
     FTA.initialize(FTAInfo);
@@ -3595,6 +3626,7 @@ class poolNFT2 {
       const ftutxo_codeScript = ftUtxoList[0].script;
       let ftutxo: tbc.Transaction.IUnspentOutput[] = [];
       let lockTimeMax = 0;
+      let zeroLockTimeCount = 0;
       if (ftUtxoList.length === 0) {
         throw new Error("No FT UTXO available");
       }
@@ -3605,13 +3637,21 @@ class poolNFT2 {
         const ftlpTapeScript = (await API.fetchTXraw(ftUtxoList[i].txId, this.network)).outputs[ftUtxoList[i].outputIndex + 1].script;
         const lockTimeFromTape = new tbc.encoding.BufferReader(ftlpTapeScript.chunks[3].buf).readInt32LE();
         if (lock_time) {
-          if (lock_time < 500000000 && lockTimeFromTape <= lock_time)
+          if (lockTimeFromTape === 0) {
             ftutxo.push(ftUtxoList[i]);
-          else if (lockTimeFromTape >= 500000000 && lockTimeFromTape <= lock_time) ftutxo.push(ftUtxoList[i]);
-          else if (lockTimeFromTape == 0) ftutxo.push(ftUtxoList[i]);
+            zeroLockTimeCount += 1;
+          } else if (lock_time < 500000000 && lockTimeFromTape <= lock_time) {
+            ftutxo.push(ftUtxoList[i]);
+          } else if (lockTimeFromTape >= 500000000 && lockTimeFromTape <= lock_time) {
+            ftutxo.push(ftUtxoList[i]);
+          }
         } else {
           lockTimeMax = Math.max(lockTimeMax, lockTimeFromTape);
-          if (
+          if (lockTimeFromTape === 0) {
+            ftutxo.push(ftUtxoList[i]);
+            zeroLockTimeCount += 1;
+          }
+          else if (
             lockTimeFromTape < 500000000 &&
             lockTimeFromTape <= currentBlockHeight
           )
@@ -3620,10 +3660,12 @@ class poolNFT2 {
         }
       }
 
+      if (zeroLockTimeCount === ftutxo.length && zeroLockTimeCount === 1) return null;
+
       if (!lock_time) {
         lockTimeMax < 500000000
-          ? (lockTimeMax = Math.max(lockTimeMax, currentBlockHeight))
-          : (lockTimeMax = Math.max(lockTimeMax, currentTime));
+          ? (lockTimeMax = Math.min(lockTimeMax, currentBlockHeight))
+          : (lockTimeMax = Math.min(lockTimeMax, currentTime));
       }
       if (ftutxo.length === 0) {
         throw new Error("No unlockable FTLP UTXO");
