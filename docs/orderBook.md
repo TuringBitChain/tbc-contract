@@ -4,7 +4,7 @@
 ## 方法
 ```ts
 import * as tbc from "tbc-lib-js";
-import { API, FT, OrderBook } from "tbc-contract";
+import { API, FT, orderBook } from "tbc-contract";
 
 const network = "testnet";
 const privateKeyA = tbc.PrivateKey.fromString('');
@@ -13,7 +13,7 @@ const ftContractTxid = "";
 const ftPartialHash = "";
 const fee = 0.01;
 
-const order = new OrderBook();
+const order = new orderBook();
 
 const saleVolume = 10000000n;
 const unitPrice = 10100000n;
