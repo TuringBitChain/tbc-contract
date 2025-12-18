@@ -4,10 +4,7 @@ import {
   getCurrentTxOutputsData,
   getLengthHex,
 } from "../util/orderbookunlock";
-import {
-  buildUTXO,
-  fetchInBatches,
-} from "../util/util";
+import { buildUTXO, fetchInBatches } from "../util/util";
 const API = require("../api/api");
 const FT = require("./ft");
 const partial_sha256 = require("tbc-lib-js/lib/util/partial-sha256");
@@ -47,6 +44,17 @@ class OrderBook {
     ftPartialHash: string,
     utxos: tbc.Transaction.IUnspentOutput[]
   ): string {
+    if (!tbc.Address.isValid(holdAddress))
+      throw new Error("Invalid HoldAddress");
+    if (!_isPositiveBigInt(saleVolume) || !_isPositiveBigInt(unitPrice))
+      throw new Error("SaleVolume and UnitPrice must be positive bigint");
+    if (_isNegativeBigInt(feeRate))
+      throw new Error("FeeRate must be non-negative bigint");
+    if (!_isValidSHA256Hash(ftID) || !_isValidSHA256Hash(ftPartialHash))
+      throw new Error(
+        "FTID and FTPartialHash must be valid SHA256 hash strings"
+      );
+
     this.type = "sell";
     this.hold_address = holdAddress;
     this.sale_volume = saleVolume;
@@ -91,13 +99,20 @@ class OrderBook {
     publicKey: string,
     type: "make" | "cancel"
   ): string {
+    if (!_isValidHexString(sellOrderTxRaw))
+      throw new Error("Invalid SellOrderTxRaw hex string");
+    if (!tbc.PublicKey.isValid(publicKey)) throw new Error("Invalid PublicKey");
+    if (!Array.isArray(sigs) || sigs.some((sig) => !_isValidHexString(sig)))
+      throw new Error("Invalid Signatures array");
+
     const tx = new tbc.Transaction(sellOrderTxRaw);
 
     sigs.forEach((sig, i) => {
-      const scriptASM = (type === "cancel" && i === 0) 
-      ? `${sig} ${publicKey} OP_2`
-      : `${sig} ${publicKey}`;
-      
+      const scriptASM =
+        type === "cancel" && i === 0
+          ? `${sig} ${publicKey} OP_2`
+          : `${sig} ${publicKey}`;
+
       tx.setInputScript({ inputIndex: i }, tbc.Script.fromASM(scriptASM));
     });
     const txraw = tx.uncheckedSerialize();
@@ -114,6 +129,15 @@ class OrderBook {
     ftutxos: tbc.Transaction.IUnspentOutput[],
     preTXs: tbc.Transaction[]
   ): string {
+    if (!tbc.Address.isValid(holdAddress))
+      throw new Error("Invalid HoldAddress");
+    if (!_isPositiveBigInt(saleVolume) || !_isPositiveBigInt(unitPrice))
+      throw new Error("SaleVolume and UnitPrice must be positive bigint");
+    if (_isNegativeBigInt(feeRate))
+      throw new Error("FeeRate must be non-negative bigint");
+    if (!_isValidSHA256Hash(ftID))
+      throw new Error("FTID must be a valid SHA256 hash string");
+
     this.type = "buy";
     this.hold_address = holdAddress;
     this.sale_volume = saleVolume;
@@ -248,6 +272,14 @@ class OrderBook {
     preTXs: tbc.Transaction[],
     prepreTxData: string[]
   ): string {
+    if (!_isValidHexString(buyOrderTxRaw))
+      throw new Error("Invalid BuyOrderTxRaw hex string");
+    if (!tbc.PublicKey.isValid(publicKey)) throw new Error("Invalid PublicKey");
+    if (!Array.isArray(sigs) || sigs.some((sig) => !_isValidHexString(sig)))
+      throw new Error("Invalid Signatures array");
+    if (prepreTxData.some((data) => !_isValidHexString(data)))
+      throw new Error("Invalid PrePreTxData array");
+
     const tx = new tbc.Transaction(buyOrderTxRaw);
 
     for (let i = 0; i < preTXs.length; i++) {
@@ -289,8 +321,16 @@ class OrderBook {
     publicKey: string,
     buyPreTX: tbc.Transaction,
     ftPreTX: tbc.Transaction,
-    ftPrePreTxData: string,
+    ftPrePreTxData: string
   ): string {
+    if (!_isValidHexString(buyOrderTxRaw))
+      throw new Error("Invalid BuyOrderTxRaw hex string");
+    if (!tbc.PublicKey.isValid(publicKey)) throw new Error("Invalid PublicKey");
+    if (!Array.isArray(sigs) || sigs.some((sig) => !_isValidHexString(sig)))
+      throw new Error("Invalid Signatures array");
+    if (!_isValidHexString(ftPrePreTxData))
+      throw new Error("Invalid FtPrePreTxData string");
+
     const tx = new tbc.Transaction(buyOrderTxRaw);
 
     tx.setInputScript(
@@ -607,6 +647,14 @@ class OrderBook {
     ftFeeAddress: string,
     tbcFeeAddress: string
   ): string {
+    if (!_isValidHexString(ftPrePreTxData))
+      throw new Error("Invalid FtPrePreTxData string");
+    if (
+      !tbc.Address.isValid(ftFeeAddress) ||
+      !tbc.Address.isValid(tbcFeeAddress)
+    )
+      throw new Error("Invalid fee address");
+
     const buyData = OrderBook.getOrderData(buyutxo.script);
     const sellData = OrderBook.getOrderData(sellutxo.script);
 
@@ -625,14 +673,26 @@ class OrderBook {
     const tbcBuyerAmount = tbcSellAmount - tbcTaxAmount; //tbcBuyerAmount是买家实际收到的tbc数量
     const newSellOrderTBCAmount = sellOrderTBCAmount - matchedTBCAmount; //卖单剩余tbc数量
 
-    console.log("tbcSellAmount, tbcTaxAmount, tbcBuyerAmount, newSellOrderTBCAmount", tbcSellAmount, tbcTaxAmount, tbcBuyerAmount, newSellOrderTBCAmount);
+    console.log(
+      "tbcSellAmount, tbcTaxAmount, tbcBuyerAmount, newSellOrderTBCAmount",
+      tbcSellAmount,
+      tbcTaxAmount,
+      tbcBuyerAmount,
+      newSellOrderTBCAmount
+    );
 
     const ftPayAmount = (tbcSellAmount * sellData.unitPrice) / this.precision; //ftPayAmount是支付ft总数量
     const ftTaxAmount = (ftPayAmount * sellData.feeRate) / this.precision; //ftTaxAmount是买家扣除的手续费数量
     const ftSellerAmount = ftPayAmount - ftTaxAmount; //ftSellerAmount是卖家实际收到的ft数量
     const newBuyOrderTBCAmount = buyOrderTBCAmount - matchedTBCAmount; //买单剩余tbc数量
 
-    console.log("ftPayAmount, ftTaxAmount, ftSellerAmount, newBuyOrderTBCAmount", ftPayAmount, ftTaxAmount, ftSellerAmount, newBuyOrderTBCAmount);
+    console.log(
+      "ftPayAmount, ftTaxAmount, ftSellerAmount, newBuyOrderTBCAmount",
+      ftPayAmount,
+      ftTaxAmount,
+      ftSellerAmount,
+      newBuyOrderTBCAmount
+    );
 
     //构建交易
     const tx = new tbc.Transaction();
@@ -645,11 +705,8 @@ class OrderBook {
     console.log("FT Balance:", ftutxo.ftBalance!);
 
     const tapeAmountSum = BigInt(tapeAmountSetIn[0]);
-    const { amountHex: ftSellerAmountHex, changeHex: noUseHex } = FT.buildTapeAmount(
-      ftSellerAmount,
-      tapeAmountSetIn,
-      1
-    );
+    const { amountHex: ftSellerAmountHex, changeHex: noUseHex } =
+      FT.buildTapeAmount(ftSellerAmount, tapeAmountSetIn, 1);
     tapeAmountSetIn.pop();
     tapeAmountSetIn.push(ftutxo.ftBalance! - ftSellerAmount);
     let { amountHex: ftTaxAmountHex, changeHex } = FT.buildTapeAmount(
@@ -690,10 +747,21 @@ class OrderBook {
     //**********TBC Buyer输出**********
     tx.to(buyData.holdAddress, Number(tbcBuyerAmount));
     //**********TBC Tax输出**********
-    tx.to(tbcFeeAddress, Number(tbcTaxAmount));
+    if (buyData.feeRate === 0n && tbcTaxAmount === 0n) {
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: OrderBook.placeHolderP2PKHOutput(),
+          satoshis: 0,
+        })
+      );
+    } else if (tbcTaxAmount < 10n) {
+      throw new Error("TBC tax amount is less than dust limit");
+    } else {
+      tx.to(tbcFeeAddress, Number(tbcTaxAmount));
+    }
     //**********交易手续费找零**********
     let inputsFee = 0;
-    for(const utxo of utxos) {
+    for (const utxo of utxos) {
       inputsFee += utxo.satoshis;
     }
     console.log("UTXOs Total Satoshis:", tx.getUnspentValue());
@@ -701,7 +769,10 @@ class OrderBook {
     const txSize = tx.getEstimateSize() + 2 * 1000 + 2000;
     const fee = txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80);
     console.log("tx fee", fee);
-    tx.to(tbc.Script.fromHex(utxos[0].script).toAddress().toString(), inputsFee - fee - 1300);
+    tx.to(
+      tbc.Script.fromHex(utxos[0].script).toAddress().toString(),
+      inputsFee - fee - 1300
+    );
     // tx.change(tbc.Script.fromHex(utxos[0].script).toAddress().toString());
 
     //部分成交
@@ -816,21 +887,34 @@ class OrderBook {
     saleVolume: bigint,
     unitPrice: bigint,
     feeRate: bigint,
-    ftID: string,
+    ftID: string
   ) {
-    const network = "https://testnetlocal.tbcdev.org/api/tbc/";
+    if (!_isPositiveBigInt(saleVolume) || !_isPositiveBigInt(unitPrice))
+      throw new Error("SaleVolume and UnitPrice must be positive bigint");
+    if (_isNegativeBigInt(feeRate))
+      throw new Error("FeeRate must be non-negative bigint");
+    if (!_isValidSHA256Hash(ftID))
+      throw new Error("FTID must be a valid SHA256 hash string");
+
+    const network = "https://api.tbcdev.org/api/tbc/";
     const Token = new FT(ftID);
     const TokenInfo = await API.fetchFtInfo(Token.contractTxid, network);
     let ftPartialHash: string;
     let offset = 0;
     if (TokenInfo.codeScript.length / 2 === ft_v1_length) {
-        offset = ft_v1_partial_offset;
+      offset = ft_v1_partial_offset;
     } else if (TokenInfo.codeScript.length / 2 === ft_v2_length) {
-        offset = ft_v2_partial_offset;
+      offset = ft_v2_partial_offset;
     }
-    if (offset > 0) 
-        ftPartialHash = partial_sha256.calculate_partial_hash(Buffer.from(TokenInfo.codeScript, "hex").subarray(0, offset));
-    const utxos = await API.fetchUTXO(privateKey, Number(saleVolume) / 1e6 + utxoFee, network);
+    if (offset > 0)
+      ftPartialHash = partial_sha256.calculate_partial_hash(
+        Buffer.from(TokenInfo.codeScript, "hex").subarray(0, offset)
+      );
+    const utxos = await API.fetchUTXO(
+      privateKey,
+      Number(saleVolume) / 1e6 + utxoFee,
+      network
+    );
 
     const holdAddress = privateKey.toAddress().toString();
     this.type = "sell";
@@ -860,9 +944,9 @@ class OrderBook {
 
   async cancelSellOrder_privateKeyOnline(
     privateKey: tbc.PrivateKey,
-    sellutxo: tbc.Transaction.IUnspentOutput,
+    sellutxo: tbc.Transaction.IUnspentOutput
   ) {
-    const network = "https://testnetlocal.tbcdev.org/api/tbc/";
+    const network = "https://api.tbcdev.org/api/tbc/";
     const utxos = [await API.fetchUTXO(privateKey, utxoFee, network)];
     const sellData = OrderBook.getOrderData(sellutxo.script);
     const tx = new tbc.Transaction();
@@ -892,18 +976,42 @@ class OrderBook {
     saleVolume: bigint,
     unitPrice: bigint,
     feeRate: bigint,
-    ftID: string,
+    ftID: string
   ) {
-    const network = "https://testnetlocal.tbcdev.org/api/tbc/";
+    if (!_isPositiveBigInt(saleVolume) || !_isPositiveBigInt(unitPrice))
+      throw new Error("SaleVolume and UnitPrice must be positive bigint");
+    if (_isNegativeBigInt(feeRate))
+      throw new Error("FeeRate must be non-negative bigint");
+    if (!_isValidSHA256Hash(ftID))
+      throw new Error("FTID must be a valid SHA256 hash string");
+
+    const network = "https://api.tbcdev.org/api/tbc/";
     const Token = new FT(ftID);
-    const TokenInfo = await API.fetchFtInfo(Token.contractTxid, network);//获取FT信息
-    const ftutxo_codeScript = FT.buildFTtransferCode(TokenInfo.codeScript, privateKey.toAddress().toString()).toBuffer().toString('hex');
-    const ftutxos = await API.fetchFtUTXOs(ftID, privateKey.toAddress().toString(), ftutxo_codeScript, network, (saleVolume * unitPrice) / 1000000n);//准备ft utxo
+    const TokenInfo = await API.fetchFtInfo(Token.contractTxid, network); //获取FT信息
+    const ftutxo_codeScript = FT.buildFTtransferCode(
+      TokenInfo.codeScript,
+      privateKey.toAddress().toString()
+    )
+      .toBuffer()
+      .toString("hex");
+    const ftutxos = await API.fetchFtUTXOs(
+      ftID,
+      privateKey.toAddress().toString(),
+      ftutxo_codeScript,
+      network,
+      (saleVolume * unitPrice) / 1000000n
+    ); //准备ft utxo
     let preTXs: tbc.Transaction[] = [];
     let prepreTxData: string[] = [];
     for (let i = 0; i < ftutxos.length; i++) {
-        preTXs.push(await API.fetchTXraw(ftutxos[i].txId, network));//获取每个ft输入的父交易
-        prepreTxData.push(await API.fetchFtPrePreTxData(preTXs[i], ftutxos[i].outputIndex, network));//获取每个ft输入的爷交易
+      preTXs.push(await API.fetchTXraw(ftutxos[i].txId, network)); //获取每个ft输入的父交易
+      prepreTxData.push(
+        await API.fetchFtPrePreTxData(
+          preTXs[i],
+          ftutxos[i].outputIndex,
+          network
+        )
+      ); //获取每个ft输入的爷交易
     }
     const utxos = await API.fetchUTXO(privateKey, utxoFee, network);
 
@@ -1007,18 +1115,23 @@ class OrderBook {
     tx.sign(privateKey);
     tx.seal();
     const txraw = tx.uncheckedSerialize();
+    // console.log(tx.toObject());
     return txraw;
   }
 
   async cancelBuyOrder_privateKeyOnline(
     privateKey: tbc.PrivateKey,
-    buyutxo: tbc.Transaction.IUnspentOutput,
+    buyutxo: tbc.Transaction.IUnspentOutput
   ) {
-    const network = "https://testnetlocal.tbcdev.org/api/tbc/";
+    const network = "https://api.tbcdev.org/api/tbc/";
     const buyPreTX = await API.fetchTXraw(buyutxo.txId, network);
     const ftutxo = buildUTXO(buyPreTX, 1, true);
     const ftPreTX: tbc.Transaction = buyPreTX;
-    const ftPrePreTxData: string = await API.fetchFtPrePreTxData(ftPreTX, ftutxo.outputIndex, network);
+    const ftPrePreTxData: string = await API.fetchFtPrePreTxData(
+      ftPreTX,
+      ftutxo.outputIndex,
+      network
+    );
     const utxos = [await API.fetchUTXO(privateKey, utxoFee, network)];
 
     const buyData = OrderBook.getOrderData(buyutxo.script);
@@ -1101,15 +1214,23 @@ class OrderBook {
     ftFeeAddress: string,
     tbcFeeAddress: string
   ) {
-    const network = "https://testnetlocal.tbcdev.org/api/tbc/";
+    if (
+      !tbc.Address.isValid(ftFeeAddress) ||
+      !tbc.Address.isValid(tbcFeeAddress)
+    )
+      throw new Error("Invalid fee address");
+    const network = "https://api.tbcdev.org/api/tbc/";
     const sellPreTX = await API.fetchTXraw(sellutxo.txId, network);
     const buyPreTX = await API.fetchTXraw(buyutxo.txId, network);
     const ftutxo = buildUTXO(buyPreTX, 1, true);
     const ftPreTX: tbc.Transaction = buyPreTX;
-    const ftPrePreTxData: string = await API.fetchFtPrePreTxData(ftPreTX, ftutxo.outputIndex, network);
+    const ftPrePreTxData: string = await API.fetchFtPrePreTxData(
+      ftPreTX,
+      ftutxo.outputIndex,
+      network
+    );
     const utxos = [await API.fetchUTXO(privateKey, utxoFee, network)];
 
-    
     const buyData = OrderBook.getOrderData(buyutxo.script);
     const sellData = OrderBook.getOrderData(sellutxo.script);
 
@@ -1128,14 +1249,26 @@ class OrderBook {
     const tbcBuyerAmount = tbcSellAmount - tbcTaxAmount; //tbcBuyerAmount是买家实际收到的tbc数量
     const newSellOrderTBCAmount = sellOrderTBCAmount - matchedTBCAmount; //卖单剩余tbc数量
 
-    console.log("tbcSellAmount, tbcTaxAmount, tbcBuyerAmount, newSellOrderTBCAmount", tbcSellAmount, tbcTaxAmount, tbcBuyerAmount, newSellOrderTBCAmount);
+    console.log(
+      "tbcSellAmount, tbcTaxAmount, tbcBuyerAmount, newSellOrderTBCAmount",
+      tbcSellAmount,
+      tbcTaxAmount,
+      tbcBuyerAmount,
+      newSellOrderTBCAmount
+    );
 
     const ftPayAmount = (tbcSellAmount * sellData.unitPrice) / this.precision; //ftPayAmount是支付ft总数量
     const ftTaxAmount = (ftPayAmount * sellData.feeRate) / this.precision; //ftTaxAmount是买家扣除的手续费数量
     const ftSellerAmount = ftPayAmount - ftTaxAmount; //ftSellerAmount是卖家实际收到的ft数量
     const newBuyOrderTBCAmount = buyOrderTBCAmount - matchedTBCAmount; //买单剩余tbc数量
 
-    console.log("ftPayAmount, ftTaxAmount, ftSellerAmount, newBuyOrderTBCAmount", ftPayAmount, ftTaxAmount, ftSellerAmount, newBuyOrderTBCAmount);
+    console.log(
+      "ftPayAmount, ftTaxAmount, ftSellerAmount, newBuyOrderTBCAmount",
+      ftPayAmount,
+      ftTaxAmount,
+      ftSellerAmount,
+      newBuyOrderTBCAmount
+    );
 
     //构建交易
     const tx = new tbc.Transaction();
@@ -1148,11 +1281,8 @@ class OrderBook {
     console.log("FT Balance:", ftutxo.ftBalance!);
 
     const tapeAmountSum = BigInt(tapeAmountSetIn[0]);
-    const { amountHex: ftSellerAmountHex, changeHex: noUseHex } = FT.buildTapeAmount(
-      ftSellerAmount,
-      tapeAmountSetIn,
-      1
-    );
+    const { amountHex: ftSellerAmountHex, changeHex: noUseHex } =
+      FT.buildTapeAmount(ftSellerAmount, tapeAmountSetIn, 1);
     tapeAmountSetIn.pop();
     tapeAmountSetIn.push(ftutxo.ftBalance! - ftSellerAmount);
     let { amountHex: ftTaxAmountHex, changeHex } = FT.buildTapeAmount(
@@ -1193,18 +1323,32 @@ class OrderBook {
     //**********TBC Buyer输出**********
     tx.to(buyData.holdAddress, Number(tbcBuyerAmount));
     //**********TBC Tax输出**********
-    tx.to(tbcFeeAddress, Number(tbcTaxAmount));
+    if (buyData.feeRate === 0n && tbcTaxAmount === 0n) {
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: OrderBook.placeHolderP2PKHOutput(),
+          satoshis: 0,
+        })
+      );
+    } else if (tbcTaxAmount < 10n) {
+      throw new Error("TBC tax amount is less than dust limit");
+    } else {
+      tx.to(tbcFeeAddress, Number(tbcTaxAmount));
+    }
     //**********交易手续费找零**********
     let inputsFee = 0;
-    for(const utxo of utxos) {
+    for (const utxo of utxos) {
       inputsFee += utxo.satoshis;
     }
-    console.log("UTXOs Total Satoshis:", tx.getUnspentValue());
-    console.log("Inputs Value:", inputsFee);
+    // console.log("UTXOs Total Satoshis:", tx.getUnspentValue());
+    // console.log("Inputs Value:", inputsFee);
     const txSize = tx.getEstimateSize() + 2 * 1000 + 2000;
     const fee = txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80);
     console.log("tx fee", fee);
-    tx.to(tbc.Script.fromHex(utxos[0].script).toAddress().toString(), inputsFee - fee - 1300);
+    tx.to(
+      tbc.Script.fromHex(utxos[0].script).toAddress().toString(),
+      inputsFee - fee - 1300
+    );
     // tx.change(tbc.Script.fromHex(utxos[0].script).toAddress().toString());
 
     //部分成交
@@ -1307,10 +1451,11 @@ class OrderBook {
     tx.sign(privateKey);
     tx.seal();
     console.log("tx fee", tx.getFee());
-    console.log(tx.toObject());
+    // console.log(tx.toObject());
     // console.log(tx.verifyScript(0));
     // console.log(tx.verify());
     const txraw = tx.uncheckedSerialize();
+    console.log("Transaction Raw:", txraw.length / 2000, "KB");
     return txraw;
   }
 
@@ -1443,7 +1588,34 @@ class OrderBook {
       ftID: ftID,
     };
   }
+
+  static placeHolderP2PKHOutput(): tbc.Script {
+    return tbc.Script.fromASM(
+      `OP_FALSE OP_RETURN ffffffffffffffffffffffffffffffffffffffffffff`
+    );
+  }
 }
 
+function _isPositiveBigInt(param: bigint): boolean {
+  if (param > 0n) return true;
+  return false;
+}
+
+function _isNegativeBigInt(param: bigint): boolean {
+  if (param < 0n) return true;
+  return false;
+}
+
+function _isValidSHA256Hash(param: string): boolean {
+  if (typeof param !== "string") return false;
+  if (param.length !== 64) return false;
+  return /^[0-9a-f]{64}$/.test(param);
+}
+
+function _isValidHexString(param: string): boolean {
+  if (typeof param !== "string") return false;
+  if (param.length === 0) return false;
+  return /^[0-9a-f]+$/.test(param);
+}
 
 module.exports = OrderBook;
