@@ -1222,7 +1222,7 @@ class OrderBook {
     const network = "https://api.tbcdev.org/api/tbc/";
     const sellPreTX = await API.fetchTXraw(sellutxo.txId, network);
     const buyPreTX = await API.fetchTXraw(buyutxo.txId, network);
-    const ftutxo = buildUTXO(buyPreTX, 1, true);
+    const ftutxo = buildUTXO(buyPreTX, buyutxo.outputIndex + 1, true);
     const ftPreTX: tbc.Transaction = buyPreTX;
     const ftPrePreTxData: string = await API.fetchFtPrePreTxData(
       ftPreTX,
