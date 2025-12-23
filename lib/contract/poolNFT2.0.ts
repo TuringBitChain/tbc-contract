@@ -14,6 +14,8 @@ import {
   getLpCostAddress,
   getLpCostAmount,
   isLock,
+  safeJSONParse,
+  parseDecimalToBigInt
 } from "../util/util";
 const API = require("../api/api");
 const FT = require("./ft");
@@ -64,8 +66,8 @@ class poolNFT2 {
     this.network = config?.network ?? "mainnet";
   }
 
-  async initCreate(ftContractTxid: string) {
-    if (!/^[0-9a-fA-F]{64}$/.test(ftContractTxid)) {
+  initCreate(ftContractTxid: string) {
+    if (!/^[0-9a-f]{64}$/.test(ftContractTxid)) {
       throw new Error(
         "Invalid Input: ftContractTxid must be a 32-byte hash value."
       );
@@ -362,8 +364,8 @@ class poolNFT2 {
    * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
    * @param {string} address_to - FT-LP 接收地址。
    * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
-   * @param {number} tbc_amount - 初始 TBC 数量。
-   * @param {number} ft_a - 初始 FT-A 数量。
+   * @param {number | string} tbc_amount - 初始 TBC 数量。
+   * @param {number | string} ft_a - 初始 FT-A 数量。
    * @param {number} lock_time - 可选的锁定时间，仅在启用时间锁时使用。
    * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
    *
@@ -384,8 +386,8 @@ class poolNFT2 {
     privateKey_from: tbc.PrivateKey,
     address_to: string,
     utxo: tbc.Transaction.IUnspentOutput,
-    tbc_amount: number,
-    ft_a: number,
+    tbc_amount: number | string,
+    ft_a: number | string,
     lock_time?: number
   ): Promise<string> {
     const privateKey = privateKey_from;
@@ -394,14 +396,12 @@ class poolNFT2 {
     FTA.initialize(FTAInfo);
     const ftVersion = FTA.codeScript.length / 2 === ft_v2_length? 2 : 1;
     let amount_lpbn = BigInt(0);
-    if (tbc_amount > 0 && ft_a > 0) {
-      amount_lpbn = BigInt(Math.floor(tbc_amount * Math.pow(10, 6)));
-      this.tbc_amount = BigInt(Math.floor(tbc_amount * Math.pow(10, 6)));
+    if (Number(tbc_amount) > 0 && Number(ft_a) > 0) {
+      amount_lpbn = parseDecimalToBigInt(tbc_amount, 6);
+      this.tbc_amount = parseDecimalToBigInt(tbc_amount, 6);
       this.ft_lp_amount = this.tbc_amount;
-      this.ft_a_number = ft_a;
-      this.ft_a_amount = BigInt(
-        Math.floor(this.ft_a_number * Math.pow(10, FTA.decimal))
-      );
+      this.ft_a_number = Number(ft_a);
+      this.ft_a_amount = parseDecimalToBigInt(ft_a, FTA.decimal);
     } else {
       throw new Error("Invalid amount Input");
     }
@@ -415,12 +415,12 @@ class poolNFT2 {
     );
     const poolnft_codehash160 =
       tbc.crypto.Hash.sha256ripemd160(poolnft_codehash).toString("hex");
-    const maxAmount = Math.floor(Math.pow(10, 18 - FTA.decimal));
-    if (this.ft_a_number > maxAmount) {
-      throw new Error(
-        `When decimal is ${FTA.decimal}, the maximum amount cannot exceed ${maxAmount}`
-      );
-    }
+    // const maxAmount = Math.round(Math.pow(10, 18 - FTA.decimal));
+    // if (this.ft_a_number > maxAmount) {
+    //   throw new Error(
+    //     `When decimal is ${FTA.decimal}, the maximum amount cannot exceed ${maxAmount}`
+    //   );
+    // }
     const ftutxo_codeScript = FT.buildFTtransferCode(
       FTA.codeScript,
       privateKey.toAddress().toString()
@@ -607,12 +607,12 @@ class poolNFT2 {
         return unlockingScript;
       }
     );
-    await tx.setInputScriptAsync(
+    tx.setInputScript(
       {
         inputIndex: 1,
       },
-      async (tx) => {
-        const unlockingScript = await FTA.getFTunlock(
+      (tx) => {
+        const unlockingScript = FTA.getFTunlock(
           privateKey,
           tx,
           ftPreTX,
@@ -635,7 +635,7 @@ class poolNFT2 {
    * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
    * @param {string} address_to - FT-LP 接收地址。
    * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
-   * @param {number} amount_tbc - 增加的 TBC 数量。
+   * @param {number | string} amount_tbc - 增加的 TBC 数量。
    * @param {number} lock_time - 可选的锁定时间，仅在启用时间锁时使用。
    * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
    *
@@ -655,7 +655,7 @@ class poolNFT2 {
     privateKey_from: tbc.PrivateKey,
     address_to: string,
     utxo: tbc.Transaction.IUnspentOutput,
-    amount_tbc: number,
+    amount_tbc: number | string,
     lock_time?: number
   ): Promise<string> {
     const lockStatus =
@@ -664,16 +664,20 @@ class poolNFT2 {
     if (lockStatus) {
       const lpCostAmount = getLpCostAmount(this.poolnft_code);
       const lpCostTBC = Number((lpCostAmount / Math.pow(10, 6)).toFixed(6));
-      amount_tbc -= lpCostTBC;
-      if (amount_tbc <= 0) throw new Error(`TBC amount input must be greater than LP cost of ${lpCostTBC}`);
+      if (typeof amount_tbc === 'string') {
+        amount_tbc = (parseFloat(amount_tbc) - lpCostTBC).toString();
+      } else {
+        amount_tbc = amount_tbc - lpCostTBC;
+      }
+      if (Number(amount_tbc) <= 0) throw new Error(`TBC amount input must be greater than LP cost of ${lpCostTBC}`);
     }
-    if (amount_tbc <= 0) throw new Error("Invalid TBC amount input");
+    if (Number(amount_tbc) <= 0) throw new Error("Invalid TBC amount input");
     const privateKey = privateKey_from;
     const FTA = new FT(this.ft_a_contractTxid);
     const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
     FTA.initialize(FTAInfo);
     const ftVersion = FTA.codeScript.length / 2 === ft_v2_length? 2 : 1;
-    const amount_tbcbn = BigInt(Math.floor(amount_tbc * Math.pow(10, 6)));
+    const amount_tbcbn = parseDecimalToBigInt(amount_tbc, 6);
     const changeData = this.updatePoolNFT(amount_tbc, FTA.decimal, 2);
     const poolnft_codehash = tbc.crypto.Hash.sha256(
       Buffer.from(this.poolnft_code, "hex")
@@ -883,12 +887,12 @@ class poolNFT2 {
         return unlockingScript;
       }
     );
-    await tx.setInputScriptAsync(
+    tx.setInputScript(
       {
         inputIndex: 1,
       },
-      async (tx) => {
-        const unlockingScript = await FTA.getFTunlock(
+      (tx) => {
+        const unlockingScript = FTA.getFTunlock(
           privateKey,
           tx,
           ftPreTX,
@@ -913,7 +917,7 @@ class poolNFT2 {
    * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
    * @param {string} address_to - 资产接收地址。
    * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
-   * @param {number} amount_lp - 要消耗的 LP 数量。
+   * @param {number | string} amount_lp - 要消耗的 LP 数量。
    * @param {number} lock_time - 可选的锁定时间，仅在启用时间锁时使用。
    * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
    *
@@ -933,7 +937,7 @@ class poolNFT2 {
     privateKey_from: tbc.PrivateKey,
     address_to: string,
     utxo: tbc.Transaction.IUnspentOutput,
-    amount_lp: number,
+    amount_lp: number | string,
     lock_time?: number
   ): Promise<string> {
     let isNeedUnlock = false;
@@ -965,7 +969,7 @@ class poolNFT2 {
     const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
     FTA.initialize(FTAInfo);
     const ftVersion = FTA.codeScript.length / 2 === ft_v2_length? 2 : 1;
-    const amount_lpbn = BigInt(Math.floor(amount_lp * Math.pow(10, 6)));
+    const amount_lpbn = parseDecimalToBigInt(amount_lp, 6);
     if (this.ft_lp_amount < amount_lpbn) {
       throw new Error("Invalid FT-LP amount input");
     }
@@ -1221,12 +1225,12 @@ class poolNFT2 {
         return unlockingScript;
       }
     );
-    await tx.setInputScriptAsync(
+    tx.setInputScript(
       {
         inputIndex: 1,
       },
-      async (tx) => {
-        const unlockingScript = await FTA.getFTunlock(
+      (tx) => {
+        const unlockingScript = FTA.getFTunlock(
           privateKey,
           tx,
           ftPreTX[0],
@@ -1238,12 +1242,12 @@ class poolNFT2 {
       }
     );
     for (let i = 0; i < fttxo_c.length; i++) {
-      await tx.setInputScriptAsync(
+      tx.setInputScript(
         {
           inputIndex: i + 2,
         },
-        async (tx) => {
-          const unlockingScript = await FTA.getFTunlockSwap(
+        (tx) => {
+          const unlockingScript = FTA.getFTunlockSwap(
             privateKey,
             tx,
             ftPreTX[i + 1],
@@ -1270,7 +1274,7 @@ class poolNFT2 {
    * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
    * @param {string} address_to - 接收 FT-A 的地址。
    * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
-   * @param {number} amount_tbc - 要交换的 TBC 数量。
+   * @param {number | string} amount_tbc - 要交换的 TBC 数量。
    * @param {1 | 2} [lpPlan] - 流动性池计划，默认为 1。
    * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
    *
@@ -1289,7 +1293,7 @@ class poolNFT2 {
     privateKey_from: tbc.PrivateKey,
     address_to: string,
     utxo: tbc.Transaction.IUnspentOutput,
-    amount_tbc: number,
+    amount_tbc: number | string,
     lpPlan?: 1 | 2
   ): Promise<string> {
     const privateKey = privateKey_from;
@@ -1301,7 +1305,7 @@ class poolNFT2 {
       this.lp_plan === 1 || this.lp_plan === 2
         ? (this.lp_plan as 1 | 2)
         : lpPlan || 1;
-    if (amount_tbc <= 0) {
+    if (Number(amount_tbc) <= 0) {
       throw new Error("Invalid TBC amount input");
     }
     // const poolMul = this.ft_a_amount * this.tbc_amount;
@@ -1309,7 +1313,7 @@ class poolNFT2 {
       new BN(this.tbc_amount.toString())
     );
     const ft_a_amount = this.ft_a_amount;
-    const amount_tbcbn = BigInt(Math.floor(amount_tbc * Math.pow(10, 6)));
+    const amount_tbcbn = parseDecimalToBigInt(amount_tbc, 6);
     const serviceFee =
       (amount_tbcbn * BigInt(this.service_fee_rate + 10)) / BigInt(10000);
     const serviceFeeLP =
@@ -1318,7 +1322,7 @@ class poolNFT2 {
     const serviceFeeA = serviceFee - serviceFeeLP;
     const amount_tbcbn_swap = amount_tbcbn - serviceFee;
     let amount_tbcbn_swap_lp = amount_tbcbn;
-    if (serviceFeeA >= 42) {
+    if (serviceFeeA >= 10) {
       amount_tbcbn_swap_lp = amount_tbcbn - serviceFeeA;
     }
     this.tbc_amount = BigInt(this.tbc_amount) + BigInt(amount_tbcbn_swap);
@@ -1420,7 +1424,7 @@ class poolNFT2 {
       })
     );
     // P2PKH_ServiceFee
-    if (serviceFeeA >= BigInt(42)) {
+    if (serviceFeeA >= BigInt(10)) {
       tx.to(
         lpPlan === 1
           ? "13oCEJaqyyiC8iRrfup6PDL2GKZ3xQrsZL"
@@ -1472,12 +1476,12 @@ class poolNFT2 {
       }
     );
     for (let i = 0; i < fttxo_c.length; i++) {
-      await tx.setInputScriptAsync(
+      tx.setInputScript(
         {
           inputIndex: i + 2,
         },
-        async (tx) => {
-          const unlockingScript = await FTA.getFTunlockSwap(
+        (tx) => {
+          const unlockingScript = FTA.getFTunlockSwap(
             privateKey,
             tx,
             ftPreTX[i],
@@ -1503,7 +1507,7 @@ class poolNFT2 {
    * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
    * @param {string} address_to - 接收 TBC 的地址。
    * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
-   * @param {number} amount_token - 要交换的 FT-A 数量。
+   * @param {number | string} amount_token - 要交换的 FT-A 数量。
    * @param {1 | 2} [lpPlan] - 流动性池计划，默认为 1。
    * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
    *
@@ -1522,7 +1526,7 @@ class poolNFT2 {
     privateKey_from: tbc.PrivateKey,
     address_to: string,
     utxo: tbc.Transaction.IUnspentOutput,
-    amount_token: number,
+    amount_token: number | string,
     lpPlan?: 1 | 2
   ): Promise<string> {
     const privateKey = privateKey_from;
@@ -1533,10 +1537,8 @@ class poolNFT2 {
       this.lp_plan === 1 || this.lp_plan === 2
         ? (this.lp_plan as 1 | 2)
         : lpPlan || 1;
-    const amount_ftbn = BigInt(
-      Math.floor(amount_token * Math.pow(10, FTA.decimal))
-    );
-    if (amount_token <= 0) {
+    const amount_ftbn = parseDecimalToBigInt(amount_token, FTA.decimal);
+    if (Number(amount_token) <= 0) {
       throw new Error("Invalid FT amount input");
     }
     const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(
@@ -1572,7 +1574,7 @@ class poolNFT2 {
     const serviceFeeA = serviceFee - serviceFeeLP;
     const tbc_amount_decrement_swap = tbc_amount_decrement - serviceFee;
     let tbc_amount_decrement_swap_lp = tbc_amount_decrement_swap;
-    if (serviceFeeA >= 42) {
+    if (serviceFeeA >= 10) {
       tbc_amount_decrement_swap_lp = tbc_amount_decrement - serviceFeeLP;
     }
     const tapeAmountSetIn: bigint[] = [];
@@ -1650,7 +1652,7 @@ class poolNFT2 {
       })
     );
     // P2PKH_ServiceFee
-    if (serviceFeeA >= BigInt(42)) {
+    if (serviceFeeA >= BigInt(10)) {
       tx.to(
         lpPlan === 1
           ? "13oCEJaqyyiC8iRrfup6PDL2GKZ3xQrsZL"
@@ -1702,12 +1704,12 @@ class poolNFT2 {
         return unlockingScript;
       }
     );
-    await tx.setInputScriptAsync(
+    tx.setInputScript(
       {
         inputIndex: 1,
       },
-      async (tx) => {
-        const unlockingScript = await FTA.getFTunlock(
+      (tx) => {
+        const unlockingScript = FTA.getFTunlock(
           privateKey,
           tx,
           ftPreTX[0],
@@ -1733,7 +1735,7 @@ class poolNFT2 {
    * @param {tbc.Transaction.IUnspentOutput} ftutxo - 用于创建交易的 FT-A 未花费输出。
    * @param {tbc.Transaction[]} ftPreTX - 之前的 FT-A 交易列表。
    * @param {string[]} ftPrePreTxData - 之前的 FT-A 交易数据列表。
-   * @param {number} amount_token - 要交换的 FT-A 数量。
+   * @param {number | string} amount_token - 要交换的 FT-A 数量。
    * @param {1 | 2} [lpPlan] - 流动性池计划，默认为 1。
    * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
    * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
@@ -1745,7 +1747,7 @@ class poolNFT2 {
     ftutxo: tbc.Transaction.IUnspentOutput,
     ftPreTX: tbc.Transaction[],
     ftPrePreTxData: string[],
-    amount_token: number,
+    amount_token: number | string,
     lpPlan?: 1 | 2,
     utxo?: tbc.Transaction.IUnspentOutput
   ): Promise<string> {
@@ -1758,10 +1760,8 @@ class poolNFT2 {
       this.lp_plan === 1 || this.lp_plan === 2
         ? (this.lp_plan as 1 | 2)
         : lpPlan || 1;
-    const amount_ftbn = BigInt(
-      Math.floor(amount_token * Math.pow(10, FTA.decimal))
-    );
-    if (amount_token <= 0) {
+    const amount_ftbn = parseDecimalToBigInt(amount_token, FTA.decimal);
+    if (Number(amount_token) <= 0) {
       throw new Error("Invalid FT amount input");
     }
     const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(
@@ -1793,7 +1793,7 @@ class poolNFT2 {
     const serviceFeeA = serviceFee - serviceFeeLP;
     const tbc_amount_decrement_swap = tbc_amount_decrement - serviceFee;
     let tbc_amount_decrement_swap_lp = tbc_amount_decrement_swap;
-    if (serviceFeeA >= 42) {
+    if (serviceFeeA >= 10) {
       tbc_amount_decrement_swap_lp = tbc_amount_decrement - serviceFeeLP;
     }
     const tapeAmountSetIn: bigint[] = [];
@@ -1845,7 +1845,7 @@ class poolNFT2 {
       })
     );
     // P2PKH_ServiceFee
-    if (serviceFeeA >= BigInt(42)) {
+    if (serviceFeeA >= BigInt(10)) {
       tx.to(
         lpPlan === 1
           ? "13oCEJaqyyiC8iRrfup6PDL2GKZ3xQrsZL"
@@ -1967,8 +1967,14 @@ class poolNFT2 {
         `pool/poolinfo/poolid/${contractTxid}`;
     }
     try {
-      const response = await (await fetch(url)).json();
-      const data = response.data;
+      // const response = await (await fetch(url)).json();
+
+      const response_new = await fetch(url).then(response => response.text())
+        .then(text => {
+          const result = safeJSONParse(text);
+          return result;
+        });
+      const data = response_new.data;
       const poolNftInfo: PoolNFTInfo = {
         ft_lp_amount: data.lp_balance,
         ft_a_amount: data.token_balance,
@@ -2162,7 +2168,11 @@ class poolNFT2 {
         (this.network.endsWith("/") ? this.network : this.network + "/") +
         `pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
     }
-    const response = await (await fetch(url)).json();
+    const response = await fetch(url).then(response => response.text())
+    .then(text => {
+      const result = safeJSONParse(text);
+      return result;
+    });
     const ftUtxoList = response.data.utxos;
     const ftUtxoArray: tbc.Transaction.IUnspentOutput[] = ftUtxoList.map(data => ({
       txId: data.txid,
@@ -2406,12 +2416,12 @@ class poolNFT2 {
       tx.change(privateKey.toAddress());
       for (let i = 0; i < ftutxo.length; i++) {
         if (this.with_lock_time) tx.setInputSequence(i, 4294967294);
-        await tx.setInputScriptAsync(
+        tx.setInputScript(
           {
             inputIndex: i,
           },
-          async (tx) => {
-            const unlockingScript = await FTA.getFTunlock(
+          (tx) => {
+            const unlockingScript = FTA.getFTunlock(
               privateKey,
               tx,
               ftPreTX[i],
@@ -2797,12 +2807,12 @@ class poolNFT2 {
       const contractTX = poolnftPreTX;
       const ftVersion = ftutxos[0].script.length / 2 === ft_v2_length? 2 : 1;
       for (let i = 0; i < ftutxos.length; i++) {
-        await tx.setInputScriptAsync(
+        tx.setInputScript(
           {
             inputIndex: i + 1,
           },
-          async (tx) => {
-            const unlockingScript = await FTA.getFTunlockSwap(
+          (tx) => {
+            const unlockingScript = FTA.getFTunlockSwap(
               privateKey,
               tx,
               ftPreTX[i],
@@ -2869,12 +2879,12 @@ class poolNFT2 {
     FTA.initialize(FTAInfo);
     let amount_lpbn = BigInt(0);
     if (tbc_amount > 0 && ft_a > 0) {
-      amount_lpbn = BigInt(Math.floor(tbc_amount * Math.pow(10, 6)));
-      this.tbc_amount = BigInt(Math.floor(tbc_amount * Math.pow(10, 6)));
+      amount_lpbn = BigInt(Math.round(tbc_amount * Math.pow(10, 6)));
+      this.tbc_amount = BigInt(Math.round(tbc_amount * Math.pow(10, 6)));
       this.ft_lp_amount = this.tbc_amount;
       this.ft_a_number = ft_a;
       this.ft_a_amount = BigInt(
-        Math.floor(this.ft_a_number * Math.pow(10, FTA.decimal))
+        Math.round(this.ft_a_number * Math.pow(10, FTA.decimal))
       );
     } else {
       throw new Error("Invalid amount Input");
@@ -2889,12 +2899,12 @@ class poolNFT2 {
     );
     const poolnft_codehash160 =
       tbc.crypto.Hash.sha256ripemd160(poolnft_codehash).toString("hex");
-    const maxAmount = Math.floor(Math.pow(10, 18 - FTA.decimal));
-    if (this.ft_a_number > maxAmount) {
-      throw new Error(
-        `When decimal is ${FTA.decimal}, the maximum amount cannot exceed ${maxAmount}`
-      );
-    }
+    // const maxAmount = Math.round(Math.pow(10, 18 - FTA.decimal));
+    // if (this.ft_a_number > maxAmount) {
+    //   throw new Error(
+    //     `When decimal is ${FTA.decimal}, the maximum amount cannot exceed ${maxAmount}`
+    //   );
+    // }
     const ftutxo_codeScript = FT.buildFTtransferCode(
       FTA.codeScript,
       privateKey.toAddress().toString()
@@ -3050,12 +3060,12 @@ class poolNFT2 {
         return unlockingScript;
       }
     );
-    await tx.setInputScriptAsync(
+    tx.setInputScript(
       {
         inputIndex: 1,
       },
-      async (tx) => {
-        const unlockingScript = await FTA.getFTunlock(
+      (tx) => {
+        const unlockingScript = FTA.getFTunlock(
           privateKey,
           tx,
           ftPreTX,
@@ -3112,7 +3122,7 @@ class poolNFT2 {
     const FTA = new FT(this.ft_a_contractTxid);
     const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
     FTA.initialize(FTAInfo);
-    const amount_tbcbn = BigInt(Math.floor(amount_tbc * Math.pow(10, 6)));
+    const amount_tbcbn = BigInt(Math.round(amount_tbc * Math.pow(10, 6)));
     const changeData = this.updatePoolNFT(amount_tbc, FTA.decimal, 2);
     const poolnft_codehash = tbc.crypto.Hash.sha256(
       Buffer.from(this.poolnft_code, "hex")
@@ -3290,12 +3300,12 @@ class poolNFT2 {
         return unlockingScript;
       }
     );
-    await tx.setInputScriptAsync(
+    tx.setInputScript(
       {
         inputIndex: 1,
       },
-      async (tx) => {
-        const unlockingScript = await FTA.getFTunlock(
+      (tx) => {
+        const unlockingScript = FTA.getFTunlock(
           privateKey,
           tx,
           ftPreTX,
@@ -3347,7 +3357,7 @@ class poolNFT2 {
     const FTA = new FT(this.ft_a_contractTxid);
     const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
     FTA.initialize(FTAInfo);
-    const amount_lpbn = BigInt(Math.floor(amount_lp * Math.pow(10, 6)));
+    const amount_lpbn = BigInt(Math.round(amount_lp * Math.pow(10, 6)));
     if (this.ft_lp_amount < amount_lpbn) {
       throw new Error("Invalid FT-LP amount input");
     }
@@ -3583,12 +3593,12 @@ class poolNFT2 {
       }
     );
     tx.setInputSequence(1, 4294967294);
-    await tx.setInputScriptAsync(
+    tx.setInputScript(
       {
         inputIndex: 1,
       },
-      async (tx) => {
-        const unlockingScript = await FTA.getFTunlock(
+      (tx) => {
+        const unlockingScript = FTA.getFTunlock(
           privateKey,
           tx,
           ftPreTX[0],
@@ -3600,12 +3610,12 @@ class poolNFT2 {
       }
     );
     for (let i = 0; i < fttxo_c.length; i++) {
-      await tx.setInputScriptAsync(
+      tx.setInputScript(
         {
           inputIndex: i + 2,
         },
-        async (tx) => {
-          const unlockingScript = await FTA.getFTunlockSwap(
+        (tx) => {
+          const unlockingScript = FTA.getFTunlockSwap(
             privateKey,
             tx,
             ftPreTX[i + 1],
@@ -4101,7 +4111,7 @@ class poolNFT2 {
    * 3. 根据更新后的 TBC 金额与之前的 TBC 金额进行比较，计算各类金额的差异并返回。
    */
   updatePoolNFT(
-    increment: number,
+    increment: number | string,
     ft_a_decimal: number,
     option: 1 | 2 | 3
   ): poolNFTDifference {
@@ -4110,15 +4120,13 @@ class poolNFT2 {
     const tbc_amount_old = this.tbc_amount;
     const tbc_amount_full_old = this.tbc_amount_full;
     if (option == 1) {
-      const ftLpIncrement = BigInt(Math.floor(increment * Math.pow(10, 6)));
+      const ftLpIncrement = parseDecimalToBigInt(increment, 6);
       this.updateWhenFtLpChange(ftLpIncrement);
     } else if (option == 2) {
-      const tbcIncrement = BigInt(Math.floor(increment * Math.pow(10, 6)));
+      const tbcIncrement = parseDecimalToBigInt(increment, 6);
       this.updateWhenTbcAmountChange(tbcIncrement);
     } else {
-      const ftAIncrement = BigInt(
-        Math.floor(increment * Math.pow(10, ft_a_decimal))
-      );
+      const ftAIncrement = parseDecimalToBigInt(increment, ft_a_decimal);
       this.updateWhenFtAChange(ftAIncrement);
     }
     if (this.tbc_amount > tbc_amount_old) {
@@ -4179,8 +4187,8 @@ class poolNFT2 {
         BigInt(this.ft_lp_amount) +
         (BigInt(this.ft_lp_amount) * BigInt(this.precision)) / ratio;
       this.tbc_amount =
-        BigInt(this.ft_a_amount) +
-        (BigInt(this.ft_a_amount) * BigInt(this.precision)) / ratio;
+        BigInt(this.tbc_amount) +
+        (BigInt(this.tbc_amount) * BigInt(this.precision)) / ratio;
       this.tbc_amount_full =
         BigInt(this.tbc_amount_full) +
         (BigInt(this.tbc_amount_full) * BigInt(this.precision)) / ratio;
@@ -4372,7 +4380,7 @@ class poolNFT2 {
         : tbc.Address.fromString(lpCostAddress).hashBuffer.toString("hex");
     // console.log("lpCostAddressHex:", lpCostAddressHex);
     const lpCostWriter = new tbc.encoding.BufferWriter();
-    const lpCostAmount = new BN(lpCostTBC).mul(new BN(Math.pow(10, 6)));
+    const lpCostAmount = new BN(parseDecimalToBigInt(lpCostTBC, 6));
     lpCostWriter.writeUInt64LEBN(lpCostAmount);
     const lpCostAmountHex = lpCostWriter.toBuffer().toString("hex");
 

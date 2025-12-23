@@ -48,7 +48,7 @@ async function main() {
             // Step 2.1: 为刚创建的 poolNFT 注入初始资金
             {
                 let tbcAmount = 30;
-                let ftAmount = 1000;
+                let ftAmount = 1000; //大数应使用string
                 // 准备 utxo
                 const utxo = await API.fetchUTXO(privateKeyA, tbcAmount + fee, network);
                 const tx2 = await poolUse.initPoolNFT(privateKeyA, addressA, utxo, tbcAmount, ftAmount);
@@ -72,7 +72,7 @@ async function main() {
 
             // Step 2.3: 花费拥有的 LP
             {
-                let lpAmount = 13;
+                let lpAmount = 13; //大数应使用string
                 // 准备 utxo
                 const utxo = await API.fetchUTXO(privateKeyA, fee, network);
                 // 若带有锁仓，会自动设置解锁参数为 (当前区块高度 - 2) 或三十分钟前
@@ -94,7 +94,7 @@ async function main() {
 
             // Step 2.5.1: 用 Token 兑换 TBC
             {
-                let ftAmount = 100;
+                let ftAmount = 100; //大数应使用string
                 // 准备 utxo
                 const utxo = await API.fetchUTXO(privateKeyA, fee, network);
                 const tx8 = await poolUse.swaptoTBC_baseToken(privateKeyA, addressA, utxo, ftAmount, lpPlan);
@@ -103,7 +103,7 @@ async function main() {
 
             // Step 2.5.2: 用 Token 兑换 TBC(本地输入ftutxo)
             {
-                let ftAmount = 100;
+                let ftAmount = 100; //大数应使用string
                 // 使用独立utxo
                 {
                     // 准备 utxo 网络请求拉取

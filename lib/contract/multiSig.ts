@@ -1,4 +1,5 @@
 import * as tbc from "tbc-lib-js";
+import { parseDecimalToBigInt } from "../util/util";
 const FT = require("./ft");
 
 interface MultiSigTxRaw {
@@ -38,7 +39,7 @@ class MultiSig {
     tx.addOutput(
       new tbc.Transaction.Output({
         script: tbc.Script.fromASM(script_asm),
-        satoshis: Math.floor(tbc_amount * 1e6),
+        satoshis: Number(parseDecimalToBigInt(tbc_amount, 6)),
       })
     );
     for (let i = 0; i < publicKeyCount; i++) {
@@ -84,7 +85,7 @@ class MultiSig {
     privateKey: tbc.PrivateKey
   ): string {
     const script_asm = MultiSig.getMultiSigLockScript(address_to);
-    const amount_satoshis = Math.floor(amount_tbc * Math.pow(10, 6));
+    const amount_satoshis = Number(parseDecimalToBigInt(amount_tbc, 6));
     const tx = new tbc.Transaction()
       .from(utxos)
       .addOutput(
@@ -123,7 +124,7 @@ class MultiSig {
     utxos: tbc.Transaction.IUnspentOutput[]
   ): MultiSigTxRaw {
     const script_asm_from = MultiSig.getMultiSigLockScript(address_from);
-    const amount_satoshis = Math.floor(amount_tbc * Math.pow(10, 6));
+    const amount_satoshis = Number(parseDecimalToBigInt(amount_tbc, 6));
     let count = 0;
     let amounts: number[] = [];
     for (let i = 0; i < utxos.length; i++) {
@@ -293,7 +294,7 @@ class MultiSig {
     address_from: string,
     address_to: string,
     ft: any,
-    ft_amount: number,
+    ft_amount: number | string,
     utxo: tbc.Transaction.IUnspentOutput,
     ftutxos: tbc.Transaction.IUnspentOutput[],
     preTXs: tbc.Transaction[],
@@ -305,10 +306,10 @@ class MultiSig {
     const tape = ft.tapeScript;
     const decimal = ft.decimal;
     const tapeAmountSetIn: bigint[] = [];
-    if (ft_amount < 0) {
+    if (Number(ft_amount) < 0) {
       throw new Error("Invalid amount");
     }
-    const amountbn = BigInt(Math.floor(ft_amount * Math.pow(10, decimal)));
+    const amountbn = parseDecimalToBigInt(ft_amount, decimal);
 
     let tapeAmountSum = BigInt(0);
     for (let i = 0; i < ftutxos.length; i++) {
@@ -321,8 +322,8 @@ class MultiSig {
     if (decimal > 18) {
       throw new Error("The maximum value for decimal cannot exceed 18");
     }
-    const maxAmount = Math.floor(Math.pow(10, 18 - decimal));
-    if (ft_amount > maxAmount) {
+    const maxAmount = parseDecimalToBigInt(1, 18 - decimal);
+    if (Number(ft_amount) > Number(maxAmount)) {
       throw new Error(
         `When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`
       );
@@ -334,7 +335,7 @@ class MultiSig {
     const script_asm = MultiSig.getMultiSigLockScript(address_to);
     const tx = new tbc.Transaction().from(ftutxos).from(utxo);
     if (tbc_amount) {
-      const amount_satoshis = Math.floor(tbc_amount * Math.pow(10, 6));
+      const amount_satoshis = Number(parseDecimalToBigInt(tbc_amount, 6));
       tx.addOutput(
         new tbc.Transaction.Output({
           script: tbc.Script.fromASM(script_asm),
@@ -428,7 +429,7 @@ class MultiSig {
     address_from: string,
     address_to: string,
     ft: any,
-    ft_amount: number,
+    ft_amount: number | string,
     utxo: tbc.Transaction.IUnspentOutput,
     ftutxos: tbc.Transaction.IUnspentOutput[],
     preTXs: tbc.Transaction[],
@@ -446,7 +447,7 @@ class MultiSig {
       tbc.crypto.Hash.sha256(tbc.Script.fromASM(script_asm_from).toBuffer())
     ).toString("hex");
 
-    const amountbn = BigInt(Math.floor(ft_amount * Math.pow(10, decimal)));
+    const amountbn = parseDecimalToBigInt(ft_amount, decimal);
     let tapeAmountSum = BigInt(0);
     for (let i = 0; i < ftutxos.length; i++) {
       tapeAmountSetIn.push(ftutxos[i].ftBalance!);
@@ -458,8 +459,8 @@ class MultiSig {
     if (decimal > 18) {
       throw new Error("The maximum value for decimal cannot exceed 18");
     }
-    const maxAmount = Math.floor(Math.pow(10, 18 - decimal));
-    if (ft_amount > maxAmount) {
+    const maxAmount = parseDecimalToBigInt(1, 18 - decimal);
+    if (Number(ft_amount) > Number(maxAmount)) {
       throw new Error(
         `When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`
       );
