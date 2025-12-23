@@ -1,7 +1,7 @@
 import * as tbc from "tbc-lib-js";
 import { getPrePreTxdata } from "../util/ftunlock";
 import { findMinFiveSum } from "../util/utxoSelect";
-import { fetchInBatches, fetchTBCLockTime } from "../util/util";
+import { fetchInBatches, fetchTBCLockTime, safeJSONParse } from "../util/util";
 
 interface NFTInfo {
   collectionId: string;
@@ -19,7 +19,7 @@ interface FtInfo {
   contractTxid?: string;
   codeScript: string;
   tapeScript: string;
-  totalSupply: number;
+  totalSupply: bigint;
   decimal: number;
   name: string;
   symbol: string;
@@ -260,7 +260,11 @@ class API {
       base_url +
       `ft/tokenbalance/combinescript/${hash}/contract/${contractTxid}`;
     try {
-      const response = await (await fetch(url)).json();
+      const response = await fetch(url).then(response => response.text())
+      .then(text => {
+        const result = safeJSONParse(text);
+        return result;
+      });
       const ftBalance = response.data.balance;
       return ftBalance;
     } catch (error: any) {
@@ -303,13 +307,18 @@ class API {
     const url =
       base_url + `ft/utxo/combinescript/${hash}/contract/${contractTxid}`;
     try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(
-          `Failed to fetch from URL: ${url}, status: ${response.status}`
-        );
-      }
-      const responseData = await response.json();
+      const responseData = await fetch(url).then(response => response.text())
+      .then(text => {
+        const result = safeJSONParse(text);
+        return result;
+      });
+      // console.log(responseData.data.utxos)
+      // if (!responseData.ok) {
+      //   throw new Error(
+      //     `Failed to fetch from URL: ${url}, status: ${responseData.status}`
+      //   );
+      // }
+      // const responseData = await response.json();
       if (responseData.data.utxos.length === 0) {
         throw new Error("The ft balance in the account is zero.");
       }
@@ -509,20 +518,24 @@ class API {
       : API.getBaseURL("mainnet");
     const url = base_url + `ft/info/contract/${contractTxid}`;
     try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(
-          `Failed to fetch from URL: ${url}, status: ${response.status}`
-        );
-      }
-      const data = await response.json();
+      const response = await fetch(url).then(response => response.text())
+      .then(text => {
+        const result = safeJSONParse(text);
+        return result;
+      });
+      // if (!response.ok) {
+      //   throw new Error(
+      //     `Failed to fetch from URL: ${url}, status: ${response.status}`
+      //   );
+      // }
+      const data = response.data;
       const ftInfo: FtInfo = {
-        codeScript: data.data.code_script,
-        tapeScript: data.data.tape_script,
-        totalSupply: data.data.amount,
-        decimal: data.data.decimal,
-        name: data.data.name,
-        symbol: data.data.symbol,
+        codeScript: data.code_script,
+        tapeScript: data.tape_script,
+        totalSupply: data.amount,
+        decimal: data.decimal,
+        name: data.name,
+        symbol: data.symbol,
       };
       return ftInfo;
     } catch (error: any) {
@@ -582,7 +595,11 @@ class API {
       : API.getBaseURL("mainnet");
     const url = base_url + `pool/poolinfo/poolid/${contractTxid}`;
     try {
-      const response = await (await fetch(url)).json();
+      const response = await fetch(url).then(response => response.text())
+      .then(text => {
+        const result = safeJSONParse(text);
+        return result;
+      });
       const data = response.data;
       const poolNftInfo: PoolNFTInfo = {
         ft_lp_amount: data.lp_balance,
@@ -651,7 +668,11 @@ class API {
       : API.getBaseURL("mainnet");
     const url = base_url + `pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
     try {
-      const response = await (await fetch(url)).json();
+      const response = await fetch(url).then(response => response.text())
+      .then(text => {
+        const result = safeJSONParse(text);
+        return result;
+      });
       const data = response.data;
       let ftlpBalance = BigInt(0);
       for (let i = 0; i < data.utxos.length; i++) {
@@ -685,7 +706,11 @@ class API {
       : API.getBaseURL("mainnet");
     const url = base_url + `pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
     try {
-      const response = await (await fetch(url)).json();
+      const response = await fetch(url).then(response => response.text())
+      .then(text => {
+        const result = safeJSONParse(text);
+        return result;
+      });
       let data = response.data.utxos[0];
       for (let i = 0; i < response.data.utxos.length; i++) {
         if (response.data.utxos[i].lp_balance >= amount) {
@@ -951,7 +976,7 @@ class API {
     )
       .reverse()
       .toString("hex");
-    const url = base_url + `utxo/scriptpubkeyhash/${script_hash}`;
+    const url = base_url + `nft/utxo/scriptpubkeyhash/${script_hash}`;
     try {
       const response = await fetch(url);
       if (!response.ok) {
@@ -1014,7 +1039,7 @@ class API {
     )
       .reverse()
       .toString("hex");
-    const url = base_url + `utxo/scriptpubkeyhash/${script_hash}`;
+    const url = base_url + `nft/utxo/scriptpubkeyhash/${script_hash}`;
     try {
       const response = await fetch(url);
       if (!response.ok) {
@@ -1321,14 +1346,12 @@ class API {
       const url =
         base_url + `ft/utxo/combinescript/${hash}/contract/${contractTxid}`;
 
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(
-          `Failed to fetch from URL: ${url}, status: ${response.status}`
-        );
-      }
-      const responseData = await response.json();
-      const utxoList = responseData.data.utxos;
+      const response = await fetch(url).then(response => response.text())
+      .then(text => {
+        const result = safeJSONParse(text);
+        return result;
+      });
+      const utxoList = response.data.utxos;
       if (utxoList.length === 0) {
         throw new Error("The ft balance in the account is zero.");
       }
@@ -1391,14 +1414,12 @@ class API {
       const url =
         base_url + `ft/utxo/combinescript/${hash}/contract/${contractTxid}`;
 
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(
-          `Failed to fetch from URL: ${url}, status: ${response.status}`
-        );
-      }
-      const responseData = await response.json();
-      const utxoList = responseData.data.utxos;
+      const response = await fetch(url).then(response => response.text())
+      .then(text => {
+        const result = safeJSONParse(text);
+        return result;
+      });
+      const utxoList = response.data.utxos;
       if (utxoList.length === 0) {
         throw new Error("The ft balance in the account is zero.");
       }

@@ -140,3 +140,26 @@ export function fetchTBCLockTime(utxo: tbc.Transaction.IUnspentOutput): number {
     const lockTime = lockTimeChunk.readUInt32LE();
     return lockTime;
 }
+
+export function safeJSONParse(text: string): any {
+    const replacedText = text.replace(
+        /"(ft_value|tbc_value|lp_balance|token_balance|tbc_balance|balance|value)":\s*(\d{14,})/g,
+        '"$1":"$2"'
+    );
+    return JSON.parse(replacedText, (key, value) => {
+        if ((key === 'ft_value' || key === 'tbc_value' || key === 'lp_balance' || 
+             key === 'token_balance' || key === 'tbc_balance' || key === 'balance' || key === 'value') && 
+            typeof value === 'string' && /^\d+$/.test(value)) {
+            return BigInt(value);
+        }
+        return value;
+    });
+}
+
+export function parseDecimalToBigInt(amount: number | bigint | string, decimal: number): bigint {
+    const amountStr = amount.toString();
+    const [integerPart, fractionalPart = ''] = amountStr.split('.');
+    const paddedFractional = fractionalPart.padEnd(decimal, '0').slice(0, decimal);
+    // console.log(amountStr, integerPart, fractionalPart, paddedFractional);
+    return BigInt(integerPart + paddedFractional);
+}

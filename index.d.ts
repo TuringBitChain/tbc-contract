@@ -273,7 +273,7 @@ declare module "tbc-contract" {
     contractTxid?: string;
     codeScript: string;
     tapeScript: string;
-    totalSupply: number;
+    totalSupply: bigint;
     decimal: number;
     name: string;
     symbol: string;
@@ -283,7 +283,7 @@ declare module "tbc-contract" {
     name: string;
     symbol: string;
     decimal: number;
-    totalSupply: number;
+    totalSupply: bigint;
     codeScript: string;
     tapeScript: string;
     contractTxid: string;
@@ -301,17 +301,17 @@ declare module "tbc-contract" {
     transfer(
       privateKey_from: PrivateKey,
       address_to: string,
-      ft_amount: number,
+      ft_amount: number | string,
       ftutxo_a: Transaction.IUnspentOutput[],
       utxo: Transaction.IUnspentOutput,
       preTX: Transaction[],
       prepreTxData: string[],
-      tbc_amount?: number
+      tbc_amount?: number | string
     ): string;
     transferWithAdditionalInfo(
       privateKey_from: PrivateKey,
       address_to: string,
-      amount: number,
+      amount: number | string,
       ftutxo_a: Transaction.IUnspentOutput[],
       utxo: Transaction.IUnspentOutput,
       preTX: Transaction[],
@@ -320,7 +320,7 @@ declare module "tbc-contract" {
     ): string;
     batchTransfer(
       privateKey_from: PrivateKey,
-      receiveAddressAmount: Map<string, number>,
+      receiveAddressAmount: Map<string, number | string>,
       ftutxo: Transaction.IUnspentOutput[],
       utxo: Transaction.IUnspentOutput,
       preTX: Transaction[],
@@ -563,8 +563,8 @@ declare module "tbc-contract" {
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
-      tbc_amount: number,
-      ft_a: number,
+      tbc_amount: number | string,
+      ft_a: number | string,
       lock_time?: number
     ): Promise<string>;
     initPoolNFTWithLockTime(
@@ -579,7 +579,7 @@ declare module "tbc-contract" {
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
-      amount_tbc: number,
+      amount_tbc: number | string,
       lock_time?: number
     ): Promise<string>;
     increaseLpWithLockTime(
@@ -593,7 +593,7 @@ declare module "tbc-contract" {
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
-      amount_lp: number,
+      amount_lp: number | string,
       lock_time?: number
     ): Promise<string>;
     consumeLpWithLockTime(
@@ -606,14 +606,14 @@ declare module "tbc-contract" {
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
-      amount_tbc: number,
+      amount_tbc: number | string,
       lpPlan?: 1 | 2
     ): Promise<string>;
     swaptoTBC_baseToken(
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
-      amount_token: number,
+      amount_token: number | string,
       lpPlan?: 1 | 2
     ): Promise<string>;
     swaptoTBC_baseToken_local(
@@ -622,7 +622,7 @@ declare module "tbc-contract" {
       ftutxo: Transaction.IUnspentOutput,
       ftPreTX: Transaction[],
       ftPrePreTxData: string[],
-      amount_token: number,
+      amount_token: number | string,
       lpPlan?: 1 | 2,
       utxo?: Transaction.IUnspentOutput
     ): Promise<string>;
@@ -658,7 +658,7 @@ declare module "tbc-contract" {
       times?: number
     ): Promise<Array<{ txraw: string }>>;
     updatePoolNFT(
-      increment: number,
+      increment: number | string,
       ft_a_decimal: number,
       option: 1 | 2 | 3
     ): poolNFTDifference;
@@ -772,7 +772,7 @@ declare module "tbc-contract" {
       address_from: string,
       address_to: string,
       ft: FT,
-      ft_amount: number,
+      ft_amount: number | string,
       utxo: Transaction.IUnspentOutput,
       ftutxos: Transaction.IUnspentOutput[],
       preTXs: Transaction[],
@@ -784,7 +784,7 @@ declare module "tbc-contract" {
       address_from: string,
       address_to: string,
       ft: any,
-      ft_amount: number,
+      ft_amount: number | string,
       utxo: Transaction.IUnspentOutput,
       ftutxos: Transaction.IUnspentOutput[],
       preTXs: Transaction[],
@@ -996,4 +996,9 @@ declare module "tbc-contract" {
   export function getLpCostAmount(poolCode: string): number;
   export function isLock(length: number): 0 | 1;
   export function fetchTBCLockTime(utxo: Transaction.IUnspentOutput): number;
+  export function safeJSONParse(text: any): any;
+  export function parseDecimalToBigInt(
+    amount: number | bigint | string,
+    decimal: number
+  ): bigint;
 }

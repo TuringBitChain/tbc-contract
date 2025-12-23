@@ -10,14 +10,14 @@ import {
 import {
   buildUTXO,
   buildFtPrePreTxData,
+  parseDecimalToBigInt
 } from "../util/util";
-const BN = tbc.crypto.BN;
 
 interface FtInfo {
     contractTxid?: string;
     codeScript: string;
     tapeScript: string;
-    totalSupply: number;
+    totalSupply: bigint;
     decimal: number;
     name: string;
     symbol: string;
@@ -30,7 +30,7 @@ class FT {
     name: string;
     symbol: string;
     decimal: number;
-    totalSupply: number;
+    totalSupply: bigint;
     codeScript: string;
     tapeScript: string;
     contractTxid: string
@@ -43,37 +43,39 @@ class FT {
         this.name = '';
         this.symbol = '';
         this.decimal = 0;
-        this.totalSupply = 0;
+        this.totalSupply = 0n;
         this.codeScript = '';
         this.tapeScript = '';
         this.contractTxid = '';
-        if (typeof txidOrParams === 'string') {
-            // Initialize from an existing contract transaction ID
-            this.contractTxid = txidOrParams;
-        } else if (txidOrParams) {
-            // Initialize with new token parameters
-            const { name, symbol, amount, decimal } = txidOrParams;
-            if (amount <= 0) {
-                throw new Error('Amount must be a natural number');
-            }
-            // Validate the decimal value
-            if (!Number.isInteger(decimal) || decimal <= 0) {
-                throw new Error('Decimal must be a positive integer');
-            } else if (decimal > 18) {
-                throw new Error('The maximum value for decimal cannot exceed 18');
-            }
-            // Calculate the maximum allowable amount based on the decimal
-            const maxAmount = Math.floor(21 * Math.pow(10, 14 - decimal));
-            if (amount > maxAmount) {
-                throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
-            }
-            this.name = name;
-            this.symbol = symbol;
-            this.decimal = decimal;
-            this.totalSupply = amount;
-        } else {
+
+        if (!txidOrParams) {
             throw new Error('Invalid constructor arguments');
         }
+
+        if (typeof txidOrParams === 'string') {
+            this.contractTxid = txidOrParams;
+            return;
+        }
+
+        const { name, symbol, amount, decimal } = txidOrParams;
+
+        if (amount <= 0) {
+            throw new Error('Amount must be a natural number');
+        }
+
+        if (!Number.isInteger(decimal) || decimal <= 0 || decimal > 18) {
+            throw new Error('Decimal must be a positive integer not exceeding 18');
+        }
+
+        const maxAmount = parseDecimalToBigInt(1, 18 - decimal);
+        if (BigInt(amount) > maxAmount) {
+            throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
+        }
+
+        this.name = name;
+        this.symbol = symbol;
+        this.decimal = decimal;
+        this.totalSupply = BigInt(amount);
     }
 
     /**
@@ -99,7 +101,7 @@ class FT {
         const name = this.name;
         const symbol = this.symbol;
         const decimal = this.decimal;
-        const totalSupply = BigInt(Math.floor(this.totalSupply * Math.pow(10, decimal)));
+        const totalSupply = parseDecimalToBigInt(this.totalSupply, decimal);
 
         // Prepare the amount in BN format and write it into a buffer
         const amountbn = new tbc.crypto.BN(totalSupply.toString());
@@ -186,18 +188,20 @@ class FT {
      * @param amount - The amount to transfer.
      * @returns The raw transaction hex string.
      */
-    transfer(privateKey_from: tbc.PrivateKey, address_to: string, ft_amount: number, ftutxo_a: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[], tbc_amount?: number): string {
+    transfer(privateKey_from: tbc.PrivateKey, address_to: string, ft_amount: number | string, ftutxo_a: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[], tbc_amount?: number | string): string {
         const privateKey = privateKey_from;
         const address_from = privateKey.toAddress().toString();
         const code = this.codeScript;
         const tape = this.tapeScript;
         const decimal = this.decimal;
         const tapeAmountSetIn: bigint[] = [];
-        if (ft_amount < 0) {
-            throw new Error('Invalid amount input');
+        if (
+          (typeof ft_amount === "string" && parseFloat(ft_amount) < 0) ||
+          (typeof ft_amount === "number" && ft_amount < 0)
+        ) {
+          throw new Error("Invalid amount input");
         }
-        const amountbn = BigInt(Math.floor(ft_amount * Math.pow(10, decimal)));
-
+        const amountbn = parseDecimalToBigInt(ft_amount, decimal);
         // Calculate the total available balance
         let tapeAmountSum = BigInt(0);
         for (let i = 0; i < ftutxo_a.length; i++) {
@@ -212,8 +216,8 @@ class FT {
         if (decimal > 18) {
             throw new Error('The maximum value for decimal cannot exceed 18');
         }
-        const maxAmount = Math.floor(21 * Math.pow(10, 14 - decimal));
-        if (ft_amount > maxAmount) {
+        const maxAmount = parseDecimalToBigInt(1, 18 - decimal);
+        if (Number(ft_amount) > Number(maxAmount)) {
             throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
         }
         // Build the amount and change hex strings for the tape
@@ -236,7 +240,7 @@ class FT {
             satoshis: 0
         }));
         if (tbc_amount) {
-            const amount_satoshis = Math.floor(tbc_amount * Math.pow(10, 6));
+            const amount_satoshis = Number(parseDecimalToBigInt(tbc_amount, 6));
             tx.to(address_to, amount_satoshis);
         }
         // If there's change, add outputs for the change
@@ -270,17 +274,20 @@ class FT {
         return txraw;
     }
 
-    transferWithAdditionalInfo(privateKey_from: tbc.PrivateKey, address_to: string, amount: number, ftutxo_a: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[], additionalInfo: Buffer): string {
+    transferWithAdditionalInfo(privateKey_from: tbc.PrivateKey, address_to: string, amount: number | string, ftutxo_a: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[], additionalInfo: Buffer): string {
         const privateKey = privateKey_from;
         const address_from = privateKey.toAddress().toString();
         const code = this.codeScript;
         const tape = this.tapeScript;
         const decimal = this.decimal;
         const tapeAmountSetIn: bigint[] = [];
-        if (amount < 0) {
+        if (
+          (typeof amount === "string" && parseFloat(amount) < 0) ||
+          (typeof amount === "number" && amount < 0)
+        ) {
             throw new Error('Invalid amount input');
         }
-        const amountbn = BigInt(Math.floor(amount * Math.pow(10, decimal)));
+        const amountbn = parseDecimalToBigInt(amount, decimal);
         let tapeAmountSum = BigInt(0);
         for (let i = 0; i < ftutxo_a.length; i++) {
             tapeAmountSetIn.push(ftutxo_a[i].ftBalance!);
@@ -294,8 +301,8 @@ class FT {
         if (decimal > 18) {
             throw new Error('The maximum value for decimal cannot exceed 18');
         }
-        const maxAmount = Math.floor(21 * Math.pow(10, 14 - decimal));
-        if (amount > maxAmount) {
+        const maxAmount = parseDecimalToBigInt(1, 18 - decimal);
+        if (Number(amount) > Number(maxAmount)) {
             throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
         }
         // Build the amount and change hex strings for the tape
@@ -359,14 +366,14 @@ class FT {
      * 批量转移 FT 从一个地址到多个地址，并返回未检查的交易原始数据。
      *
      * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
-     * @param {Map<string, number>} receiveAddressAmount - 接收地址和金额的映射。
+     * @param {Map<string, number | string>} receiveAddressAmount - 接收地址和金额的映射。
      * @param {tbc.Transaction.IUnspentOutput[]} ftutxo - 用于创建交易的 FT UTXO 列表。
      * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
      * @param {tbc.Transaction[]} preTX - 之前的交易列表。
      * @param {string[]} prepreTxData - 之前交易的数据列表。
      * @returns {Array<{ txraw: string }>} 返回包含未检查交易原始数据的数组。
      */
-    batchTransfer(privateKey_from: tbc.PrivateKey, receiveAddressAmount: Map<string, number>, ftutxo: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[]): Array<{ txraw: string }> {
+    batchTransfer(privateKey_from: tbc.PrivateKey, receiveAddressAmount: Map<string, number | string>, ftutxo: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[]): Array<{ txraw: string }> {
         const privateKey = privateKey_from;
         let txsraw: Array<{ txraw: string }> = [];
         let tx = new tbc.Transaction();
@@ -390,15 +397,14 @@ class FT {
                 prepreTxData = ["57" + getPrePreTxdata(preTX[0], tx.inputs[0].outputIndex)];
             }
             preTX = [tx];
-            ftutxoBalance -= BigInt(Math.floor(amount * Math.pow(10, this.decimal)));
-            // ftutxoBalance -= BigInt(new BN(amount).mul(new BN(Math.pow(10, this.decimal))).toString());
+            ftutxoBalance -= parseDecimalToBigInt(amount, this.decimal);
             i++;
             console.log("ftutxoBalance", ftutxoBalance);
         }
         return txsraw;
     }
 
-    _batchTransfer(privateKey_from: tbc.PrivateKey, address_to: string, amount: number, preTX: tbc.Transaction[], prepreTxData: string[], txsraw: Array<{ txraw: string }>, ftutxoBalance: bigint, ftutxo?: tbc.Transaction.IUnspentOutput[], utxo?: tbc.Transaction.IUnspentOutput): tbc.Transaction {
+    _batchTransfer(privateKey_from: tbc.PrivateKey, address_to: string, amount: number | string, preTX: tbc.Transaction[], prepreTxData: string[], txsraw: Array<{ txraw: string }>, ftutxoBalance: bigint, ftutxo?: tbc.Transaction.IUnspentOutput[], utxo?: tbc.Transaction.IUnspentOutput): tbc.Transaction {
         const privateKey = privateKey_from;
         const address_from = privateKey.toAddress().toString();
         const code = this.codeScript;
@@ -406,10 +412,13 @@ class FT {
         const decimal = this.decimal;
         const tapeAmountSetIn: bigint[] = [];
         let tapeAmountSum = ftutxoBalance;
-        if (amount < 0) {
-            throw new Error('Invalid amount input');
+        if (
+          (typeof amount === "string" && parseFloat(amount) < 0) ||
+          (typeof amount === "number" && amount < 0)
+        ) {
+            throw new Error("Invalid amount input");
         }
-        const amountbn = BigInt(Math.floor(amount * Math.pow(10, this.decimal)));
+        const amountbn = parseDecimalToBigInt(amount, decimal);
 
         if (ftutxo) {
             for (let i = 0; i < ftutxo.length; i++) {
