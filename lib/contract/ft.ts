@@ -12,7 +12,6 @@ import {
   buildFtPrePreTxData,
   parseDecimalToBigInt
 } from "../util/util";
-const BN = tbc.crypto.BN;
 
 interface FtInfo {
     contractTxid?: string;
@@ -48,33 +47,35 @@ class FT {
         this.codeScript = '';
         this.tapeScript = '';
         this.contractTxid = '';
-        if (typeof txidOrParams === 'string') {
-            // Initialize from an existing contract transaction ID
-            this.contractTxid = txidOrParams;
-        } else if (txidOrParams) {
-            // Initialize with new token parameters
-            const { name, symbol, amount, decimal } = txidOrParams;
-            if (amount <= 0) {
-                throw new Error('Amount must be a natural number');
-            }
-            // Validate the decimal value
-            if (!Number.isInteger(decimal) || decimal <= 0) {
-                throw new Error('Decimal must be a positive integer');
-            } else if (decimal > 18) {
-                throw new Error('The maximum value for decimal cannot exceed 18');
-            }
-            // Calculate the maximum allowable amount based on the decimal
-            const maxAmount = parseDecimalToBigInt(1, 19 - decimal);
-            if (BigInt(amount) > maxAmount) {
-                throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
-            }
-            this.name = name;
-            this.symbol = symbol;
-            this.decimal = decimal;
-            this.totalSupply = BigInt(amount);
-        } else {
+
+        if (!txidOrParams) {
             throw new Error('Invalid constructor arguments');
         }
+
+        if (typeof txidOrParams === 'string') {
+            this.contractTxid = txidOrParams;
+            return;
+        }
+
+        const { name, symbol, amount, decimal } = txidOrParams;
+
+        if (amount <= 0) {
+            throw new Error('Amount must be a natural number');
+        }
+
+        if (!Number.isInteger(decimal) || decimal <= 0 || decimal > 18) {
+            throw new Error('Decimal must be a positive integer not exceeding 18');
+        }
+
+        const maxAmount = parseDecimalToBigInt(1, 18 - decimal);
+        if (BigInt(amount) > maxAmount) {
+            throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
+        }
+
+        this.name = name;
+        this.symbol = symbol;
+        this.decimal = decimal;
+        this.totalSupply = BigInt(amount);
     }
 
     /**
@@ -215,8 +216,8 @@ class FT {
         if (decimal > 18) {
             throw new Error('The maximum value for decimal cannot exceed 18');
         }
-        const maxAmount = parseDecimalToBigInt(1, 19 - decimal);
-        if (BigInt(ft_amount) > maxAmount) {
+        const maxAmount = parseDecimalToBigInt(1, 18 - decimal);
+        if (Number(ft_amount) > Number(maxAmount)) {
             throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
         }
         // Build the amount and change hex strings for the tape
@@ -300,8 +301,8 @@ class FT {
         if (decimal > 18) {
             throw new Error('The maximum value for decimal cannot exceed 18');
         }
-        const maxAmount = parseDecimalToBigInt(1, 19 - decimal);
-        if (BigInt(amount) > maxAmount) {
+        const maxAmount = parseDecimalToBigInt(1, 18 - decimal);
+        if (Number(amount) > Number(maxAmount)) {
             throw new Error(`When decimal is ${decimal}, the maximum amount cannot exceed ${maxAmount}`);
         }
         // Build the amount and change hex strings for the tape

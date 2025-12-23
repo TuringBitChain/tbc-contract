@@ -1,4 +1,5 @@
 import * as tbc from "tbc-lib-js";
+import { parseDecimalToBigInt } from "../util/util";
 const API = require("../api/api");
 
 class piggyBank {
@@ -12,7 +13,7 @@ class piggyBank {
     }
 
     static freezeTBC(address: string, tbcNumber: number, lockTime: number, utxos: tbc.Transaction.IUnspentOutput[]) {
-        const tbcAmount = Math.ceil(tbcNumber * Math.pow(10, 6));
+        const tbcAmount = Number(parseDecimalToBigInt(tbcNumber, 6));
         const tx = new tbc.Transaction();
         tx.from(utxos);
         const txSize = tx.getEstimateSize();
@@ -49,7 +50,7 @@ class piggyBank {
 
     static _freezeTBC(privateKey: tbc.PrivateKey, tbcNumber: number, lockTime: number, utxos:tbc.Transaction.IUnspentOutput[]) {
         const address = privateKey.toAddress().toString();
-        const tbcAmount = Math.ceil(tbcNumber * Math.pow(10, 6));
+        const tbcAmount = Number(parseDecimalToBigInt(tbcNumber, 6));
         const tx = new tbc.Transaction();
         tx.from(utxos);
         const txSize = tx.getEstimateSize();

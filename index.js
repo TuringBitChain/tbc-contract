@@ -18,6 +18,7 @@ contract.poolNFT2 = require("./lib/contract/poolNFT2.0.js");
 contract.API = require("./lib/api/api.js");
 contract.NFT = require("./lib/contract/nft.js");
 contract.MultiSig = require("./lib/contract/multiSig.js");
+contract.piggyBank = require("./lib/contract/piggyBank.js");
 
 contract.buildUTXO = require("./lib/util/util").buildUTXO;
 contract.buildFtPrePreTxData = require("./lib/util/util").buildFtPrePreTxData;
