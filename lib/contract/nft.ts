@@ -6,6 +6,7 @@ import {
   getLengthHex,
   getOutputsData,
 } from "../util/nftunlock";
+import { parseDecimalToBigInt } from "../util/util";
 interface NFTInfo {
   collectionId: string;
   collectionIndex: number;
@@ -418,7 +419,7 @@ class NFT {
     tbc_amount: number
   ): string {
     const code = NFT.buildCodeScript(this.collection_id, this.collection_index);
-    const amount_satoshis = Math.floor(tbc_amount * Math.pow(10, 6));
+    const amount_satoshis = Number(parseDecimalToBigInt(tbc_amount, 6));
     const tx = new tbc.Transaction()
       .addInputFromPrevTx(pre_tx, 0)
       .addInputFromPrevTx(pre_tx, 1)
