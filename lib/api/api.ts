@@ -1,7 +1,12 @@
 import * as tbc from "tbc-lib-js";
 import { getPrePreTxdata } from "../util/ftunlock";
 import { findMinFiveSum } from "../util/utxoSelect";
-import { fetchInBatches, fetchTBCLockTime, safeJSONParse } from "../util/util";
+import {
+  fetchInBatches,
+  fetchTBCLockTime,
+  safeJSONParse,
+  parseDecimalToBigInt,
+} from "../util/util";
 
 interface NFTInfo {
   collectionId: string;
@@ -96,6 +101,39 @@ class API {
     }
   }
 
+  static async fetchUTXOList(
+    address: string,
+    network?: "testnet" | "mainnet" | string
+  ): Promise<tbc.Transaction.IUnspentOutput[]> {
+    if (!tbc.Address.isValid(address)) {
+      throw new Error("Invalid address input");
+    }
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
+    const url = base_url + `utxo/address/${address}`;
+    const scriptPubKey = tbc.Script.buildPublicKeyHashOut(address)
+      .toBuffer()
+      .toString("hex");
+    try {
+      const response = await fetch(url)
+        .then((response) => response.text())
+        .then((text) => {
+          const result = safeJSONParse(text);
+          return result;
+        });
+      const utxoList = response.data.utxos;
+      return utxoList.map((utxo: any) => ({
+        txId: utxo.txid,
+        outputIndex: utxo.index,
+        script: scriptPubKey,
+        satoshis: utxo.value,
+      }));
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  }
+
   /**
    * Fetches a UTXO that satisfies the required amount.
    *
@@ -110,57 +148,32 @@ class API {
     amount: number,
     network?: "testnet" | "mainnet" | string
   ): Promise<tbc.Transaction.IUnspentOutput> {
-    let base_url = network
-      ? API.getBaseURL(network)
-      : API.getBaseURL("mainnet");
-    const address = privateKey.toAddress().toString();
-    const url = base_url + `utxo/address/${address}`;
-    const scriptPubKey = tbc.Script.buildPublicKeyHashOut(address)
-      .toBuffer()
-      .toString("hex");
-    const amount_bn = Math.floor(amount * Math.pow(10, 6));
+    const address = tbc.Address.fromPrivateKey(privateKey).toString();
+    const amount_bn = Number(parseDecimalToBigInt(amount, 6));
+    
     try {
-      const response = await (await fetch(url)).json();
-      const utxoList = response.data.utxos;
+      const utxoList = await API.fetchUTXOList(address, network);
+      
       if (utxoList.length === 0) {
-        throw new Error("The tbc balance in the account is zero.");
+      throw new Error("The tbc balance in the account is zero.");
       }
-      if (utxoList.length === 1 && utxoList[0].value > amount_bn) {
-        const utxo: tbc.Transaction.IUnspentOutput = {
-          txId: utxoList[0].txid,
-          outputIndex: utxoList[0].index,
-          script: scriptPubKey,
-          satoshis: utxoList[0].value,
-        };
-        return utxo;
-      } else if (utxoList.length === 1 && utxoList[0].value <= amount_bn) {
+      
+      const suitableUtxo = utxoList.find(utxo => utxo.satoshis > amount_bn);
+      
+      if (suitableUtxo) {
+        return suitableUtxo;
+      }
+      
+      const totalBalance = await this.getTBCbalance(address, network);
+      if (totalBalance <= amount_bn) {
         throw new Error("Insufficient tbc balance");
       }
-      let data = utxoList[0];
-      for (let i = 0; i < utxoList.length; i++) {
-        if (utxoList[i].value > amount_bn) {
-          data = utxoList[i];
-          break;
-        }
-      }
-      if (data.value < amount_bn) {
-        const totalBalance = await this.getTBCbalance(address, network);
-        if (totalBalance <= amount_bn) {
-          throw new Error("Insufficient tbc balance");
-        } else {
-          console.log("Merge UTXO");
-          await API.mergeUTXO(privateKey, network);
-          await new Promise((resolve) => setTimeout(resolve, 3000));
-          return await API.fetchUTXO(privateKey, amount, network);
-        }
-      }
-      const utxo: tbc.Transaction.IUnspentOutput = {
-        txId: data.txid,
-        outputIndex: data.index,
-        script: scriptPubKey,
-        satoshis: data.value,
-      };
-      return utxo;
+      
+      console.log("Merge UTXO");
+      await API.mergeUTXO(privateKey, network);
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      
+      return await API.fetchUTXO(privateKey, amount, network);
     } catch (error: any) {
       throw new Error(error.message);
     }
@@ -178,37 +191,18 @@ class API {
     privateKey: tbc.PrivateKey,
     network?: "testnet" | "mainnet" | string
   ): Promise<boolean> {
-    let base_url = network
-      ? API.getBaseURL(network)
-      : API.getBaseURL("mainnet");
     const address = tbc.Address.fromPrivateKey(privateKey).toString();
-    const url = base_url + `utxo/address/${address}`;
-    const scriptPubKey = tbc.Script.buildPublicKeyHashOut(address)
-      .toBuffer()
-      .toString("hex");
     try {
-      const response = await (await fetch(url)).json();
-      const utxoList = response.data.utxos;
-      let sumAmount = 0;
-      let utxo: tbc.Transaction.IUnspentOutput[] = [];
+      const utxoList = await API.fetchUTXOList(address, network);
       if (utxoList.length === 0) {
         throw new Error("No UTXO available");
       }
       if (utxoList.length === 1) {
         console.log("Merge Success!");
         return true;
-      } else {
-        for (let i = 0; i < utxoList.length; i++) {
-          sumAmount += utxoList[i].value;
-          utxo.push({
-            txId: utxoList[i].txid,
-            outputIndex: utxoList[i].index,
-            script: scriptPubKey,
-            satoshis: utxoList[i].value,
-          });
-        }
       }
-      const tx = new tbc.Transaction().from(utxo);
+      const sumAmount = utxoList.reduce((sum, utxo) => sum + utxo.satoshis, 0);
+      const tx = new tbc.Transaction().from(utxoList);
       const txSize = tx.getEstimateSize() + 100;
       const fee = txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80);
       tx.to(address, sumAmount - fee)
@@ -260,11 +254,12 @@ class API {
       base_url +
       `ft/tokenbalance/combinescript/${hash}/contract/${contractTxid}`;
     try {
-      const response = await fetch(url).then(response => response.text())
-      .then(text => {
-        const result = safeJSONParse(text);
-        return result;
-      });
+      const response = await fetch(url)
+        .then((response) => response.text())
+        .then((text) => {
+          const result = safeJSONParse(text);
+          return result;
+        });
       const ftBalance = response.data.balance;
       return ftBalance;
     } catch (error: any) {
@@ -293,47 +288,33 @@ class API {
       : API.getBaseURL("mainnet");
     let hash = "";
     if (tbc.Address.isValid(addressOrHash)) {
-      // If the recipient is an address
       const publicKeyHash =
-        tbc.Address.fromString(addressOrHash).hashBuffer.toString("hex");
+      tbc.Address.fromString(addressOrHash).hashBuffer.toString("hex");
       hash = publicKeyHash + "00";
     } else {
-      // If the recipient is a hash
       if (addressOrHash.length !== 40) {
-        throw new Error("Invalid address or hash");
+      throw new Error("Invalid address or hash");
       }
       hash = addressOrHash + "01";
     }
     const url =
       base_url + `ft/utxo/combinescript/${hash}/contract/${contractTxid}`;
     try {
-      const responseData = await fetch(url).then(response => response.text())
-      .then(text => {
-        const result = safeJSONParse(text);
-        return result;
-      });
-      // console.log(responseData.data.utxos)
-      // if (!responseData.ok) {
-      //   throw new Error(
-      //     `Failed to fetch from URL: ${url}, status: ${responseData.status}`
-      //   );
-      // }
-      // const responseData = await response.json();
-      if (responseData.data.utxos.length === 0) {
+      const response = await fetch(url)
+      .then((response) => response.text())
+      .then((text) => safeJSONParse(text));
+      const utxoList = response.data.utxos;
+      if (utxoList.length === 0) {
         throw new Error("The ft balance in the account is zero.");
       }
-      let ftutxos: tbc.Transaction.IUnspentOutput[] = [];
-      for (let i = 0; i < responseData.data.utxos.length; i++) {
-        const data = responseData.data.utxos[i];
-        ftutxos.push({
-          txId: data.txid,
-          outputIndex: data.index,
-          script: codeScript,
-          satoshis: data.tbc_value,
-          ftBalance: data.ft_value,
-        });
-      }
-      return ftutxos;
+      
+      return utxoList.map((utxo: any) => ({
+      txId: utxo.txid,
+      outputIndex: utxo.index,
+      script: codeScript,
+      satoshis: utxo.tbc_value,
+      ftBalance: utxo.ft_value,
+      }));
     } catch (error: any) {
       throw new Error(error.message);
     }
@@ -518,16 +499,12 @@ class API {
       : API.getBaseURL("mainnet");
     const url = base_url + `ft/info/contract/${contractTxid}`;
     try {
-      const response = await fetch(url).then(response => response.text())
-      .then(text => {
-        const result = safeJSONParse(text);
-        return result;
-      });
-      // if (!response.ok) {
-      //   throw new Error(
-      //     `Failed to fetch from URL: ${url}, status: ${response.status}`
-      //   );
-      // }
+      const response = await fetch(url)
+        .then((response) => response.text())
+        .then((text) => {
+          const result = safeJSONParse(text);
+          return result;
+        });
       const data = response.data;
       const ftInfo: FtInfo = {
         codeScript: data.code_script,
@@ -595,11 +572,12 @@ class API {
       : API.getBaseURL("mainnet");
     const url = base_url + `pool/poolinfo/poolid/${contractTxid}`;
     try {
-      const response = await fetch(url).then(response => response.text())
-      .then(text => {
-        const result = safeJSONParse(text);
-        return result;
-      });
+      const response = await fetch(url)
+        .then((response) => response.text())
+        .then((text) => {
+          const result = safeJSONParse(text);
+          return result;
+        });
       const data = response.data;
       const poolNftInfo: PoolNFTInfo = {
         ft_lp_amount: data.lp_balance,
@@ -668,11 +646,12 @@ class API {
       : API.getBaseURL("mainnet");
     const url = base_url + `pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
     try {
-      const response = await fetch(url).then(response => response.text())
-      .then(text => {
-        const result = safeJSONParse(text);
-        return result;
-      });
+      const response = await fetch(url)
+        .then((response) => response.text())
+        .then((text) => {
+          const result = safeJSONParse(text);
+          return result;
+        });
       const data = response.data;
       let ftlpBalance = BigInt(0);
       for (let i = 0; i < data.utxos.length; i++) {
@@ -706,11 +685,12 @@ class API {
       : API.getBaseURL("mainnet");
     const url = base_url + `pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
     try {
-      const response = await fetch(url).then(response => response.text())
-      .then(text => {
-        const result = safeJSONParse(text);
-        return result;
-      });
+      const response = await fetch(url)
+        .then((response) => response.text())
+        .then((text) => {
+          const result = safeJSONParse(text);
+          return result;
+        });
       let data = response.data.utxos[0];
       for (let i = 0; i < response.data.utxos.length; i++) {
         if (response.data.utxos[i].lp_balance >= amount) {
@@ -933,7 +913,7 @@ class API {
         utxos = await this.fetchUTXOs(address);
       }
 
-      const amount_satoshis = amount_tbc * Math.pow(10, 6);
+      const amount_satoshis = Number(parseDecimalToBigInt(amount_tbc, 6));
 
       let totalAmount = 0;
 
@@ -1167,7 +1147,7 @@ class API {
     network?: "testnet" | "mainnet" | string
   ): Promise<tbc.Transaction.IUnspentOutput> {
     const multiScript = tbc.Script.fromASM(script_asm).toHex();
-    const amount_satoshis = Math.floor(tbc_amount * Math.pow(10, 6));
+    const amount_satoshis = Number(parseDecimalToBigInt(tbc_amount, 6));
     const script_hash = Buffer.from(
       tbc.crypto.Hash.sha256(Buffer.from(multiScript, "hex")).toString("hex"),
       "hex"
@@ -1294,7 +1274,7 @@ class API {
       } else {
         umtxos = await this.fetchUMTXOs(script_asm);
       }
-      const amount_satoshis = amount_tbc * Math.pow(10, 6);
+      const amount_satoshis = Number(parseDecimalToBigInt(amount_tbc, 6));
 
       let totalSatoshis = 0;
 
@@ -1346,11 +1326,12 @@ class API {
       const url =
         base_url + `ft/utxo/combinescript/${hash}/contract/${contractTxid}`;
 
-      const response = await fetch(url).then(response => response.text())
-      .then(text => {
-        const result = safeJSONParse(text);
-        return result;
-      });
+      const response = await fetch(url)
+        .then((response) => response.text())
+        .then((text) => {
+          const result = safeJSONParse(text);
+          return result;
+        });
       const utxoList = response.data.utxos;
       if (utxoList.length === 0) {
         throw new Error("The ft balance in the account is zero.");
@@ -1414,11 +1395,12 @@ class API {
       const url =
         base_url + `ft/utxo/combinescript/${hash}/contract/${contractTxid}`;
 
-      const response = await fetch(url).then(response => response.text())
-      .then(text => {
-        const result = safeJSONParse(text);
-        return result;
-      });
+      const response = await fetch(url)
+        .then((response) => response.text())
+        .then((text) => {
+          const result = safeJSONParse(text);
+          return result;
+        });
       const utxoList = response.data.utxos;
       if (utxoList.length === 0) {
         throw new Error("The ft balance in the account is zero.");
