@@ -5,6 +5,10 @@ declare module "tbc-contract" {
       address: string,
       network?: "testnet" | "mainnet" | string
     ): Promise<number>;
+    static fetchUTXOList(
+      address: string,
+      network?: "testnet" | "mainnet" | string
+    ): Promise<Transaction.IUnspentOutput[]>;
     static fetchUTXO(
       privateKey: PrivateKey,
       amount: number,

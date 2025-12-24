@@ -127,7 +127,7 @@ class API {
         txId: utxo.txid,
         outputIndex: utxo.index,
         script: scriptPubKey,
-        satoshis: utxo.value,
+        satoshis: Number(utxo.value),
       }));
     } catch (error: any) {
       throw new Error(error.message);
@@ -309,11 +309,11 @@ class API {
       }
       
       return utxoList.map((utxo: any) => ({
-      txId: utxo.txid,
-      outputIndex: utxo.index,
-      script: codeScript,
-      satoshis: utxo.tbc_value,
-      ftBalance: utxo.ft_value,
+        txId: utxo.txid,
+        outputIndex: utxo.index,
+        script: codeScript,
+        satoshis: Number(utxo.tbc_value),
+        ftBalance: utxo.ft_value,
       }));
     } catch (error: any) {
       throw new Error(error.message);
@@ -592,7 +592,7 @@ class API {
         pool_version: data.version,
         currentContractTxid: data.txid,
         currentContractVout: data.vout,
-        currentContractSatoshi: data.value,
+        currentContractSatoshi: Number(data.value),
       };
       return poolNftInfo;
     } catch (error: any) {
@@ -713,7 +713,7 @@ class API {
         txId: data.txid,
         outputIndex: data.index,
         script: ftlpCode,
-        satoshis: data.tbc_balance,
+        satoshis: Number(data.tbc_balance),
         ftBalance: data.lp_balance,
       };
       return ftlp;
@@ -851,6 +851,7 @@ class API {
   }
 
   /**
+   * @deprecated Use fetchUTXOList instead.
    * Fetches the UTXOs for a given address.
    *
    * @param {string} address - The address to fetch UTXOs for.
@@ -908,9 +909,9 @@ class API {
     try {
       let utxos: tbc.Transaction.IUnspentOutput[] = [];
       if (network) {
-        utxos = await this.fetchUTXOs(address, network);
+        utxos = await this.fetchUTXOList(address, network);
       } else {
-        utxos = await this.fetchUTXOs(address);
+        utxos = await this.fetchUTXOList(address);
       }
 
       const amount_satoshis = Number(parseDecimalToBigInt(amount_tbc, 6));
@@ -1349,7 +1350,7 @@ class API {
           txId: sortedData[i].txid,
           outputIndex: sortedData[i].index,
           script: codeScript,
-          satoshis: sortedData[i].tbc_value,
+          satoshis: Number(sortedData[i].tbc_value),
           ftBalance: sortedData[i].ft_value,
         });
       }
@@ -1418,7 +1419,7 @@ class API {
           txId: sortedData[i].txid,
           outputIndex: sortedData[i].index,
           script: codeScript,
-          satoshis: sortedData[i].tbc_value,
+          satoshis: Number(sortedData[i].tbc_value),
           ftBalance: sortedData[i].ft_value,
         });
       }

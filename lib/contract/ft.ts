@@ -363,15 +363,15 @@ class FT {
     }
 
     /**
-     * 批量转移 FT 从一个地址到多个地址，并返回未检查的交易原始数据。
+     * Batch transfers FT from one address to multiple addresses and returns unchecked transaction raw data.
      *
-     * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
-     * @param {Map<string, number | string>} receiveAddressAmount - 接收地址和金额的映射。
-     * @param {tbc.Transaction.IUnspentOutput[]} ftutxo - 用于创建交易的 FT UTXO 列表。
-     * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
-     * @param {tbc.Transaction[]} preTX - 之前的交易列表。
-     * @param {string[]} prepreTxData - 之前交易的数据列表。
-     * @returns {Array<{ txraw: string }>} 返回包含未检查交易原始数据的数组。
+     * @param {tbc.PrivateKey} privateKey_from - The private key used to sign the transaction.
+     * @param {Map<string, number | string>} receiveAddressAmount - Map of receiving addresses and amounts.
+     * @param {tbc.Transaction.IUnspentOutput[]} ftutxo - List of FT UTXOs used to create the transaction.
+     * @param {tbc.Transaction.IUnspentOutput} utxo - Unspent output used to create the transaction.
+     * @param {tbc.Transaction[]} preTX - List of previous transactions.
+     * @param {string[]} prepreTxData - List of previous transaction data.
+     * @returns {Array<{ txraw: string }>} Returns an array containing unchecked transaction raw data.
      */
     batchTransfer(privateKey_from: tbc.PrivateKey, receiveAddressAmount: Map<string, number | string>, ftutxo: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[]): Array<{ txraw: string }> {
         const privateKey = privateKey_from;
@@ -486,13 +486,13 @@ class FT {
     /**
      * Merges FT UTXOs to one.
      *
-     * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
-     * @param {tbc.Transaction.IUnspentOutput[]} ftutxo - 要合并的 FT UTXO 列表。
-     * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
-     * @param {tbc.Transaction[]} preTX - 之前的交易列表。
-     * @param {string[]} prepreTxData - 之前交易的数据列表。
-     * @param {tbc.Transaction[]} localTX - 本地交易列表。
-     * @returns {Array<{ txraw: string }>} 返回一个 txraw 数组。
+     * @param {tbc.PrivateKey} privateKey_from - The private key used to sign the transaction.
+     * @param {tbc.Transaction.IUnspentOutput[]} ftutxo - List of FT UTXOs to be merged.
+     * @param {tbc.Transaction.IUnspentOutput} utxo - Unspent output used to create the transaction.
+     * @param {tbc.Transaction[]} preTX - List of previous transactions.
+     * @param {string[]} prepreTxData - List of previous transaction data.
+     * @param {tbc.Transaction[]} localTX - List of local transactions.
+     * @returns {Array<{ txraw: string }>} Returns an array of txraw.
      */
     mergeFT(privateKey_from: tbc.PrivateKey, ftutxo: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[], localTX: tbc.Transaction[]): Array<{ txraw: string }> {
         const privateKey = privateKey_from;
@@ -540,16 +540,16 @@ class FT {
     }
 
     /**
-     * @deprecated 请使用 mergeFT代替。
+     * @deprecated Please use mergeFT instead.
      * Merges FT UTXOs.
      *
-     * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
-     * @param {tbc.Transaction.IUnspentOutput[]} ftutxo - 要合并的 FT UTXO 列表。
-     * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
-     * @param {tbc.Transaction[]} preTX - 之前的交易列表。
-     * @param {string[]} prepreTxData - 之前交易的数据列表。
-     * @param {number} times - merge执行次数。
-     * @returns {Array<{ txraw: string }>} 返回一个 txraw 数组。
+     * @param {tbc.PrivateKey} privateKey_from - The private key used to sign the transaction.
+     * @param {tbc.Transaction.IUnspentOutput[]} ftutxo - List of FT UTXOs to be merged.
+     * @param {tbc.Transaction.IUnspentOutput} utxo - Unspent output used to create the transaction.
+     * @param {tbc.Transaction[]} preTX - List of previous transactions.
+     * @param {string[]} prepreTxData - List of previous transaction data.
+     * @param {number} times - Number of times to execute merge.
+     * @returns {Array<{ txraw: string }>} Returns an array of txraw.
      */
     mergeFT_(privateKey_from: tbc.PrivateKey, ftutxo: tbc.Transaction.IUnspentOutput[], utxo: tbc.Transaction.IUnspentOutput, preTX: tbc.Transaction[], prepreTxData: string[], times?: number): Array<{ txraw: string }> {
         const privateKey = privateKey_from;
@@ -578,14 +578,14 @@ class FT {
     /**
      * _mergeFT
      *
-     * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
-     * @param {tbc.Transaction.IUnspentOutput[]} ftutxo - 要合并的 FT UTXO 列表。
-     * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
-     * @param {tbc.Transaction[]} preTX - 之前的交易列表。
-     * @param {string[]} prepreTxData - 之前交易的数据列表。
-     * @param {Array<{ txraw: string }>} txsraw - 之前交易的 txraw 列表。
-     * @param {tbc.Transaction.IUnspentOutput} utxo - 首次merge的utxo。
-     * @returns {tbc.Transaction} 返回一个交易。
+     * @param {tbc.PrivateKey} privateKey_from - The private key used to sign the transaction.
+     * @param {tbc.Transaction.IUnspentOutput[]} ftutxo - List of FT UTXOs to be merged.
+     * @param {tbc.Transaction.IUnspentOutput} utxo - Unspent output used to create the transaction.
+     * @param {tbc.Transaction[]} preTX - List of previous transactions.
+     * @param {string[]} prepreTxData - List of previous transaction data.
+     * @param {Array<{ txraw: string }>} txsraw - List of previous transaction txraw.
+     * @param {tbc.Transaction.IUnspentOutput} utxo - UTXO for the first merge.
+     * @returns {tbc.Transaction} Returns a transaction.
      */
     _mergeFT(privateKey_from: tbc.PrivateKey, ftutxo: tbc.Transaction.IUnspentOutput[], preTX: tbc.Transaction[], prepreTxData: string[], txsraw: Array<{ txraw: string }>, utxo?: tbc.Transaction.IUnspentOutput): tbc.Transaction {
         const privateKey = privateKey_from;
