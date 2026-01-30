@@ -584,6 +584,19 @@ class NFT {
     return tx.uncheckedSerialize();
   }
 
+  static buildUnlockScript(privateKey_from: tbc.PrivateKey, currentTX: tbc.Transaction, preTX: tbc.Transaction, prepreTxData: tbc.Transaction, currentUnlockIndex: number): tbc.Script {
+    const privateKey = privateKey_from;
+    const currenttxdata = getCurrentTxdata(currentTX);
+    const prepretxdata = getPrePreTxdata(prepreTxData);
+    const pretxdata = getPreTxdata(preTX);
+    const signature = currentTX.getSignature(currentUnlockIndex, privateKey);
+    const sig = (signature.length / 2).toString(16).padStart(2, '0') + signature;
+    const publicKey = (privateKey.toPublicKey().toString().length / 2).toString(16).padStart(2, '0') + privateKey.toPublicKey().toString();
+    return new tbc.Script(
+      sig + publicKey + currenttxdata + prepretxdata + pretxdata
+    );
+  }
+
   static buildCodeScript(tx_hash: string, outputIndex: number): tbc.Script {
     const tx_id = Buffer.from(tx_hash, "hex").reverse().toString("hex");
     const writer = new tbc.encoding.BufferWriter();

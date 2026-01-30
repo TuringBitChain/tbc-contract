@@ -4,7 +4,12 @@ import {
   getCurrentTxOutputsData,
   getLengthHex,
 } from "../util/orderbookunlock";
-import { buildUTXO, fetchInBatches } from "../util/util";
+import {
+  buildUTXO,
+  fetchInBatches,
+  _isValidSHA256Hash,
+  _isValidHexString,
+} from "../util/util";
 const API = require("../api/api");
 const FT = require("./ft");
 const partial_sha256 = require("tbc-lib-js/lib/util/partial-sha256");
@@ -42,7 +47,7 @@ class OrderBook {
     feeRate: bigint,
     ftID: string,
     ftPartialHash: string,
-    utxos: tbc.Transaction.IUnspentOutput[]
+    utxos: tbc.Transaction.IUnspentOutput[],
   ): string {
     if (!tbc.Address.isValid(holdAddress))
       throw new Error("Invalid HoldAddress");
@@ -52,7 +57,7 @@ class OrderBook {
       throw new Error("FeeRate must be non-negative bigint");
     if (!_isValidSHA256Hash(ftID) || !_isValidSHA256Hash(ftPartialHash))
       throw new Error(
-        "FTID and FTPartialHash must be valid SHA256 hash strings"
+        "FTID and FTPartialHash must be valid SHA256 hash strings",
       );
 
     this.type = "sell";
@@ -69,7 +74,7 @@ class OrderBook {
       new tbc.Transaction.Output({
         script: this.getSellOrderCode(),
         satoshis: Number(saleVolume),
-      })
+      }),
     );
     tx.change(holdAddress);
     const txSize = tx.getEstimateSize();
@@ -80,7 +85,7 @@ class OrderBook {
 
   buildCancelSellOrderTX(
     sellutxo: tbc.Transaction.IUnspentOutput,
-    utxos: tbc.Transaction.IUnspentOutput[]
+    utxos: tbc.Transaction.IUnspentOutput[],
   ): string {
     const sellData = OrderBook.getOrderData(sellutxo.script);
     const tx = new tbc.Transaction();
@@ -97,7 +102,7 @@ class OrderBook {
     sellOrderTxRaw: string,
     sigs: string[],
     publicKey: string,
-    type: "make" | "cancel"
+    type: "make" | "cancel",
   ): string {
     if (!_isValidHexString(sellOrderTxRaw))
       throw new Error("Invalid SellOrderTxRaw hex string");
@@ -127,7 +132,7 @@ class OrderBook {
     ftID: string,
     utxos: tbc.Transaction.IUnspentOutput[],
     ftutxos: tbc.Transaction.IUnspentOutput[],
-    preTXs: tbc.Transaction[]
+    preTXs: tbc.Transaction[],
   ): string {
     if (!tbc.Address.isValid(holdAddress))
       throw new Error("Invalid HoldAddress");
@@ -145,7 +150,7 @@ class OrderBook {
     this.fee_rate = feeRate;
     this.ft_a_contract_id = ftID;
     this.ft_a_contract_partialhash = partial_sha256.calculate_partial_hash(
-      Buffer.from(ftutxos[0].script, "hex").subarray(0, 1856)
+      Buffer.from(ftutxos[0].script, "hex").subarray(0, 1856),
     );
 
     const tx = new tbc.Transaction();
@@ -158,7 +163,7 @@ class OrderBook {
       new tbc.Transaction.Output({
         script: buyOrder,
         satoshis: this.buy_code_dust,
-      })
+      }),
     );
 
     //FT Code Buy Output
@@ -171,12 +176,12 @@ class OrderBook {
     }
     let { amountHex, changeHex } = FT.buildTapeAmount(
       ftAmount,
-      tapeAmountSetIn
+      tapeAmountSetIn,
     );
     const ftCode = ftutxos[0].script;
     const ftTape = preTXs[0].outputs[ftutxos[0].outputIndex + 1].script.toHex();
     const buyOrderHash160 = tbc.crypto.Hash.sha256ripemd160(
-      tbc.crypto.Hash.sha256(buyOrder.toBuffer())
+      tbc.crypto.Hash.sha256(buyOrder.toBuffer()),
     ).toString("hex");
     const ftCodeBuy = FT.buildFTtransferCode(ftCode, buyOrderHash160);
     const ftTapeBuy = FT.buildFTtransferTape(ftTape, amountHex);
@@ -185,13 +190,13 @@ class OrderBook {
       new tbc.Transaction.Output({
         script: ftCodeBuy,
         satoshis: ftCodeDust,
-      })
+      }),
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftTapeBuy,
         satoshis: 0,
-      })
+      }),
     );
 
     if (ftAmount < tapeAmountSum) {
@@ -201,13 +206,13 @@ class OrderBook {
         new tbc.Transaction.Output({
           script: ftCodeChange,
           satoshis: ftCodeDust,
-        })
+        }),
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: ftTapeChange,
           satoshis: 0,
-        })
+        }),
       );
     }
 
@@ -222,7 +227,7 @@ class OrderBook {
     buyutxo: tbc.Transaction.IUnspentOutput,
     ftutxo: tbc.Transaction.IUnspentOutput,
     ftPreTX: tbc.Transaction,
-    utxos: tbc.Transaction.IUnspentOutput[]
+    utxos: tbc.Transaction.IUnspentOutput[],
   ): string {
     const buyData = OrderBook.getOrderData(buyutxo.script);
     const tx = new tbc.Transaction();
@@ -234,7 +239,7 @@ class OrderBook {
     const { amountHex, changeHex } = FT.buildTapeAmount(
       tapeAmountSum,
       tapeAmountSetIn,
-      1
+      1,
     );
     if (
       changeHex !=
@@ -247,16 +252,16 @@ class OrderBook {
       new tbc.Transaction.Output({
         script: FT.buildFTtransferCode(ftutxo.script, buyData.holdAddress),
         satoshis: ftutxo.satoshis,
-      })
+      }),
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: FT.buildFTtransferTape(
           ftPreTX.outputs[ftutxo.outputIndex + 1].script.toHex(),
-          amountHex
+          amountHex,
         ),
         satoshis: 0,
-      })
+      }),
     );
     tx.change(buyData.holdAddress);
     const txSize = tx.getEstimateSize() + 2000;
@@ -270,7 +275,7 @@ class OrderBook {
     sigs: string[],
     publicKey: string,
     preTXs: tbc.Transaction[],
-    prepreTxData: string[]
+    prepreTxData: string[],
   ): string {
     if (!_isValidHexString(buyOrderTxRaw))
       throw new Error("Invalid BuyOrderTxRaw hex string");
@@ -295,10 +300,10 @@ class OrderBook {
             preTXs[i],
             prepreTxData[i],
             i,
-            tx.inputs[i].outputIndex
+            tx.inputs[i].outputIndex,
           );
           return unlockingScript;
-        }
+        },
       );
     }
 
@@ -307,7 +312,7 @@ class OrderBook {
         {
           inputIndex: i,
         },
-        tbc.Script.fromASM(`${sigs[i]} ${publicKey}`)
+        tbc.Script.fromASM(`${sigs[i]} ${publicKey}`),
       );
     }
 
@@ -321,7 +326,7 @@ class OrderBook {
     publicKey: string,
     buyPreTX: tbc.Transaction,
     ftPreTX: tbc.Transaction,
-    ftPrePreTxData: string
+    ftPrePreTxData: string,
   ): string {
     if (!_isValidHexString(buyOrderTxRaw))
       throw new Error("Invalid BuyOrderTxRaw hex string");
@@ -337,7 +342,7 @@ class OrderBook {
       {
         inputIndex: 0,
       },
-      tbc.Script.fromASM(`${sigs[0]} ${publicKey} OP_2`)
+      tbc.Script.fromASM(`${sigs[0]} ${publicKey} OP_2`),
     );
 
     tx.setInputScript(
@@ -354,10 +359,10 @@ class OrderBook {
           buyPreTX,
           1,
           tx.inputs[1].outputIndex,
-          2
+          2,
         );
         return unlockingScript;
-      }
+      },
     );
 
     for (let i = 2; i < tx.inputs.length; i++) {
@@ -365,7 +370,7 @@ class OrderBook {
         {
           inputIndex: i,
         },
-        tbc.Script.fromASM(`${sigs[i]} ${publicKey}`)
+        tbc.Script.fromASM(`${sigs[i]} ${publicKey}`),
       );
     }
 
@@ -380,7 +385,7 @@ class OrderBook {
     feeRate: bigint,
     ftID: string,
     ftPartialHash: string,
-    utxos: tbc.Transaction.IUnspentOutput[]
+    utxos: tbc.Transaction.IUnspentOutput[],
   ) {
     // const holdAddress = "1Ntohi19LEcLcijug8n42njYKNjSgHuQdq";
     const holdAddress = privateKey.toAddress().toString();
@@ -398,7 +403,7 @@ class OrderBook {
       new tbc.Transaction.Output({
         script: this.getSellOrderCode(),
         satoshis: Number(saleVolume),
-      })
+      }),
     );
     tx.change(holdAddress);
     const txSize = tx.getEstimateSize();
@@ -412,7 +417,7 @@ class OrderBook {
   cancelSellOrder_privateKey(
     privateKey: tbc.PrivateKey,
     sellutxo: tbc.Transaction.IUnspentOutput,
-    utxos: tbc.Transaction.IUnspentOutput[]
+    utxos: tbc.Transaction.IUnspentOutput[],
   ) {
     const sellData = OrderBook.getOrderData(sellutxo.script);
     const tx = new tbc.Transaction();
@@ -429,7 +434,7 @@ class OrderBook {
         const sig = tx.getSignature(0, privateKey);
         const pubKey = privateKey.toPublicKey().toString();
         return tbc.Script.fromASM(`${sig} ${pubKey} OP_2`);
-      }
+      },
     );
     tx.sign(privateKey);
     tx.seal();
@@ -446,7 +451,7 @@ class OrderBook {
     utxos: tbc.Transaction.IUnspentOutput[],
     ftutxos: tbc.Transaction.IUnspentOutput[],
     preTXs: tbc.Transaction[],
-    prepreTxData: string[]
+    prepreTxData: string[],
   ) {
     // const holdAddress = "15MjMwGFvV2B9GanCYpzRupykryJ4A1Lp1";
     const holdAddress = privateKey.toAddress().toString();
@@ -457,7 +462,7 @@ class OrderBook {
     this.fee_rate = feeRate;
     this.ft_a_contract_id = ftID;
     this.ft_a_contract_partialhash = partial_sha256.calculate_partial_hash(
-      Buffer.from(ftutxos[0].script, "hex").subarray(0, 1856)
+      Buffer.from(ftutxos[0].script, "hex").subarray(0, 1856),
     );
 
     const tx = new tbc.Transaction();
@@ -470,7 +475,7 @@ class OrderBook {
       new tbc.Transaction.Output({
         script: buyOrder,
         satoshis: this.buy_code_dust,
-      })
+      }),
     );
 
     //FT Code Buy Output
@@ -483,12 +488,12 @@ class OrderBook {
     }
     let { amountHex, changeHex } = FT.buildTapeAmount(
       ftAmount,
-      tapeAmountSetIn
+      tapeAmountSetIn,
     );
     const ftCode = ftutxos[0].script;
     const ftTape = preTXs[0].outputs[ftutxos[0].outputIndex + 1].script.toHex();
     const buyOrderHash160 = tbc.crypto.Hash.sha256ripemd160(
-      tbc.crypto.Hash.sha256(buyOrder.toBuffer())
+      tbc.crypto.Hash.sha256(buyOrder.toBuffer()),
     ).toString("hex");
     const ftCodeBuy = FT.buildFTtransferCode(ftCode, buyOrderHash160);
     const ftTapeBuy = FT.buildFTtransferTape(ftTape, amountHex);
@@ -497,13 +502,13 @@ class OrderBook {
       new tbc.Transaction.Output({
         script: ftCodeBuy,
         satoshis: ftCodeDust,
-      })
+      }),
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftTapeBuy,
         satoshis: 0,
-      })
+      }),
     );
 
     if (ftAmount < tapeAmountSum) {
@@ -513,13 +518,13 @@ class OrderBook {
         new tbc.Transaction.Output({
           script: ftCodeChange,
           satoshis: ftCodeDust,
-        })
+        }),
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: ftTapeChange,
           satoshis: 0,
-        })
+        }),
       );
     }
 
@@ -540,10 +545,10 @@ class OrderBook {
             preTXs[i],
             prepreTxData[i],
             i,
-            ftutxos[i].outputIndex
+            ftutxos[i].outputIndex,
           );
           return unlockingScript;
-        }
+        },
       );
     }
     tx.sign(privateKey);
@@ -559,7 +564,7 @@ class OrderBook {
     ftutxo: tbc.Transaction.IUnspentOutput,
     ftPreTX: tbc.Transaction,
     ftPrePreTxData: string,
-    utxos: tbc.Transaction.IUnspentOutput[]
+    utxos: tbc.Transaction.IUnspentOutput[],
   ) {
     const buyData = OrderBook.getOrderData(buyutxo.script);
     const tx = new tbc.Transaction();
@@ -571,7 +576,7 @@ class OrderBook {
     const { amountHex, changeHex } = FT.buildTapeAmount(
       tapeAmountSum,
       tapeAmountSetIn,
-      1
+      1,
     );
     if (
       changeHex !=
@@ -584,16 +589,16 @@ class OrderBook {
       new tbc.Transaction.Output({
         script: FT.buildFTtransferCode(ftutxo.script, buyData.holdAddress),
         satoshis: ftutxo.satoshis,
-      })
+      }),
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: FT.buildFTtransferTape(
           ftPreTX.outputs[ftutxo.outputIndex + 1].script.toHex(),
-          amountHex
+          amountHex,
         ),
         satoshis: 0,
-      })
+      }),
     );
     tx.change(buyData.holdAddress);
     tx.feePerKb(80);
@@ -606,7 +611,7 @@ class OrderBook {
         const sig = tx.getSignature(0, privateKey);
         const pubKey = privateKey.toPublicKey().toString();
         return tbc.Script.fromASM(`${sig} ${pubKey} OP_2`);
-      }
+      },
     );
 
     tx.setInputScript(
@@ -622,10 +627,10 @@ class OrderBook {
           buyPreTX,
           1,
           ftutxo.outputIndex,
-          2
+          2,
         );
         return unlockingScript;
-      }
+      },
     );
     tx.sign(privateKey);
     tx.seal();
@@ -645,7 +650,7 @@ class OrderBook {
     sellPreTX: tbc.Transaction,
     utxos: tbc.Transaction.IUnspentOutput[],
     ftFeeAddress: string,
-    tbcFeeAddress: string
+    tbcFeeAddress: string,
   ): string {
     if (!_isValidHexString(ftPrePreTxData))
       throw new Error("Invalid FtPrePreTxData string");
@@ -678,7 +683,7 @@ class OrderBook {
       tbcSellAmount,
       tbcTaxAmount,
       tbcBuyerAmount,
-      newSellOrderTBCAmount
+      newSellOrderTBCAmount,
     );
 
     const ftPayAmount = (tbcSellAmount * sellData.unitPrice) / this.precision; //ftPayAmount是支付ft总数量
@@ -691,7 +696,7 @@ class OrderBook {
       ftPayAmount,
       ftTaxAmount,
       ftSellerAmount,
-      newBuyOrderTBCAmount
+      newBuyOrderTBCAmount,
     );
 
     //构建交易
@@ -712,7 +717,7 @@ class OrderBook {
     let { amountHex: ftTaxAmountHex, changeHex } = FT.buildTapeAmount(
       ftTaxAmount,
       tapeAmountSetIn,
-      1
+      1,
     );
 
     //**********FT Seller输出**********
@@ -721,13 +726,13 @@ class OrderBook {
       new tbc.Transaction.Output({
         script: FT.buildFTtransferCode(ftutxo.script, sellData.holdAddress),
         satoshis: ftutxo.satoshis,
-      })
+      }),
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: FT.buildFTtransferTape(ftTape, ftSellerAmountHex),
         satoshis: 0,
-      })
+      }),
     );
 
     //**********FT Tax输出**********
@@ -735,13 +740,13 @@ class OrderBook {
       new tbc.Transaction.Output({
         script: FT.buildFTtransferCode(ftutxo.script, ftFeeAddress),
         satoshis: ftutxo.satoshis,
-      })
+      }),
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: FT.buildFTtransferTape(ftTape, ftTaxAmountHex),
         satoshis: 0,
-      })
+      }),
     );
 
     //**********TBC Buyer输出**********
@@ -752,7 +757,7 @@ class OrderBook {
         new tbc.Transaction.Output({
           script: OrderBook.placeHolderP2PKHOutput(),
           satoshis: 0,
-        })
+        }),
       );
     } else if (tbcTaxAmount < 10n) {
       throw new Error("TBC tax amount is less than dust limit");
@@ -771,7 +776,7 @@ class OrderBook {
     console.log("tx fee", fee);
     tx.to(
       tbc.Script.fromHex(utxos[0].script).toAddress().toString(),
-      inputsFee - fee - 1300
+      inputsFee - fee - 1300,
     );
     // tx.change(tbc.Script.fromHex(utxos[0].script).toAddress().toString());
 
@@ -783,23 +788,23 @@ class OrderBook {
         new tbc.Transaction.Output({
           script: OrderBook.updateSaleVolume(
             sellutxo.script,
-            newSellOrderTBCAmount
+            newSellOrderTBCAmount,
           ),
           satoshis: Number(newSellOrderTBCAmount),
-        })
+        }),
       );
     } else if (newBuyOrderTBCAmount > 0n && tapeAmountSum - ftPayAmount > 0n) {
       //买单部分成交
       //**********BUY CHANGE输出**********
       const newBuyOrderCodeScript = OrderBook.updateSaleVolume(
         buyutxo.script,
-        newBuyOrderTBCAmount
+        newBuyOrderTBCAmount,
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: newBuyOrderCodeScript,
           satoshis: this.buy_code_dust,
-        })
+        }),
       );
       //**********FT CHANGE输出**********
       tx.addOutput(
@@ -807,17 +812,17 @@ class OrderBook {
           script: FT.buildFTtransferCode(
             ftutxo.script,
             tbc.crypto.Hash.sha256ripemd160(
-              tbc.crypto.Hash.sha256(newBuyOrderCodeScript.toBuffer())
-            ).toString("hex")
+              tbc.crypto.Hash.sha256(newBuyOrderCodeScript.toBuffer()),
+            ).toString("hex"),
           ),
           satoshis: ftutxo.satoshis,
-        })
+        }),
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: FT.buildFTtransferTape(ftTape, changeHex),
           satoshis: 0,
-        })
+        }),
       );
     }
 
@@ -830,10 +835,10 @@ class OrderBook {
         const unlockingScript = this.getOrderUnlock(
           tx,
           buyPreTX,
-          buyutxo.outputIndex
+          buyutxo.outputIndex,
         );
         return unlockingScript;
-      }
+      },
     );
 
     tx.setInputScript(
@@ -849,10 +854,10 @@ class OrderBook {
           buyPreTX,
           1,
           ftutxo.outputIndex,
-          2
+          2,
         );
         return unlockingScript;
-      }
+      },
     );
 
     tx.setInputScript(
@@ -863,10 +868,10 @@ class OrderBook {
         const unlockingScript = this.getOrderUnlock(
           tx,
           sellPreTX,
-          sellutxo.outputIndex
+          sellutxo.outputIndex,
         );
         return unlockingScript;
-      }
+      },
     );
 
     // tx.feePerKb(80);
@@ -887,7 +892,7 @@ class OrderBook {
     saleVolume: bigint,
     unitPrice: bigint,
     feeRate: bigint,
-    ftID: string
+    ftID: string,
   ) {
     if (!_isPositiveBigInt(saleVolume) || !_isPositiveBigInt(unitPrice))
       throw new Error("SaleVolume and UnitPrice must be positive bigint");
@@ -908,12 +913,12 @@ class OrderBook {
     }
     if (offset > 0)
       ftPartialHash = partial_sha256.calculate_partial_hash(
-        Buffer.from(TokenInfo.codeScript, "hex").subarray(0, offset)
+        Buffer.from(TokenInfo.codeScript, "hex").subarray(0, offset),
       );
     const utxos = await API.fetchUTXO(
       privateKey,
       Number(saleVolume) / 1e6 + utxoFee,
-      network
+      network,
     );
 
     const holdAddress = privateKey.toAddress().toString();
@@ -931,7 +936,7 @@ class OrderBook {
       new tbc.Transaction.Output({
         script: this.getSellOrderCode(),
         satoshis: Number(saleVolume),
-      })
+      }),
     );
     tx.change(holdAddress);
     const txSize = tx.getEstimateSize();
@@ -944,7 +949,7 @@ class OrderBook {
 
   async cancelSellOrder_privateKeyOnline(
     privateKey: tbc.PrivateKey,
-    sellutxo: tbc.Transaction.IUnspentOutput
+    sellutxo: tbc.Transaction.IUnspentOutput,
   ) {
     const network = "https://api.tbcdev.org/api/tbc/";
     const utxos = [await API.fetchUTXO(privateKey, utxoFee, network)];
@@ -963,7 +968,7 @@ class OrderBook {
         const sig = tx.getSignature(0, privateKey);
         const pubKey = privateKey.toPublicKey().toString();
         return tbc.Script.fromASM(`${sig} ${pubKey} OP_2`);
-      }
+      },
     );
     tx.sign(privateKey);
     tx.seal();
@@ -976,7 +981,7 @@ class OrderBook {
     saleVolume: bigint,
     unitPrice: bigint,
     feeRate: bigint,
-    ftID: string
+    ftID: string,
   ) {
     if (!_isPositiveBigInt(saleVolume) || !_isPositiveBigInt(unitPrice))
       throw new Error("SaleVolume and UnitPrice must be positive bigint");
@@ -990,7 +995,7 @@ class OrderBook {
     const TokenInfo = await API.fetchFtInfo(Token.contractTxid, network); //获取FT信息
     const ftutxo_codeScript = FT.buildFTtransferCode(
       TokenInfo.codeScript,
-      privateKey.toAddress().toString()
+      privateKey.toAddress().toString(),
     )
       .toBuffer()
       .toString("hex");
@@ -999,7 +1004,7 @@ class OrderBook {
       privateKey.toAddress().toString(),
       ftutxo_codeScript,
       network,
-      (saleVolume * unitPrice) / 1000000n
+      (saleVolume * unitPrice) / 1000000n,
     ); //准备ft utxo
     let preTXs: tbc.Transaction[] = [];
     let prepreTxData: string[] = [];
@@ -1009,8 +1014,8 @@ class OrderBook {
         await API.fetchFtPrePreTxData(
           preTXs[i],
           ftutxos[i].outputIndex,
-          network
-        )
+          network,
+        ),
       ); //获取每个ft输入的爷交易
     }
     const utxos = await API.fetchUTXO(privateKey, utxoFee, network);
@@ -1023,7 +1028,7 @@ class OrderBook {
     this.fee_rate = feeRate;
     this.ft_a_contract_id = ftID;
     this.ft_a_contract_partialhash = partial_sha256.calculate_partial_hash(
-      Buffer.from(ftutxos[0].script, "hex").subarray(0, 1856)
+      Buffer.from(ftutxos[0].script, "hex").subarray(0, 1856),
     );
 
     const tx = new tbc.Transaction();
@@ -1036,7 +1041,7 @@ class OrderBook {
       new tbc.Transaction.Output({
         script: buyOrder,
         satoshis: this.buy_code_dust,
-      })
+      }),
     );
 
     //FT Code Buy Output
@@ -1049,12 +1054,12 @@ class OrderBook {
     }
     let { amountHex, changeHex } = FT.buildTapeAmount(
       ftAmount,
-      tapeAmountSetIn
+      tapeAmountSetIn,
     );
     const ftCode = ftutxos[0].script;
     const ftTape = preTXs[0].outputs[ftutxos[0].outputIndex + 1].script.toHex();
     const buyOrderHash160 = tbc.crypto.Hash.sha256ripemd160(
-      tbc.crypto.Hash.sha256(buyOrder.toBuffer())
+      tbc.crypto.Hash.sha256(buyOrder.toBuffer()),
     ).toString("hex");
     const ftCodeBuy = FT.buildFTtransferCode(ftCode, buyOrderHash160);
     const ftTapeBuy = FT.buildFTtransferTape(ftTape, amountHex);
@@ -1063,13 +1068,13 @@ class OrderBook {
       new tbc.Transaction.Output({
         script: ftCodeBuy,
         satoshis: ftCodeDust,
-      })
+      }),
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftTapeBuy,
         satoshis: 0,
-      })
+      }),
     );
 
     if (ftAmount < tapeAmountSum) {
@@ -1079,13 +1084,13 @@ class OrderBook {
         new tbc.Transaction.Output({
           script: ftCodeChange,
           satoshis: ftCodeDust,
-        })
+        }),
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: ftTapeChange,
           satoshis: 0,
-        })
+        }),
       );
     }
 
@@ -1106,10 +1111,10 @@ class OrderBook {
             preTXs[i],
             prepreTxData[i],
             i,
-            ftutxos[i].outputIndex
+            ftutxos[i].outputIndex,
           );
           return unlockingScript;
-        }
+        },
       );
     }
     tx.sign(privateKey);
@@ -1121,16 +1126,16 @@ class OrderBook {
 
   async cancelBuyOrder_privateKeyOnline(
     privateKey: tbc.PrivateKey,
-    buyutxo: tbc.Transaction.IUnspentOutput
+    buyutxo: tbc.Transaction.IUnspentOutput,
   ) {
     const network = "https://api.tbcdev.org/api/tbc/";
     const buyPreTX = await API.fetchTXraw(buyutxo.txId, network);
-    const ftutxo = buildUTXO(buyPreTX, 1, true);
+    const ftutxo = buildUTXO(buyPreTX, buyutxo.outputIndex + 1, true);
     const ftPreTX: tbc.Transaction = buyPreTX;
     const ftPrePreTxData: string = await API.fetchFtPrePreTxData(
       ftPreTX,
       ftutxo.outputIndex,
-      network
+      network,
     );
     const utxos = [await API.fetchUTXO(privateKey, utxoFee, network)];
 
@@ -1144,7 +1149,7 @@ class OrderBook {
     const { amountHex, changeHex } = FT.buildTapeAmount(
       tapeAmountSum,
       tapeAmountSetIn,
-      1
+      1,
     );
     if (
       changeHex !=
@@ -1157,16 +1162,16 @@ class OrderBook {
       new tbc.Transaction.Output({
         script: FT.buildFTtransferCode(ftutxo.script, buyData.holdAddress),
         satoshis: ftutxo.satoshis,
-      })
+      }),
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: FT.buildFTtransferTape(
           ftPreTX.outputs[ftutxo.outputIndex + 1].script.toHex(),
-          amountHex
+          amountHex,
         ),
         satoshis: 0,
-      })
+      }),
     );
     tx.change(buyData.holdAddress);
     tx.feePerKb(80);
@@ -1179,7 +1184,7 @@ class OrderBook {
         const sig = tx.getSignature(0, privateKey);
         const pubKey = privateKey.toPublicKey().toString();
         return tbc.Script.fromASM(`${sig} ${pubKey} OP_2`);
-      }
+      },
     );
 
     tx.setInputScript(
@@ -1195,10 +1200,10 @@ class OrderBook {
           buyPreTX,
           1,
           ftutxo.outputIndex,
-          2
+          2,
         );
         return unlockingScript;
-      }
+      },
     );
     tx.sign(privateKey);
     tx.seal();
@@ -1212,7 +1217,7 @@ class OrderBook {
     buyutxo: tbc.Transaction.IUnspentOutput,
     sellutxo: tbc.Transaction.IUnspentOutput,
     ftFeeAddress: string,
-    tbcFeeAddress: string
+    tbcFeeAddress: string,
   ) {
     if (
       !tbc.Address.isValid(ftFeeAddress) ||
@@ -1227,7 +1232,7 @@ class OrderBook {
     const ftPrePreTxData: string = await API.fetchFtPrePreTxData(
       ftPreTX,
       ftutxo.outputIndex,
-      network
+      network,
     );
     const utxos = [await API.fetchUTXO(privateKey, utxoFee, network)];
 
@@ -1254,7 +1259,7 @@ class OrderBook {
       tbcSellAmount,
       tbcTaxAmount,
       tbcBuyerAmount,
-      newSellOrderTBCAmount
+      newSellOrderTBCAmount,
     );
 
     const ftPayAmount = (tbcSellAmount * sellData.unitPrice) / this.precision; //ftPayAmount是支付ft总数量
@@ -1267,7 +1272,7 @@ class OrderBook {
       ftPayAmount,
       ftTaxAmount,
       ftSellerAmount,
-      newBuyOrderTBCAmount
+      newBuyOrderTBCAmount,
     );
 
     //构建交易
@@ -1288,7 +1293,7 @@ class OrderBook {
     let { amountHex: ftTaxAmountHex, changeHex } = FT.buildTapeAmount(
       ftTaxAmount,
       tapeAmountSetIn,
-      1
+      1,
     );
 
     //**********FT Seller输出**********
@@ -1297,13 +1302,13 @@ class OrderBook {
       new tbc.Transaction.Output({
         script: FT.buildFTtransferCode(ftutxo.script, sellData.holdAddress),
         satoshis: ftutxo.satoshis,
-      })
+      }),
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: FT.buildFTtransferTape(ftTape, ftSellerAmountHex),
         satoshis: 0,
-      })
+      }),
     );
 
     //**********FT Tax输出**********
@@ -1311,13 +1316,13 @@ class OrderBook {
       new tbc.Transaction.Output({
         script: FT.buildFTtransferCode(ftutxo.script, ftFeeAddress),
         satoshis: ftutxo.satoshis,
-      })
+      }),
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: FT.buildFTtransferTape(ftTape, ftTaxAmountHex),
         satoshis: 0,
-      })
+      }),
     );
 
     //**********TBC Buyer输出**********
@@ -1328,7 +1333,7 @@ class OrderBook {
         new tbc.Transaction.Output({
           script: OrderBook.placeHolderP2PKHOutput(),
           satoshis: 0,
-        })
+        }),
       );
     } else if (tbcTaxAmount < 10n) {
       throw new Error("TBC tax amount is less than dust limit");
@@ -1347,7 +1352,7 @@ class OrderBook {
     console.log("tx fee", fee);
     tx.to(
       tbc.Script.fromHex(utxos[0].script).toAddress().toString(),
-      inputsFee - fee - 1300
+      inputsFee - fee - 1300,
     );
     // tx.change(tbc.Script.fromHex(utxos[0].script).toAddress().toString());
 
@@ -1359,23 +1364,23 @@ class OrderBook {
         new tbc.Transaction.Output({
           script: OrderBook.updateSaleVolume(
             sellutxo.script,
-            newSellOrderTBCAmount
+            newSellOrderTBCAmount,
           ),
           satoshis: Number(newSellOrderTBCAmount),
-        })
+        }),
       );
     } else if (newBuyOrderTBCAmount > 0n && tapeAmountSum - ftPayAmount > 0n) {
       //买单部分成交
       //**********BUY CHANGE输出**********
       const newBuyOrderCodeScript = OrderBook.updateSaleVolume(
         buyutxo.script,
-        newBuyOrderTBCAmount
+        newBuyOrderTBCAmount,
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: newBuyOrderCodeScript,
           satoshis: this.buy_code_dust,
-        })
+        }),
       );
       //**********FT CHANGE输出**********
       tx.addOutput(
@@ -1383,17 +1388,17 @@ class OrderBook {
           script: FT.buildFTtransferCode(
             ftutxo.script,
             tbc.crypto.Hash.sha256ripemd160(
-              tbc.crypto.Hash.sha256(newBuyOrderCodeScript.toBuffer())
-            ).toString("hex")
+              tbc.crypto.Hash.sha256(newBuyOrderCodeScript.toBuffer()),
+            ).toString("hex"),
           ),
           satoshis: ftutxo.satoshis,
-        })
+        }),
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: FT.buildFTtransferTape(ftTape, changeHex),
           satoshis: 0,
-        })
+        }),
       );
     }
 
@@ -1406,10 +1411,10 @@ class OrderBook {
         const unlockingScript = this.getOrderUnlock(
           tx,
           buyPreTX,
-          buyutxo.outputIndex
+          buyutxo.outputIndex,
         );
         return unlockingScript;
-      }
+      },
     );
 
     tx.setInputScript(
@@ -1425,10 +1430,10 @@ class OrderBook {
           buyPreTX,
           1,
           ftutxo.outputIndex,
-          2
+          2,
         );
         return unlockingScript;
-      }
+      },
     );
 
     tx.setInputScript(
@@ -1439,10 +1444,10 @@ class OrderBook {
         const unlockingScript = this.getOrderUnlock(
           tx,
           sellPreTX,
-          sellutxo.outputIndex
+          sellutxo.outputIndex,
         );
         return unlockingScript;
-      }
+      },
     );
 
     // tx.feePerKb(80);
@@ -1462,13 +1467,13 @@ class OrderBook {
   getOrderUnlock(
     currentTX: tbc.Transaction,
     preTX: tbc.Transaction,
-    preTxVout: number
+    preTxVout: number,
   ): tbc.Script {
     const preTxData = getPreTxdata(preTX, preTxVout, 1);
     const currentTxData = getCurrentTxOutputsData(currentTX);
     const optionHex = "51";
     const unlockingScript = tbc.Script.fromHex(
-      `${currentTxData}${preTxData}${optionHex}`
+      `${currentTxData}${preTxData}${optionHex}`,
     );
     // console.log("Unlocking Script:", unlockingScript.toASM());
     return unlockingScript;
@@ -1479,7 +1484,7 @@ class OrderBook {
       "14" + new tbc.Address(this.hold_address).hashBuffer.toString("hex");
 
     const sellOrderCode = tbc.Script.fromHex(
-      `765187637556ba01207f77547f75817654958f01289351947901157f597f7701217f597f597f517f7701207f756b517f77816b517f77816b517f776b517f776b7654958f01289379816b7654958f0128935394796b54958f0127935294796b006b7600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575686ca87e6b007e7e7e7e7e7e7e7e7e7ea86c7e7eaa56ba01207f7588006b7600879163a86c7e7e6bbb6c7e7e6bbb6c7e7e6c6c75756b676d6d6d760087916378787e6c6c6c7e7b7c886c55798194547901157f597f5879527a517f77886c76537a517f77887c01217f6c76537a517f77887c597f6c76537a517f7781887c597f6c76537a517f7781887c517f7701207f756c7c886b6b6b6b6b6bbb6c7e7e6b676d6d6c6c6c75756b6868760119885279537f7701147f756c6c6c76547a8700886b6b6bbb6c7e7e6b760119885279537f7701147f756c6c6c76547a8700886b766b557981946b6bbb6c7e7e6b760119885279537f7701147f756c6c6c6c76557a8700886b6b5579819400886bbb6c7e7e6b5279025c0788768255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a935979025c078857798255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a936c6c6c6c765a79885f7988765a79517f7701147f758700885f79517f7701147f75886c6c527a950340420f9676527a950340420f96547988537a947b886ba86c7e7e6bbb6c7e7e6ba86c7e7e6bbb6c7e7ea857ba8867528876a9${address}88ad68516a33ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff`
+      `765187637556ba01207f77547f75817654958f01289351947901157f597f7701217f597f597f517f7701207f756b517f77816b517f77816b517f776b517f776b7654958f01289379816b7654958f0128935394796b54958f0127935294796b006b7600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575686ca87e6b007e7e7e7e7e7e7e7e7e7ea86c7e7eaa56ba01207f7588006b7600879163a86c7e7e6bbb6c7e7e6bbb6c7e7e6c6c75756b676d6d6d760087916378787e6c6c6c7e7b7c886c55798194547901157f597f5879527a517f77886c76537a517f77887c01217f6c76537a517f77887c597f6c76537a517f7781887c597f6c76537a517f7781887c517f7701207f756c7c886b6b6b6b6b6bbb6c7e7e6b676d6d6c6c6c75756b6868760119885279537f7701147f756c6c6c76547a8700886b6b6bbb6c7e7e6b760119885279537f7701147f756c6c6c76547a8700886b766b557981946b6bbb6c7e7e6b760119885279537f7701147f756c6c6c6c76557a8700886b6b5579819400886bbb6c7e7e6b5279025c0788768255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a935979025c078857798255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a936c6c6c6c765a79885f7988765a79517f7701147f758700885f79517f7701147f75886c6c527a950340420f9676527a950340420f96547988537a947b886ba86c7e7e6bbb6c7e7e6ba86c7e7e6bbb6c7e7ea857ba8867528876a9${address}88ad68516a33ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff`,
     );
 
     const sellOrderData = this.buildOrderData();
@@ -1492,7 +1497,7 @@ class OrderBook {
       "14" + new tbc.Address(this.hold_address).hashBuffer.toString("hex");
 
     const buyOrderCode = tbc.Script.fromHex(
-      `765187637556ba01207f77547f75817654958f01289351947901157f597f7701217f597f597f517f7701207f756b517f77816b517f77816b517f776b517f776b7654958f0128935394796b54958f0127935294796b006b7600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575686ca87e6b007e7e7e7e7e7e7e7e7e7ea86c7e7eaa56ba01207f7588006b760087636d6d6d7600879163bb6c7e7e676d6d6c686c6c75756b67577957797e6c6c6c7e7b7c885379025c0788788255947f054654617065886c6c765879886b6b537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a935679517f7701147f756b6b6ba86c7e7e6bbb6c7e7e6b527901157f597f6c6c6c6c76577a517f7788547a01217f6c76537a517f77887c597f6c76537a517f7781887c597f6c76537a517f7781767c88527a517f7701207f756c7c88587a517f7781517a950340420f96567a7c886b6b6b6b6b6bbb6c6c5279a97c887e7e6b68760119885279537f7701147f756c6c76537a8700886b6bbb6c7e7e6b760119885279537f7701147f756c6c76537a8700886b5479816b6bbb6c7e7e6b760119885279537f7701147f756c6c6c76547a8878577981936c6c5279950340420f96547a886c527a950340420f967c6b7c6b6b6bbb6c7e7e6b5279025c0788768255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a935979025c078857798255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a936c6c6c6c765a79885f7988765a79517f7701147f758700885f79517f7701147f75870088537a94527a9400886ba86c7e7e6bbb6c7e7e6ba86c7e7e6bbb6c7e7ea857ba8867528876a9${address}88ad68516a1affffffffffffffffffffffffffffffffffffffffffffffffffff`
+      `765187637556ba01207f77547f75817654958f01289351947901157f597f7701217f597f597f517f7701207f756b517f77816b517f77816b517f776b517f776b7654958f0128935394796b54958f0127935294796b006b7600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575686ca87e6b007e7e7e7e7e7e7e7e7e7ea86c7e7eaa56ba01207f7588006b760087636d6d6d7600879163bb6c7e7e676d6d6c686c6c75756b67577957797e6c6c6c7e7b7c885379025c0788788255947f054654617065886c6c765879886b6b537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a935679517f7701147f756b6b6ba86c7e7e6bbb6c7e7e6b527901157f597f6c6c6c6c76577a517f7788547a01217f6c76537a517f77887c597f6c76537a517f7781887c597f6c76537a517f7781767c88527a517f7701207f756c7c88587a517f7781517a950340420f96567a7c886b6b6b6b6b6bbb6c6c5279a97c887e7e6b68760119885279537f7701147f756c6c76537a8700886b6bbb6c7e7e6b760119885279537f7701147f756c6c76537a8700886b5479816b6bbb6c7e7e6b760119885279537f7701147f756c6c6c76547a8878577981936c6c5279950340420f96547a886c527a950340420f967c6b7c6b6b6bbb6c7e7e6b5279025c0788768255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a935979025c078857798255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a936c6c6c6c765a79885f7988765a79517f7701147f758700885f79517f7701147f75870088537a94527a9400886ba86c7e7e6bbb6c7e7e6ba86c7e7e6bbb6c7e7ea857ba8867528876a9${address}88ad68516a1affffffffffffffffffffffffffffffffffffffffffffffffffff`,
     );
 
     const buyOrderData = this.buildOrderData();
@@ -1511,8 +1516,8 @@ class OrderBook {
     writer.write(
       Buffer.from(
         new tbc.Address(this.hold_address).hashBuffer.toString("hex"),
-        "hex"
-      )
+        "hex",
+      ),
     );
 
     writer.write(Buffer.from(amountLength, "hex"));
@@ -1539,7 +1544,7 @@ class OrderBook {
 
   static updateSaleVolume(
     codeScript: string,
-    newSaleVolume: bigint
+    newSaleVolume: bigint,
   ): tbc.Script {
     const script = tbc.Script.fromHex(codeScript);
     const dataStartIndex = script.chunks.length - 6;
@@ -1567,15 +1572,15 @@ class OrderBook {
     const holdAddress = tbc.Address.fromHex("00" + holdAddressHash).toString();
     // console.log(holdAddressHash, holdAddress);
     const saleVolume = BigInt(
-      new BN(script.chunks[dataStartIndex + 1].buf!, 10, "le").toString()
+      new BN(script.chunks[dataStartIndex + 1].buf!, 10, "le").toString(),
     );
     const ftPartialHash =
       script.chunks[dataStartIndex + 2].buf!.toString("hex");
     const feeRate = BigInt(
-      new BN(script.chunks[dataStartIndex + 3].buf!, 10, "le").toString()
+      new BN(script.chunks[dataStartIndex + 3].buf!, 10, "le").toString(),
     );
     const unitPrice = BigInt(
-      new BN(script.chunks[dataStartIndex + 4].buf!, 10, "le").toString()
+      new BN(script.chunks[dataStartIndex + 4].buf!, 10, "le").toString(),
     );
     const ftID = script.chunks[dataStartIndex + 5].buf!.toString("hex");
     // console.log(saleVolume, ftPartialHash, feeRate, unitPrice, ftID);
@@ -1591,7 +1596,7 @@ class OrderBook {
 
   static placeHolderP2PKHOutput(): tbc.Script {
     return tbc.Script.fromASM(
-      `OP_FALSE OP_RETURN ffffffffffffffffffffffffffffffffffffffffffff`
+      `OP_FALSE OP_RETURN ffffffffffffffffffffffffffffffffffffffffffff`,
     );
   }
 }
@@ -1604,18 +1609,6 @@ function _isPositiveBigInt(param: bigint): boolean {
 function _isNegativeBigInt(param: bigint): boolean {
   if (param < 0n) return true;
   return false;
-}
-
-function _isValidSHA256Hash(param: string): boolean {
-  if (typeof param !== "string") return false;
-  if (param.length !== 64) return false;
-  return /^[0-9a-f]{64}$/.test(param);
-}
-
-function _isValidHexString(param: string): boolean {
-  if (typeof param !== "string") return false;
-  if (param.length === 0) return false;
-  return /^[0-9a-f]+$/.test(param);
 }
 
 module.exports = OrderBook;

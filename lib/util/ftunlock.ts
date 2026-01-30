@@ -8,6 +8,8 @@ const ft_v1_length = 1564;
 const ft_v1_partial_offset = 1536;
 const ft_v2_length = 1884;
 const ft_v2_partial_offset = 1856;
+const coin_length = 2012;
+const coin_partial_offset = 1984;
 /**
  * Retrieves the transaction data needed for contract operations.
  * @param tx - The transaction object.
@@ -99,6 +101,8 @@ export function getCurrentTxdata(tx: tbc.Transaction, inputIndex: number): strin
             offset = ft_v1_partial_offset;
         } else if (scriptLengthByte === ft_v2_length) {
             offset = ft_v2_partial_offset;
+        } else if (scriptLengthByte === coin_length) {
+            offset = coin_partial_offset;
         }
 
         if (offset > 0) {
@@ -200,6 +204,8 @@ export function getPreTxdata(tx: tbc.Transaction, vout: number): string {
     let offset = ft_v1_partial_offset;
     if (scriptLengthByte === ft_v2_length) {
         offset = ft_v2_partial_offset;
+    } else if (scriptLengthByte === coin_length) {
+        offset = coin_partial_offset;
     }
     const size = getSize(scriptLengthByte); // Size in little-endian
     const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
@@ -263,6 +269,8 @@ export function getPrePreTxdata(tx: tbc.Transaction, vout: number): string {
         offset = ft_v1_partial_offset;
     } else if (scriptLengthByte === ft_v2_length) {
         offset = ft_v2_partial_offset;
+    } else if (scriptLengthByte === coin_length) {
+        offset = coin_partial_offset;
     }
 
     if (offset > 0) {

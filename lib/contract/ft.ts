@@ -645,7 +645,7 @@ class FT {
      * @param preVout - The output index in the previous transaction.
      * @returns The unlocking script as a tbc.Script object.
      */
-    getFTunlock(privateKey_from: tbc.PrivateKey, currentTX: tbc.Transaction, preTX: tbc.Transaction, prepreTxData: string, currentUnlockIndex: number, preTxVout: number): tbc.Script {
+    getFTunlock(privateKey_from: tbc.PrivateKey, currentTX: tbc.Transaction, preTX: tbc.Transaction, prepreTxData: string, currentUnlockIndex: number, preTxVout: number, isCoin?: 1): tbc.Script {
         const privateKey = privateKey_from;
         const prepretxdata = prepreTxData;
         const pretxdata = getPreTxdata(preTX, preTxVout);
@@ -653,7 +653,7 @@ class FT {
         const signature = currentTX.getSignature(currentUnlockIndex, privateKey);
         const sig = (signature.length / 2).toString(16).padStart(2, '0') + signature;
         const publicKey = (privateKey.toPublicKey().toString().length / 2).toString(16).padStart(2, '0') + privateKey.toPublicKey().toString();
-        const unlockingScript = new tbc.Script(`${currenttxdata}${prepretxdata}${sig}${publicKey}${pretxdata}`);
+        const unlockingScript = new tbc.Script(`${currenttxdata}${prepretxdata}${sig}${publicKey}${isCoin ? '00' : ''}${pretxdata}`);
         return unlockingScript;
     }
 
@@ -666,7 +666,7 @@ class FT {
      * @param preVout - The output index in the previous transaction.
      * @returns The unlocking script as a tbc.Script object.
      */
-    getFTunlockSwap(privateKey_from: tbc.PrivateKey, currentTX: tbc.Transaction, preTX: tbc.Transaction, prepreTxData: string, contractTX: tbc.Transaction, currentUnlockIndex: number, preTxVout: number, ftVersion?: 1 | 2): tbc.Script {
+    getFTunlockSwap(privateKey_from: tbc.PrivateKey, currentTX: tbc.Transaction, preTX: tbc.Transaction, prepreTxData: string, contractTX: tbc.Transaction, currentUnlockIndex: number, preTxVout: number, ftVersion?: 1 | 2, isCoin?: boolean): tbc.Script {
         const privateKey = privateKey_from;
         const prepretxdata = prepreTxData;
         const contracttxdata = getContractTxdata(contractTX, ftVersion === 2 ? -1 : currentTX.inputs[0].outputIndex);
@@ -676,22 +676,22 @@ class FT {
         const signature = currentTX.getSignature(currentUnlockIndex, privateKey);
         const sig = (signature.length / 2).toString(16).padStart(2, '0') + signature;
         const publicKey = (privateKey.toPublicKey().toString().length / 2).toString(16).padStart(2, '0') + privateKey.toPublicKey().toString();
-        const unlockingScript = new tbc.Script(`${currenttxdata}${prepretxdata}${sig}${publicKey}${currentinputsdata}${contracttxdata}${pretxdata}`);
+        const unlockingScript = new tbc.Script(`${currenttxdata}${prepretxdata}${sig}${publicKey}${currentinputsdata}${contracttxdata}${isCoin ? '51' : ''}${pretxdata}`);
         return unlockingScript;
     }
 
-    static getFTunlock(sigs: string, pubKey: string, currentTX: tbc.Transaction, preTX: tbc.Transaction, prepreTxData: string, currentUnlockIndex: number, preTxVout: number): tbc.Script {
+    static getFTunlock(sigs: string, pubKey: string, currentTX: tbc.Transaction, preTX: tbc.Transaction, prepreTxData: string, currentUnlockIndex: number, preTxVout: number, isCoin?: boolean): tbc.Script {
         const prepretxdata = prepreTxData;
         const pretxdata = getPreTxdata(preTX, preTxVout);
         const currenttxdata = getCurrentTxdata(currentTX, currentUnlockIndex);
         const signature = sigs;
         const sig = (signature.length / 2).toString(16).padStart(2, '0') + signature;
         const publicKey = (pubKey.length / 2).toString(16).padStart(2, '0') + pubKey;
-        const unlockingScript = new tbc.Script(`${currenttxdata}${prepretxdata}${sig}${publicKey}${pretxdata}`);
+        const unlockingScript = new tbc.Script(`${currenttxdata}${prepretxdata}${sig}${publicKey}${isCoin ? '00' : ''}${pretxdata}`);
         return unlockingScript; 
     }
 
-    static getFTunlockSwap(sigs: string, pubKey: string, currentTX: tbc.Transaction, preTX: tbc.Transaction, prepreTxData: string, contractTX: tbc.Transaction, currentUnlockIndex: number, preTxVout: number, ftVersion?: 1 | 2): tbc.Script {
+    static getFTunlockSwap(sigs: string, pubKey: string, currentTX: tbc.Transaction, preTX: tbc.Transaction, prepreTxData: string, contractTX: tbc.Transaction, currentUnlockIndex: number, preTxVout: number, ftVersion?: 1 | 2, isCoin?: boolean): tbc.Script {
         const prepretxdata = prepreTxData;
         const contracttxdata = getContractTxdata(contractTX, ftVersion === 2 ? -1 : currentTX.inputs[0].outputIndex);
         const pretxdata = getPreTxdata(preTX, preTxVout);
@@ -700,7 +700,7 @@ class FT {
         const signature = sigs;
         const sig = (signature.length / 2).toString(16).padStart(2, '0') + signature;
         const publicKey = (pubKey.length / 2).toString(16).padStart(2, '0') + pubKey;
-        const unlockingScript = new tbc.Script(`${currenttxdata}${prepretxdata}${sig}${publicKey}${currentinputsdata}${contracttxdata}${pretxdata}`);
+        const unlockingScript = new tbc.Script(`${currenttxdata}${prepretxdata}${sig}${publicKey}${currentinputsdata}${contracttxdata}${isCoin ? '51' : ''}${pretxdata}`);
         return unlockingScript;
     }
 

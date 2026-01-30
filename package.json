@@ -1,6 +1,6 @@
 {
   "name": "tbc-contract",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "main": "index.js",
   "types": "index.d.ts",
   "scripts": {
@@ -9,7 +9,7 @@
   "author": "Edmund",
   "dependencies": {
     "@types/node": "22.10.1",
-    "tbc-lib-js": "1.0.28"
+    "tbc-lib-js": "^1.0.28"
   },
   "license": "OpenTBC",
   "description": "A TBC smart contract SDK."

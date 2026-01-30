@@ -163,3 +163,15 @@ export function parseDecimalToBigInt(amount: number | bigint | string, decimal: 
     // console.log(amountStr, integerPart, fractionalPart, paddedFractional);
     return BigInt(integerPart + paddedFractional);
 }
+ 
+export function _isValidSHA256Hash(param: string): boolean {
+  if (typeof param !== "string") return false;
+  if (param.length !== 64) return false;
+  return /^[0-9a-f]{64}$/.test(param);
+}
+
+export function _isValidHexString(param: string): boolean {
+  if (typeof param !== "string") return false;
+  if (param.length === 0) return false;
+  return /^[0-9a-f]+$/.test(param);
+}

@@ -3,45 +3,45 @@ declare module "tbc-contract" {
   export class API {
     static getTBCbalance(
       address: string,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<number>;
     static fetchUTXOList(
       address: string,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<Transaction.IUnspentOutput[]>;
     static fetchUTXO(
       privateKey: PrivateKey,
       amount: number,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<Transaction.IUnspentOutput>;
     static mergeUTXO(
       privateKey: PrivateKey,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<boolean>;
     static getFTbalance(
       contractTxid: string,
       addressOrHash: string,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<bigint>;
     static fetchFtUTXOList(
       contractTxid: string,
       addressOrHash: string,
       codeScript: string,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<Transaction.IUnspentOutput[]>;
     static fetchFtUTXO(
       contractTxid: string,
       addressOrHash: string,
       amount: bigint,
       codeScript: string,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<Transaction.IUnspentOutput>;
     static fetchFtUTXOs(
       contractTxid: string,
       addressOrHash: string,
       codeScript: string,
       network?: "testnet" | "mainnet" | string,
-      amount?: bigint
+      amount?: bigint,
     ): Promise<Transaction.IUnspentOutput[]>;
     static fetchFtUTXOsforPool(
       contractTxid: string,
@@ -49,54 +49,54 @@ declare module "tbc-contract" {
       amount: bigint,
       number: number,
       codeScript: string,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<Transaction.IUnspentOutput[]>;
     static fetchFtInfo(
       contractTxid: string,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<FtInfo>;
     static fetchFtPrePreTxData(
       preTX: Transaction,
       preTxVout: number,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<string>;
     static fetchPoolNftInfo(
       contractTxid: string,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<PoolNFTInfo>;
     static fetchPoolNftUTXO(
       contractTxid: string,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<Transaction.IUnspentOutput>;
     static fetchFtlpBalance(
       ftlpCode: string,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<bigint>;
     static fetchFtlpUTXO(
       ftlpCode: string,
       amount: bigint,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<Transaction.IUnspentOutput>;
     static fetchTXraw(
       txid: string,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<Transaction>;
     static broadcastTXraw(
       txraw: string,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<string>;
     static broadcastTXsraw(
       txrawList: Array<{ txraw: string }>,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<string>;
     static fetchUTXOs(
       address: string,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<Transaction.IUnspentOutput[]>;
     static getUTXOs(
       address: string,
       amount_tbc: number,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<Transaction.IUnspentOutput[]>;
     static fetchNFTTXO(params: {
       script: string;
@@ -110,41 +110,41 @@ declare module "tbc-contract" {
     }): Promise<Transaction.IUnspentOutput[]>;
     static fetchNFTInfo(
       contract_id: string,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<NFTInfo>;
     static fetchNFTs(
       collection_id: string,
       address: string,
       start: number,
       end: number,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<string[]>;
     static fetchUMTXO(
       script_asm: string,
       tbc_amount: number,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<Transaction.IUnspentOutput>;
     static fetchUMTXOs(
       script_asm: string,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<Transaction.IUnspentOutput[]>;
     static getUMTXOs(
       script_asm: string,
       amount_tbc: number,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<Transaction.IUnspentOutput[]>;
     static fetchFtUTXOS_multiSig(
       contractTxid: string,
       addressOrHash: string,
       codeScript: string,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<Transaction.IUnspentOutput[]>;
     static getFtUTXOS_multiSig(
       contractTxid: string,
       addressOrHash: string,
       codeScript: string,
       amount: bigint,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<Transaction.IUnspentOutput[]>;
     static fetchBlockHeaders(network?: "testnet" | "mainnet" | string): Promise<
       Array<{
@@ -164,15 +164,15 @@ declare module "tbc-contract" {
     >;
     static fetchFrozenTBCBalance(
       address: string,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<number>;
     static fetchUnfrozenUTXOList(
       address: string,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<Transaction.IUnspentOutput[]>;
     static fetchFrozenUTXOList(
       address: string,
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): Promise<Transaction.IUnspentOutput[]>;
   }
 
@@ -216,7 +216,7 @@ declare module "tbc-contract" {
       address: string,
       privateKey: PrivateKey,
       data: CollectionData,
-      utxos: Transaction.IUnspentOutput[]
+      utxos: Transaction.IUnspentOutput[],
     ): string;
     static createNFT(
       collection_id: string,
@@ -224,7 +224,7 @@ declare module "tbc-contract" {
       privateKey: PrivateKey,
       data: NFTData,
       utxos: Transaction.IUnspentOutput[],
-      nfttxo: Transaction.IUnspentOutput
+      nfttxo: Transaction.IUnspentOutput,
     ): string;
     static batchCreateNFT(
       collection_id: string,
@@ -232,7 +232,7 @@ declare module "tbc-contract" {
       privateKey: PrivateKey,
       datas: NFTData[],
       utxos: Transaction.IUnspentOutput[],
-      nfttxos: Transaction.IUnspentOutput[]
+      nfttxos: Transaction.IUnspentOutput[],
     ): Array<{ txraw: string }>;
     transferNFT(
       address_from: string,
@@ -241,7 +241,7 @@ declare module "tbc-contract" {
       utxos: Transaction.IUnspentOutput[],
       pre_tx: Transaction,
       pre_pre_tx: Transaction,
-      batch?: boolean
+      batch?: boolean,
     ): string;
     transferNFT_v0(
       address_from: string,
@@ -249,7 +249,7 @@ declare module "tbc-contract" {
       privateKey: PrivateKey,
       utxos: Transaction.IUnspentOutput[],
       pre_tx: Transaction,
-      pre_pre_tx: Transaction
+      pre_pre_tx: Transaction,
     ): string;
     transferNFTWithTBC(
       address_from: string,
@@ -259,8 +259,15 @@ declare module "tbc-contract" {
       utxos: Transaction.IUnspentOutput[],
       pre_tx: Transaction,
       pre_pre_tx: Transaction,
-      tbc_amount: number
+      tbc_amount: number,
     ): string;
+    static buildUnlockScript(
+      privateKey_from: PrivateKey,
+      currentTX: Transaction,
+      preTX: Transaction,
+      prepreTxData: Transaction,
+      currentUnlockIndex: number,
+    ): Script;
     static buildCodeScript_v0(tx_hash: string, outputIndex: number): Script;
     static getCurrentTxdata_v0(tx: Transaction): string;
     static getPreTxdata_v0(tx: Transaction): string;
@@ -294,13 +301,13 @@ declare module "tbc-contract" {
     constructor(
       txidOrParams:
         | string
-        | { name: string; symbol: string; amount: number; decimal: number }
+        | { name: string; symbol: string; amount: number; decimal: number },
     );
     initialize(ftInfo: FtInfo): void;
     MintFT(
       privateKey_from: PrivateKey,
       address_to: string,
-      utxo: Transaction.IUnspentOutput
+      utxo: Transaction.IUnspentOutput,
     ): string[];
     transfer(
       privateKey_from: PrivateKey,
@@ -310,7 +317,7 @@ declare module "tbc-contract" {
       utxo: Transaction.IUnspentOutput,
       preTX: Transaction[],
       prepreTxData: string[],
-      tbc_amount?: number | string
+      tbc_amount?: number | string,
     ): string;
     transferWithAdditionalInfo(
       privateKey_from: PrivateKey,
@@ -320,7 +327,7 @@ declare module "tbc-contract" {
       utxo: Transaction.IUnspentOutput,
       preTX: Transaction[],
       prepreTxData: string[],
-      additionalInfo: Buffer
+      additionalInfo: Buffer,
     ): string;
     batchTransfer(
       privateKey_from: PrivateKey,
@@ -328,7 +335,7 @@ declare module "tbc-contract" {
       ftutxo: Transaction.IUnspentOutput[],
       utxo: Transaction.IUnspentOutput,
       preTX: Transaction[],
-      prepreTxData: string[]
+      prepreTxData: string[],
     ): Array<{ txraw: string }>;
     mergeFT(
       privateKey_from: PrivateKey,
@@ -336,7 +343,7 @@ declare module "tbc-contract" {
       utxo: Transaction.IUnspentOutput,
       preTX: Transaction[],
       prepreTxData: string[],
-      localTX: Transaction[]
+      localTX: Transaction[],
     ): Array<{ txraw: string }>;
     getFTunlock(
       privateKey_from: PrivateKey,
@@ -344,7 +351,8 @@ declare module "tbc-contract" {
       preTX: Transaction,
       prepreTxData: string,
       currentUnlockIndex: number,
-      preTxVout: number
+      preTxVout: number,
+      isCoin?: 1,
     ): Script;
     getFTunlockSwap(
       privateKey_from: PrivateKey,
@@ -353,8 +361,9 @@ declare module "tbc-contract" {
       prepreTxData: string,
       contractTX: Transaction,
       currentUnlockIndex: number,
-      preVout: number,
-      ftVersion?: 1 | 2
+      preTxVout: number,
+      ftVersion?: 1 | 2,
+      isCoin?: boolean,
     ): Script;
     static getFTunlock(
       sigs: string,
@@ -363,7 +372,8 @@ declare module "tbc-contract" {
       preTX: Transaction,
       prepreTxData: string,
       currentUnlockIndex: number,
-      preTxVout: number
+      preTxVout: number,
+      isCoin?: boolean,
     ): Script;
     static getFTunlockSwap(
       sigs: string,
@@ -374,20 +384,21 @@ declare module "tbc-contract" {
       contractTX: Transaction,
       currentUnlockIndex: number,
       preTxVout: number,
-      ftVersion?: 1 | 2
+      ftVersion?: 1 | 2,
+      isCoin?: boolean,
     ): Script;
     getFTmintCode(
       txid: string,
       vout: number,
       address: string,
-      tapeSize: number
+      tapeSize: number,
     ): Script;
     static buildFTtransferCode(code: string, addressOrHash: string): Script;
     static buildFTtransferTape(tape: string, amountHex: string): Script;
     static buildTapeAmount(
       amountBN: bigint,
       tapeAmountSet: bigint[],
-      ftInputIndex?: number
+      ftInputIndex?: number,
     ): { amountHex: string; changeHex: string };
     static getBalanceFromTape(tape: string): bigint;
   }
@@ -436,73 +447,73 @@ declare module "tbc-contract" {
     initfromContractId(): Promise<void>;
     createPoolNFT(
       privateKey_from: PrivateKey,
-      utxo: Transaction.IUnspentOutput
+      utxo: Transaction.IUnspentOutput,
     ): Promise<string[]>;
     createPoolNftWithLock(
       privateKey_from: PrivateKey,
-      utxo: Transaction.IUnspentOutput
+      utxo: Transaction.IUnspentOutput,
     ): Promise<string[]>;
     initPoolNFT(
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
       tbc_amount?: number,
-      ft_a?: number
+      ft_a?: number,
     ): Promise<string>;
     increaseLP(
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
-      amount_tbc: number
+      amount_tbc: number,
     ): Promise<string>;
     consumeLP(
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
-      amount_lp: number
+      amount_lp: number,
     ): Promise<string>;
     swaptoToken(
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
-      amount_token: number
+      amount_token: number,
     ): Promise<string>;
     swaptoToken_baseTBC(
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
-      amount_tbc: number
+      amount_tbc: number,
     ): Promise<string>;
     swaptoTBC(
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
-      amount_tbc: number
+      amount_tbc: number,
     ): Promise<string>;
     swaptoTBC_baseToken(
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
-      amount_token: number
+      amount_token: number,
     ): Promise<string>;
     fetchPoolNFTInfo(contractTxid: string): Promise<PoolNFTInfo>;
     fetchPoolNftUTXO(contractTxid: string): Promise<Transaction.IUnspentOutput>;
     fetchFtlpUTXO(
       ftlpCode: string,
-      amount: bigint
+      amount: bigint,
     ): Promise<Transaction.IUnspentOutput>;
     mergeFTLP(
       privateKey_from: PrivateKey,
-      utxo: Transaction.IUnspentOutput
+      utxo: Transaction.IUnspentOutput,
     ): Promise<boolean | string>;
     mergeFTinPool(
       privateKey_from: PrivateKey,
-      utxo: Transaction.IUnspentOutput
+      utxo: Transaction.IUnspentOutput,
     ): Promise<boolean | string>;
     updatePoolNFT(
       increment: number,
       ft_a_decimal: number,
-      option: 1 | 2 | 3
+      option: 1 | 2 | 3,
     ): poolNFTDifference;
     getPoolNFTunlock(
       privateKey_from: PrivateKey,
@@ -511,14 +522,14 @@ declare module "tbc-contract" {
       preTxId: string,
       preVout: number,
       option: 1 | 2 | 3 | 4,
-      swapOption?: 1 | 2
+      swapOption?: 1 | 2,
     ): Promise<Script>;
     getPoolNftCode(txid: string, vout: number): Script;
     getPoolNftCodeWithLock(txid: string, vout: number): Script;
     getFTLPcode(
       poolNftCodeHash: string,
       address: string,
-      tapeSize: number
+      tapeSize: number,
     ): Script;
   }
 
@@ -550,7 +561,7 @@ declare module "tbc-contract" {
       tag: string,
       serviceFeeRate?: number,
       lpPlan?: 1 | 2,
-      withLockTime?: boolean
+      withLockTime?: boolean,
     ): Promise<string[]>;
     createPoolNftWithLock(
       privateKey_from: PrivateKey,
@@ -561,7 +572,7 @@ declare module "tbc-contract" {
       pubKeyLock: string[],
       serviceFeeRate?: number,
       lpPlan?: 1 | 2,
-      withLockTime?: boolean
+      withLockTime?: boolean,
     ): Promise<string[]>;
     initPoolNFT(
       privateKey_from: PrivateKey,
@@ -569,7 +580,7 @@ declare module "tbc-contract" {
       utxo: Transaction.IUnspentOutput,
       tbc_amount: number | string,
       ft_a: number | string,
-      lock_time?: number
+      lock_time?: number,
     ): Promise<string>;
     initPoolNFTWithLockTime(
       privateKey_from: PrivateKey,
@@ -577,48 +588,48 @@ declare module "tbc-contract" {
       utxo: Transaction.IUnspentOutput,
       tbc_amount: number,
       ft_a: number,
-      lock_time: number
+      lock_time: number,
     ): Promise<string>;
     increaseLP(
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
       amount_tbc: number | string,
-      lock_time?: number
+      lock_time?: number,
     ): Promise<string>;
     increaseLpWithLockTime(
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
       amount_tbc: number,
-      lock_time: number
+      lock_time: number,
     ): Promise<string>;
     consumeLP(
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
       amount_lp: number | string,
-      lock_time?: number
+      lock_time?: number,
     ): Promise<string>;
     consumeLpWithLockTime(
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
-      amount_lp: number
+      amount_lp: number,
     ): Promise<string>;
     swaptoToken_baseTBC(
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
       amount_tbc: number | string,
-      lpPlan?: 1 | 2
+      lpPlan?: 1 | 2,
     ): Promise<string>;
     swaptoTBC_baseToken(
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
       amount_token: number | string,
-      lpPlan?: 1 | 2
+      lpPlan?: 1 | 2,
     ): Promise<string>;
     swaptoTBC_baseToken_local(
       privateKey_from: PrivateKey,
@@ -628,43 +639,43 @@ declare module "tbc-contract" {
       ftPrePreTxData: string[],
       amount_token: number | string,
       lpPlan?: 1 | 2,
-      utxo?: Transaction.IUnspentOutput
+      utxo?: Transaction.IUnspentOutput,
     ): Promise<string>;
     fetchPoolNftInfo(contractTxid: string): Promise<PoolNFTInfo>;
     fetchPoolNftUTXO(contractTxid: string): Promise<Transaction.IUnspentOutput>;
     fetchFtlpUTXO(
       address: string,
-      amount: bigint
+      amount: bigint,
     ): Promise<Transaction.IUnspentOutput>;
     fetchFtlpBalance(address: string): Promise<bigint>;
     fetchFtlpUTXOList(address: string): Promise<Transaction.IUnspentOutput[]>;
     fetchFtlpLockTime(
-      address: string
+      address: string,
     ): Promise<Array<{ ftBalance: bigint; lockTime: number }>>;
     getLpIncome(address: string, recordData: bigint): Promise<bigint>;
     mergeFTLP(
       privateKey_from: PrivateKey,
       utxo: Transaction.IUnspentOutput,
-      lock_time?: number
+      lock_time?: number,
     ): Promise<boolean | string>;
     burnFTLP(
       privateKey_from: PrivateKey,
-      utxo: Transaction.IUnspentOutput
+      utxo: Transaction.IUnspentOutput,
     ): Promise<string>;
     unlockFTLP(
       privateKey_from: PrivateKey,
       utxo: Transaction.IUnspentOutput,
-      lock_time?: number
+      lock_time?: number,
     ): Promise<string>;
     mergeFTinPool(
       privateKey_from: PrivateKey,
       utxo: Transaction.IUnspentOutput,
-      times?: number
+      times?: number,
     ): Promise<Array<{ txraw: string }>>;
     updatePoolNFT(
       increment: number | string,
       ft_a_decimal: number,
-      option: 1 | 2 | 3
+      option: 1 | 2 | 3,
     ): poolNFTDifference;
     getPoolNftUnlockOffLine(
       privateKey_from: PrivateKey,
@@ -675,7 +686,7 @@ declare module "tbc-contract" {
       inputsTXs: Transaction[],
       withLock: 0 | 1,
       option: 1 | 2 | 3 | 4,
-      swapOption?: 1 | 2
+      swapOption?: 1 | 2,
     ): Script;
     getPoolNftUnlock(
       privateKey_from: PrivateKey,
@@ -685,7 +696,7 @@ declare module "tbc-contract" {
       preVout: number,
       withLock: 0 | 1,
       option: 1 | 2 | 3 | 4,
-      swapOption?: 1 | 2
+      swapOption?: 1 | 2,
     ): Promise<Script>;
     getPoolNftExtraInfo(): Promise<{
       serviceFeeRate: number;
@@ -698,7 +709,7 @@ declare module "tbc-contract" {
       vout: number,
       lpPlan: 1 | 2,
       ftVersion: 1 | 2,
-      tag?: string
+      tag?: string,
     ): Script;
     getPoolNftCodeWithLock(
       txid: string,
@@ -708,19 +719,19 @@ declare module "tbc-contract" {
       lpCostTBC: number,
       pubKeyLock: string[],
       ftVersion: 1 | 2,
-      tag?: string
+      tag?: string,
     ): Script;
     getFtlpCode(
       poolNftCodeHash: string,
       address: string,
       tapeSize: number,
-      ftVersion?: 1 | 2
+      ftVersion?: 1 | 2,
     ): Script;
     getFtlpCodeWithLockTime(
       poolNftCodeHash: string,
       address: string,
       tapeSize: number,
-      ftVersion?: 1 | 2
+      ftVersion?: 1 | 2,
     ): Script;
   }
 
@@ -737,40 +748,40 @@ declare module "tbc-contract" {
       publicKeyCount: number,
       tbc_amount: number,
       utxos: Transaction.IUnspentOutput[],
-      privateKey: PrivateKey
+      privateKey: PrivateKey,
     ): string;
     static p2pkhToMultiSig_sendTBC(
       address_from: string,
       address_to: string,
       amount_tbc: number,
       utxos: Transaction.IUnspentOutput[],
-      privateKey: PrivateKey
+      privateKey: PrivateKey,
     ): string;
     static buildMultiSigTransaction_sendTBC(
       address_from: string,
       address_to: string,
       amount_tbc: number,
-      utxos: Transaction.IUnspentOutput[]
+      utxos: Transaction.IUnspentOutput[],
     ): MultiSigTxRaw;
     static signMultiSigTransaction_sendTBC(
       address_from: string,
       multiSigTxraw: MultiSigTxRaw,
-      privateKey: PrivateKey
+      privateKey: PrivateKey,
     ): string[];
     static batchSignMultiSigTransaction_sendTBC(
       address_from: string,
       multiSigTxraws: MultiSigTxRaw[],
-      privateKey: PrivateKey
+      privateKey: PrivateKey,
     ): string[][];
     static finishMultiSigTransaction_sendTBC(
       txraw: string,
       sigs: string[][],
-      pubKeys: string[]
+      pubKeys: string[],
     ): string;
     static batchFinishMultiSigTransaction_sendTBC(
       txraws: string[],
       sigs: string[][][],
-      pubKeys: string[]
+      pubKeys: string[],
     ): string[];
     static p2pkhToMultiSig_transferFT(
       address_from: string,
@@ -782,7 +793,7 @@ declare module "tbc-contract" {
       preTXs: Transaction[],
       prepreTxDatas: string[],
       privateKey: PrivateKey,
-      tbc_amount?: number
+      tbc_amount?: number,
     ): string;
     static buildMultiSigTransaction_transferFT(
       address_from: string,
@@ -794,32 +805,32 @@ declare module "tbc-contract" {
       preTXs: Transaction[],
       prepreTxDatas: string[],
       contractTX: Transaction,
-      privateKey: PrivateKey
+      privateKey: PrivateKey,
     ): MultiSigTxRaw;
     static signMultiSigTransaction_transferFT(
       address_from: string,
       multiSigTxraw: MultiSigTxRaw,
-      privateKey: PrivateKey
+      privateKey: PrivateKey,
     ): string[];
     static batchSignMultiSigTransaction_transferFT(
       multiSig_address: string,
       multiSigTxraws: MultiSigTxRaw[],
-      privateKey: PrivateKey
+      privateKey: PrivateKey,
     ): string[][];
     static finishMultiSigTransaction_transferFT(
       txraw: string,
       sigs: string[][],
-      pubKeys: string[]
+      pubKeys: string[],
     ): string;
     static batchFinishMultiSigTransaction_transferFT(
       txraws: string[],
       sigs: string[][][],
-      pubKeys: string[]
+      pubKeys: string[],
     ): string[];
     static getMultiSigAddress(
       pubKeys: string[],
       signatureCount: number,
-      publicKeyCount: number
+      publicKeyCount: number,
     ): string;
     static getSignatureAndPublicKeyCount(address: string): {
       signatureCount: number;
@@ -836,12 +847,12 @@ declare module "tbc-contract" {
       address: string,
       tbcNumber: number,
       lockTime: number,
-      utxos: Transaction.IUnspentOutput[]
+      utxos: Transaction.IUnspentOutput[],
     ): string;
     static unfreezeTBC(
       address: string,
       utxos: Transaction.IUnspentOutput[],
-      network?: "testnet" | "mainnet" | string
+      network?: "testnet" | "mainnet" | string,
     ): string;
     static fetchTBCLockTime(utxo: Transaction.IUnspentOutput): number;
   }
@@ -866,17 +877,17 @@ declare module "tbc-contract" {
       feeRate: bigint,
       ftID: string,
       ftPartialHash: string,
-      utxos: Transaction.IUnspentOutput[]
+      utxos: Transaction.IUnspentOutput[],
     ): string;
     buildCancelSellOrderTX(
       sellutxo: Transaction.IUnspentOutput,
-      utxos: Transaction.IUnspentOutput[]
+      utxos: Transaction.IUnspentOutput[],
     ): string;
     fillSigsSellOrder(
       sellOrderTxRaw: string,
       sigs: string[],
       publicKey: string,
-      type: "make" | "cancel"
+      type: "make" | "cancel",
     ): string;
     buildBuyOrderTX(
       holdAddress: string,
@@ -886,20 +897,20 @@ declare module "tbc-contract" {
       ftID: string,
       utxos: Transaction.IUnspentOutput[],
       ftutxos: Transaction.IUnspentOutput[],
-      preTXs: Transaction[]
+      preTXs: Transaction[],
     ): string;
     buildCancelBuyOrderTX(
       buyutxo: Transaction.IUnspentOutput,
       ftutxo: Transaction.IUnspentOutput,
       ftPreTX: Transaction,
-      utxos: Transaction.IUnspentOutput[]
+      utxos: Transaction.IUnspentOutput[],
     ): string;
     fillSigsMakeBuyOrder(
       buyOrderTxRaw: string,
       sigs: string[],
       publicKey: string,
       preTXs: Transaction[],
-      prepreTxData: string[]
+      prepreTxData: string[],
     ): string;
     fillSigsCancelBuyOrder(
       buyOrderTxRaw: string,
@@ -907,7 +918,7 @@ declare module "tbc-contract" {
       publicKey: string,
       buyPreTX: Transaction,
       ftPreTX: Transaction,
-      ftPrePreTxData: string
+      ftPrePreTxData: string,
     ): string;
     matchOrder(
       privateKey: PrivateKey,
@@ -920,41 +931,41 @@ declare module "tbc-contract" {
       sellPreTX: Transaction,
       utxos: Transaction.IUnspentOutput[],
       ftFeeAddress: string,
-      tbcFeeAddress: string
+      tbcFeeAddress: string,
     ): string;
-    async makeSellOrder_privateKeyOnline(
+    makeSellOrder_privateKeyOnline(
       privateKey: PrivateKey,
       saleVolume: bigint,
       unitPrice: bigint,
       feeRate: bigint,
-      ftID: string
+      ftID: string,
     ): Promise<string>;
-    async cancelSellOrder_privateKeyOnline(
+    cancelSellOrder_privateKeyOnline(
       privateKey: PrivateKey,
       sellutxo: Transaction.IUnspentOutput,
     ): Promise<string>;
-    async makeBuyOrder_privateKeyOnline(
+    makeBuyOrder_privateKeyOnline(
       privateKey: PrivateKey,
       saleVolume: bigint,
       unitPrice: bigint,
       feeRate: bigint,
-      ftID: string
+      ftID: string,
     ): Promise<string>;
-    async cancelBuyOrder_privateKeyOnline(
+    cancelBuyOrder_privateKeyOnline(
       privateKey: PrivateKey,
       buyutxo: Transaction.IUnspentOutput,
     ): Promise<string>;
-    async matchOrderOnline(
+    matchOrderOnline(
       privateKey: PrivateKey,
       buyutxo: Transaction.IUnspentOutput,
       sellutxo: Transaction.IUnspentOutput,
       ftFeeAddress: string,
-      tbcFeeAddress: string
+      tbcFeeAddress: string,
     ): Promise<string>;
     getOrderUnlock(
       currentTX: Transaction,
       preTX: Transaction,
-      preTxVout: number
+      preTxVout: number,
     ): Script;
     getSellOrderCode(): Script;
     getBuyOrderCode(): Script;
@@ -970,28 +981,181 @@ declare module "tbc-contract" {
     };
   }
 
+  export namespace HTLC {
+    export function deployHTLC(
+      sender: string,
+      receiver: string,
+      hashlock: string,
+      timelock: number,
+      amount: number | string,
+      utxo: Transaction.IUnspentOutput,
+    ): string;
+
+    export function withdraw(
+      receiver: string,
+      htlcutxo: Transaction.IUnspentOutput,
+    ): string;
+
+    export function refund(
+      sender: string,
+      htlcutxo: Transaction.IUnspentOutput,
+      timelock: number,
+    ): string;
+
+    export function fillSigDepoly(
+      deployHTLCTxRaw: string,
+      sig: string,
+      publicKey: string,
+    ): string;
+
+    export function fillSigWithdraw(
+      withdrawTxRaw: string,
+      secret: string,
+      sig: string,
+      publicKey: string,
+    ): string;
+
+    export function fillSigRefund(
+      refundTxRaw: string,
+      sig: string,
+      publicKey: string,
+    ): string;
+
+    export function deployHTLCWithSign(
+      sender: string,
+      receiver: string,
+      hashlock: string,
+      timelock: number,
+      amount: number | string,
+      utxo: Transaction.IUnspentOutput,
+      privateKey: string,
+    ): string;
+
+    export function withdrawWithSign(
+      privateKey: string,
+      receiver: string,
+      htlcutxo: Transaction.IUnspentOutput,
+      secret: string,
+    ): string;
+
+    export function refundWithSign(
+      sender: string,
+      htlcutxo: Transaction.IUnspentOutput,
+      privateKey: string,
+      timelock: number,
+    ): string;
+  }
+
+  interface coinNftData {
+    nftName: string;
+    nftSymbol: string;
+    description: string;
+    coinDecimal: number;
+    coinTotalSupply: bigint;
+  }
+
+  export class stableCoin extends FT {
+    constructor(
+      txidOrParams:
+        | string
+        | { name: string; symbol: string; amount: number; decimal: number },
+    );
+    createCoin(
+      privateKey_admin: PrivateKey,
+      address_to: string,
+      utxo: Transaction.IUnspentOutput,
+      utxoTX: Transaction,
+      mintMessage?: string,
+    ): string[];
+    mintCoin(
+      privateKey_admin: PrivateKey,
+      address_to: string,
+      mintAmount: number | string,
+      utxo: Transaction.IUnspentOutput,
+      nftPreTX: Transaction,
+      nftPrePreTX: Transaction,
+      mintMessage?: string,
+    ): string;
+    transfer(
+      privateKey_from: PrivateKey,
+      address_to: string,
+      ft_amount: number | string,
+      ftutxo_a: Transaction.IUnspentOutput[],
+      utxo: Transaction.IUnspentOutput,
+      preTX: Transaction[],
+      prepreTxData: string[],
+      tbc_amount?: number | string,
+    ): string;
+    batchTransfer(
+      privateKey_from: PrivateKey,
+      receiveAddressAmount: Map<string, number | string>,
+      ftutxo: Transaction.IUnspentOutput[],
+      utxo: Transaction.IUnspentOutput,
+      preTX: Transaction[],
+      prepreTxData: string[],
+    ): Array<{ txraw: string }>;
+    mergeCoin(
+      privateKey_from: PrivateKey,
+      ftutxo: Transaction.IUnspentOutput[],
+      utxo: Transaction.IUnspentOutput,
+      preTX: Transaction[],
+      prepreTxData: string[],
+      localTX: Transaction[],
+    ): Array<{ txraw: string }>;
+    frozenCoinUTXO(
+      privateKey_admin: PrivateKey,
+      lock_time: number,
+      ftutxo: Transaction.IUnspentOutput[],
+      utxo: Transaction.IUnspentOutput,
+      preTX: Transaction[],
+      prepreTxData: string[],
+    ): string;
+    static buildCoinNftOutput(
+      nftCodeScript: Script,
+      nftHoldScript: Script,
+      data: CoinNftData,
+    ): Transaction.Output[];
+    static buildCoinNftTX(
+      privateKey_admin: PrivateKey,
+      utxo: Transaction.IUnspentOutput,
+      data: CoinNftData,
+    ): Transaction;
+    static getCoinMintCode(
+      adminAddress: string,
+      receiveAddress: string,
+      codeHash: string,
+      tapeSize: number,
+    ): Script;
+    static setLockTimeInTape(tapeScript: Script, lockTime: number): Script;
+    static getLockTimeFromTape(tapeScript: Script): number;
+    static getAddressFromCode(codeScript: string): {
+      address: string;
+      type: "address" | "contract";
+    };
+  }
+
   export function buildUTXO(
     tx: Transaction,
     vout: number,
-    isFT?: boolean
+    isFT?: boolean,
   ): Transaction.IUnspentOutput;
 
   export function buildFtPrePreTxData(
     preTX: Transaction,
     preTxVout: number,
-    localTXs: Transaction[]
+    localTXs: Transaction[],
   ): string;
 
   export function selectTXfromLocal(
     txs: Transaction[],
-    txid: string
+    txid: string,
   ): Transaction;
 
   export function fetchInBatches<T, R>(
     items: T[],
     batchSize: number,
     fetchFn: (batch: T[]) => Promise<R[]>,
-    context: string
+    context: string,
   ): Promise<R[]>;
 
   export function getFtBalanceFromTape(tape: string): bigint;
@@ -1003,6 +1167,6 @@ declare module "tbc-contract" {
   export function safeJSONParse(text: any): any;
   export function parseDecimalToBigInt(
     amount: number | bigint | string,
-    decimal: number
+    decimal: number,
   ): bigint;
 }

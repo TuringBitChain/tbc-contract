@@ -20,6 +20,8 @@ contract.NFT = require("./lib/contract/nft.js");
 contract.MultiSig = require("./lib/contract/multiSig.js");
 contract.piggyBank = require("./lib/contract/piggyBank.js");
 contract.orderBook = require("./lib/contract/orderBook.js");
+contract.HTLC = require("./lib/contract/htlc.js");
+contract.stableCoin = require("./lib/contract/stableCoin.js");
 
 contract.buildUTXO = require("./lib/util/util").buildUTXO;
 contract.buildFtPrePreTxData = require("./lib/util/util").buildFtPrePreTxData;
@@ -31,3 +33,4 @@ contract.getOpCode = require("./lib/util/util").getOpCode;
 contract.getLpCostAddress = require("./lib/util/util").getLpCostAddress;
 contract.getLpCostAmount = require("./lib/util/util").getLpCostAmount;
 contract.isLock = require("./lib/util/util").isLock;
+contract.fetchTBCLockTime = require("./lib/util/util").fetchTBCLockTime;

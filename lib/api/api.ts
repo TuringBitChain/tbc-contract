@@ -957,7 +957,9 @@ class API {
     )
       .reverse()
       .toString("hex");
-    const url = base_url + `nft/utxo/scriptpubkeyhash/${script_hash}`;
+    const url = tx_hash 
+      ? base_url + `utxo/scriptpubkeyhash/${script_hash}`
+      : base_url + `nft/utxo/scriptpubkeyhash/${script_hash}`;
     try {
       const response = await fetch(url);
       if (!response.ok) {
@@ -1020,7 +1022,7 @@ class API {
     )
       .reverse()
       .toString("hex");
-    const url = base_url + `nft/utxo/scriptpubkeyhash/${script_hash}`;
+    const url = base_url + `utxo/scriptpubkeyhash/${script_hash}`;
     try {
       const response = await fetch(url);
       if (!response.ok) {
