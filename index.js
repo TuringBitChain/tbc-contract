@@ -1,4 +1,5 @@
 var contract = module.exports;
+var contract = module.exports;
 
 contract.version = 'v' + require('./package.json').version;
 contract.versionGuard = function (version) {
