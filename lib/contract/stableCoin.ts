@@ -138,7 +138,7 @@ class stableCoin extends FT {
       )
       .sign(privateKey);
     tx.seal();
-    console.log(tx.verify());
+    // console.log(tx.verify());
     const coinMintRaw = tx.uncheckedSerialize();
     this.contractTxid = tx.hash;
     const txraw: string[] = [];
@@ -267,7 +267,7 @@ class stableCoin extends FT {
       )
       .sign(privateKey);
     tx.seal();
-    console.log(tx.verify());
+    // console.log(tx.verify());
     const coinMintRaw = tx.uncheckedSerialize();
     return coinMintRaw;
   }
@@ -407,8 +407,8 @@ class stableCoin extends FT {
     tx.sign(privateKey);
     tx.setLockTime(lockTimeMax);
     tx.seal();
-    console.log(tx.toObject());
-    console.log(tx.verify());
+    // console.log(tx.toObject());
+    // console.log(tx.verify());
     const txraw = tx.uncheckedSerialize();
     return txraw;
   }
@@ -864,8 +864,8 @@ class stableCoin extends FT {
     tx.sign(privateKey);
     tx.setLockTime(lockTimeMax);
     tx.seal();
-    console.log(tx.toObject());
-    console.log(tx.verify());
+    // console.log(tx.toObject());
+    // console.log(tx.verify());
     const txraw = tx.uncheckedSerialize();
     return txraw;
   }
@@ -1000,8 +1000,8 @@ class stableCoin extends FT {
     tx.sign(privateKey);
     tx.setLockTime(lockTimeMax);
     tx.seal();
-    console.log(tx.toObject());
-    console.log(tx.verify());
+    // console.log(tx.toObject());
+    // console.log(tx.verify());
     const txraw = tx.uncheckedSerialize();
     return txraw;
   }
