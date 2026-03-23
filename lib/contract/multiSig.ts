@@ -1,7 +1,10 @@
 import * as tbc from "tbc-lib-js";
 import { parseDecimalToBigInt } from "../util/util";
 const FT = require("./ft");
-
+const ft_v1_length = 1564;
+const ft_v1_partial_offset = 1536;
+const ft_v2_length = 1884;
+const ft_v2_partial_offset = 1856;
 interface MultiSigTxRaw {
   txraw: string;
   amounts: number[];
@@ -562,6 +565,7 @@ class MultiSig {
       );
     }
 
+    const ftVersion = ftutxos[0].script.length / 2 === ft_v2_length? 2 : 1;
     for (let i = 0; i < ftutxos.length; i++) {
       tx.setInputScript(
         {
@@ -575,7 +579,8 @@ class MultiSig {
             prepreTxDatas[i],
             contractTX,
             i + 1,
-            ftutxos[i].outputIndex
+            ftutxos[i].outputIndex,
+            ftVersion
           );
           return unlockingScript;
         }
