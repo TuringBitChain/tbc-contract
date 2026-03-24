@@ -1592,6 +1592,141 @@ class API {
       throw new Error(error.message);
     }
   }
+
+  static async fetchCoinInfo(
+    contractTxid: string,
+    network?: "testnet" | "mainnet" | string
+  ): Promise<FtInfo> {
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
+    const url = base_url + `stablecoin/info/stablecoinid/${contractTxid}`;
+    try {
+      const response = await fetch(url)
+        .then((response) => response.text())
+        .then((text) => {
+          const result = safeJSONParse(text);
+          return result;
+        });
+      const data = response.data;
+      const coinInfo: FtInfo = {
+        codeScript: data.code_script,
+        tapeScript: data.tape_script,
+        totalSupply: data.supply,
+        decimal: data.decimal,
+        name: data.name,
+        symbol: data.symbol,
+      };
+      return coinInfo;
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  }
+
+  static async fetchCoinUTXOList(
+    contractTxid: string,
+    addressOrHash: string,
+    codeScript: string,
+    network?: "testnet" | "mainnet" | string
+  ): Promise<any[]> {
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
+    let hash = "";
+    if (tbc.Address.isValid(addressOrHash)) {
+      const publicKeyHash =
+      tbc.Address.fromString(addressOrHash).hashBuffer.toString("hex");
+      hash = publicKeyHash + "00";
+    } else {
+      if (addressOrHash.length !== 40) {
+      throw new Error("Invalid address or hash");
+      }
+      hash = addressOrHash + "01";
+    }
+    const url =
+      base_url + `stablecoin/utxo/combinescript/${hash}/stablecoinid/${contractTxid}`;
+    try {
+      const response = await fetch(url)
+      .then((response) => response.text())
+      .then((text) => safeJSONParse(text));
+      const utxoList = response.data.utxos;
+      if (utxoList.length === 0) {
+        throw new Error("The ft balance in the account is zero.");
+      }
+      
+      return utxoList.map((utxo: any) => ({
+        txId: utxo.txid,
+        outputIndex: utxo.index,
+        script: codeScript,
+        satoshis: Number(utxo.tbc_value),
+        ftBalance: utxo.ft_value,
+        lockTime: utxo.lock_time,
+      }));
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  }
+
+  static async fetchCoinUTXOs(
+    contractTxid: string,
+    addressOrHash: string,
+    amount: bigint,
+    codeScript: string,
+    network?: "testnet" | "mainnet" | string,
+    number?: number
+  ): Promise<tbc.Transaction.IUnspentOutput[]> {
+    if (number !== undefined && (number <= 0 || !Number.isInteger(number))) {
+      throw new Error("Number must be a positive integer greater than 0");
+    }
+    try {
+      const coinutxolist = await API.fetchCoinUTXOList(
+        contractTxid,
+        addressOrHash,
+        codeScript,
+        network
+      );
+
+      coinutxolist.sort((a, b) =>
+        BigInt(b.ftBalance) > BigInt(a.ftBalance) ? 1 : -1
+      );
+
+      const maxCount = number ?? coinutxolist.length;
+      let sumBalance = BigInt(0);
+      const coinutxos: tbc.Transaction.IUnspentOutput[] = [];
+
+      for (let i = 0; i < coinutxolist.length && i < maxCount; i++) {
+        sumBalance += BigInt(coinutxolist[i].ftBalance);
+        coinutxos.push(coinutxolist[i]);
+        if (sumBalance >= amount) {
+          break;
+        }
+      }
+
+      if (sumBalance < amount) {
+        const totalBalance = coinutxolist.reduce(
+          (sum, utxo) => sum + BigInt(utxo.ftBalance),
+          BigInt(0)
+        );
+
+        if (totalBalance >= amount) {
+          if (number !== undefined) {
+            throw new Error(
+              "Insufficient Coinbalance within number limit, please merge Coin UTXOs or increase number"
+            );
+          }
+          throw new Error("Insufficient Coinbalance, please merge Coin UTXOs");
+        }
+        throw new Error("Coinbalance not enough!");
+      }
+
+      return coinutxos;
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  }
+
+  
+
 }
 
 module.exports = API;

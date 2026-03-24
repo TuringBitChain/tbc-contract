@@ -2538,6 +2538,7 @@ class poolNFT2 {
       tx.feePerKb(80);
       tx.change(privateKey.toAddress());
       for (let i = 0; i < ftutxo.length; i++) {
+        if (this.with_lock_time) tx.setInputSequence(i, 4294967294);
         tx.setInputScript(
           {
             inputIndex: i,
