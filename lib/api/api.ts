@@ -1593,10 +1593,11 @@ class API {
     }
   }
 
+  //stableCoin
   static async fetchCoinInfo(
     contractTxid: string,
     network?: "testnet" | "mainnet" | string
-  ): Promise<FtInfo> {
+  ): Promise<{ coinInfo: FtInfo; nftTXID: string }> {
     let base_url = network
       ? API.getBaseURL(network)
       : API.getBaseURL("mainnet");
@@ -1617,7 +1618,46 @@ class API {
         name: data.name,
         symbol: data.symbol,
       };
-      return coinInfo;
+      const nftTXID = data.utxo.txid;
+      return { coinInfo, nftTXID };
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  }
+
+  static async getCoinbalance(
+    contractTxid: string,
+    addressOrHash: string,
+    network?: "testnet" | "mainnet" | string
+  ): Promise<bigint> {
+    let base_url = network
+      ? API.getBaseURL(network)
+      : API.getBaseURL("mainnet");
+    let hash = "";
+    if (tbc.Address.isValid(addressOrHash)) {
+      // If the recipient is an address
+      const publicKeyHash =
+        tbc.Address.fromString(addressOrHash).hashBuffer.toString("hex");
+      hash = publicKeyHash + "00";
+    } else {
+      // If the recipient is a hash
+      if (addressOrHash.length !== 40) {
+        throw new Error("Invalid address or hash");
+      }
+      hash = addressOrHash + "01";
+    }
+    const url =
+      base_url +
+      `stablecoin/tokenbalance/combinescript/${hash}/stablecoinid/${contractTxid}`;
+    try {
+      const response = await fetch(url)
+        .then((response) => response.text())
+        .then((text) => {
+          const result = safeJSONParse(text);
+          return result;
+        });
+      const coinBalance = response.data.balance;
+      return coinBalance;
     } catch (error: any) {
       throw new Error(error.message);
     }
@@ -1685,7 +1725,6 @@ class API {
         codeScript,
         network
       );
-
       coinutxolist.sort((a, b) =>
         BigInt(b.ftBalance) > BigInt(a.ftBalance) ? 1 : -1
       );
@@ -1718,7 +1757,6 @@ class API {
         }
         throw new Error("Coinbalance not enough!");
       }
-
       return coinutxos;
     } catch (error: any) {
       throw new Error(error.message);

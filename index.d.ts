@@ -174,6 +174,29 @@ declare module "tbc-contract" {
       address: string,
       network?: "testnet" | "mainnet" | string,
     ): Promise<Transaction.IUnspentOutput[]>;
+    static fetchCoinInfo(
+      contractTxid: string,
+      network?: "testnet" | "mainnet" | string,
+    ): Promise<{ coinInfo: FtInfo; nftTXID: string }>;
+    static getCoinbalance(
+      contractTxid: string,
+      addressOrHash: string,
+      network?: "testnet" | "mainnet" | string,
+    ): Promise<bigint>;
+    static fetchCoinUTXOList(
+      contractTxid: string,
+      addressOrHash: string,
+      codeScript: string,
+      network?: "testnet" | "mainnet" | string,
+    ): Promise<Transaction.IUnspentOutput[]>;
+    static fetchCoinUTXOs(
+      contractTxid: string,
+      addressOrHash: string,
+      amount: bigint,
+      codeScript: string,
+      network?: "testnet" | "mainnet" | string,
+      number?: number,
+    ): Promise<Transaction.IUnspentOutput[]>;
   }
 
   interface CollectionData {
@@ -1051,7 +1074,7 @@ declare module "tbc-contract" {
     nftSymbol: string;
     description: string;
     coinDecimal: number;
-    coinTotalSupply: bigint;
+    coinTotalSupply: string;
   }
 
   export class stableCoin extends FT {
@@ -1102,9 +1125,16 @@ declare module "tbc-contract" {
       prepreTxData: string[],
       localTX: Transaction[],
     ): Array<{ txraw: string }>;
-    frozenCoinUTXO(
+    freezeCoinUTXO(
       privateKey_admin: PrivateKey,
       lock_time: number,
+      ftutxo: Transaction.IUnspentOutput[],
+      utxo: Transaction.IUnspentOutput,
+      preTX: Transaction[],
+      prepreTxData: string[],
+    ): string;
+    unfreezeCoinUTXO(
+      privateKey_admin: PrivateKey,
       ftutxo: Transaction.IUnspentOutput[],
       utxo: Transaction.IUnspentOutput,
       preTX: Transaction[],
