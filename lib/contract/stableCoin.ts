@@ -408,7 +408,7 @@ class stableCoin extends FT {
     tx.setLockTime(lockTimeMax);
     tx.seal();
     // console.log(tx.toObject());
-    console.log(tx.verify());
+    // console.log(tx.verify());
     const txraw = tx.uncheckedSerialize();
     return txraw;
   }
