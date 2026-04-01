@@ -8,9 +8,11 @@ const amountlength = '08';
 const hashlength = '20';
 
 const ftCodeLength = 1884;
+const coinCodeLength = 2012;
 const buyCodeLength = 896 + 114;
 const sellCodeLength = 832 + 114;
 const ftPartialOffset = 1856;
+const coinPartialOffset = 1984;
 const buyPartialOffset = 896;
 const sellPartialOffset = 832;
 
@@ -129,6 +131,7 @@ export function getCurrentTxOutputsData(tx: tbc.Transaction): string {
 
         let partialOffset = 0;
         if (len === ftCodeLength) partialOffset = ftPartialOffset;
+        else if (len === coinCodeLength) partialOffset = coinPartialOffset;
         else if (len === buyCodeLength) partialOffset = buyPartialOffset;
         else if (len === sellCodeLength) partialOffset = sellPartialOffset;
 
@@ -163,7 +166,7 @@ export function getCurrentTxOutputsData(tx: tbc.Transaction): string {
         writer.write(getLengthHex(size.length));
         writer.write(size);
 
-        if (len === ftCodeLength) {
+        if (len === ftCodeLength || len === coinCodeLength) {
             const nextOutput = tx.outputs[i + 1];
             writer.write(Buffer.from(amountlength, 'hex'));
             writer.writeUInt64LEBN(nextOutput.satoshisBN);

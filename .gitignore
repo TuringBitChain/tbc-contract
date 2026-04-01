@@ -7,3 +7,4 @@ lib/**/*.d.ts
 package-lock.json
 obfuscate.js
 .DS_Store
+.claude

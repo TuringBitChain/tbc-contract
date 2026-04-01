@@ -645,7 +645,7 @@ class FT {
      * @param preVout - The output index in the previous transaction.
      * @returns The unlocking script as a tbc.Script object.
      */
-    getFTunlock(privateKey_from: tbc.PrivateKey, currentTX: tbc.Transaction, preTX: tbc.Transaction, prepreTxData: string, currentUnlockIndex: number, preTxVout: number, isCoin?: 1): tbc.Script {
+    getFTunlock(privateKey_from: tbc.PrivateKey, currentTX: tbc.Transaction, preTX: tbc.Transaction, prepreTxData: string, currentUnlockIndex: number, preTxVout: number, isCoin?: boolean): tbc.Script {
         const privateKey = privateKey_from;
         const prepretxdata = prepreTxData;
         const pretxdata = getPreTxdata(preTX, preTxVout);

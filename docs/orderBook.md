@@ -10,7 +10,6 @@ const network = "testnet";
 const privateKeyA = tbc.PrivateKey.fromString('');
 const addressA = tbc.Address.fromPrivateKey(privateKeyA).toString();
 const ftContractTxid = "";
-const ftPartialHash = "";
 const fee = 0.01;
 
 const order = new orderBook();
@@ -18,6 +17,7 @@ const order = new orderBook();
 const saleVolume = 10000000n;
 const unitPrice = 10100000n;
 const feeRate = 100n;
+const requiredAmount = (saleVolume * unitPrice) / 1000000n;
 
 //创建卖单，卖tbc
 {
@@ -29,12 +29,12 @@ const feeRate = 100n;
      * @param {bigint} saleVolume - 出售数量,表示要出售的tbc数量
      * @param {bigint} unitPrice - 单价,每个tbc的价格
      * @param {bigint} feeRate - 手续费率,交易所需支付的手续费比例
-     * @param {string} ftContractTxid - FT合约交易ID
-     * @param {string} ftPartialHash - FT部分哈希,代币合约的部分哈希值
+     * @param {string} ftContractTxid - FT合约ID
+     * @param {string} ftCodeScript - FT合约脚本
      * @param {tbc.Transaction.IUnspentOutput[]} utxos - 未花费交易输出数组,用于构建交易的输入
      * @returns {string} sellOrderNoSigs - 返回一个待签名的卖单交易字符串
      */
-    const sellOrderNoSigs = order.buildSellOrderTX(holdAddress, saleVolume, unitPrice, feeRate, ftContractTxid, ftPartialHash, utxos);   //待签名交易
+    const sellOrderNoSigs = order.buildSellOrderTX(holdAddress, saleVolume, unitPrice, feeRate, ftContractTxid, ftCodeScript, utxos);   //待签名交易
 
     /**
      * 填充卖单签名
@@ -78,13 +78,21 @@ const feeRate = 100n;
 
 //创建买单，用token买tbc
 {
-    const Token = new FT(ftContractTxid);
-    const TokenInfo = await API.fetchFtInfo(Token.contractTxid, network);//获取FT信息
-    Token.initialize(TokenInfo);
-    const ftutxo_codeScript = FT.buildFTtransferCode(Token.codeScript, addressA).toBuffer().toString('hex');
-    const ftutxos = await API.fetchFtUTXOs(Token.contractTxid, addressA, ftutxo_codeScript, network, saleVolume);//准备ft utxo
-    const utxos: tbc.Transaction.IUnspentOutput[] = [];
+    //普通Token
+    {   
+        const TokenInfo = await API.fetchFtInfo(ftContractTxid, network);//获取FT信息
+        const ftutxo_codeScript = FT.buildFTtransferCode(TokenInfo.codeScript, addressA).toBuffer().toString('hex');
+        const ftutxos = await API.fetchFtUTXOs(TokenInfo.contractTxid, addressA, ftutxo_codeScript, network, requiredAmount);//准备ft utxo
+    }
 
+    //稳定币
+    {
+        const TokenInfo = (await API.fetchCoinInfo(ftContractTxid, network)).coinInfo;//ftContractTxid是确定的稳定币id，获取Coin信息
+        const ftutxo_codeScript = FT.buildFTtransferCode(TokenInfo.codeScript, addressA).toBuffer().toString('hex');
+        const ftutxos = await API.fetchCoinUTXOs(TokenInfo.contractTxid, addressA, requiredAmount, ftutxo_codeScript, network, 5);//准备coin utxo
+    }
+
+    const utxos: tbc.Transaction.IUnspentOutput[] = [];
     let preTXs: tbc.Transaction[] = [];
     let prepreTxData: string[] = [];
     for (let i = 0; i < ftutxos.length; i++) {
@@ -99,7 +107,7 @@ const feeRate = 100n;
      * @param {bigint} saleVolume - 出售数量,表示要出售的tbc数量
      * @param {bigint} unitPrice - 单价,每个tbc的价格
      * @param {bigint} feeRate - 手续费率,交易所需支付的手续费比例
-     * @param {string} ftContractTxid - FT合约交易ID
+     * @param {string} ftContractTxid - FT合约ID
      * @param {tbc.Transaction.IUnspentOutput[]} utxos - 普通utxo数组
      * @param {tbc.Transaction.IUnspentOutput[]} ftutxos - ftutxo数组
      * @param {tbc.Transaction[]} preTXs - ftutxo父交易数组

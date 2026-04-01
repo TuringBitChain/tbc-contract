@@ -12,12 +12,15 @@ import {
 } from "../util/util";
 const API = require("../api/api");
 const FT = require("./ft");
+const stableCoin = require("./stableCoin");
 const partial_sha256 = require("tbc-lib-js/lib/util/partial-sha256");
 const BN = tbc.crypto.BN;
 const ft_v1_length = 1564;
 const ft_v1_partial_offset = 1536;
 const ft_v2_length = 1884;
 const ft_v2_partial_offset = 1856;
+const coin_length = 2012;
+const coin_partial_offset = 1984;
 const utxoFee = 0.01;
 
 class OrderBook {
@@ -46,7 +49,7 @@ class OrderBook {
     unitPrice: bigint,
     feeRate: bigint,
     ftID: string,
-    ftPartialHash: string,
+    ftCodeScript: string,
     utxos: tbc.Transaction.IUnspentOutput[],
   ): string {
     if (!tbc.Address.isValid(holdAddress))
@@ -55,9 +58,9 @@ class OrderBook {
       throw new Error("SaleVolume and UnitPrice must be positive bigint");
     if (_isNegativeBigInt(feeRate))
       throw new Error("FeeRate must be non-negative bigint");
-    if (!_isValidSHA256Hash(ftID) || !_isValidSHA256Hash(ftPartialHash))
+    if (!_isValidSHA256Hash(ftID))
       throw new Error(
-        "FTID and FTPartialHash must be valid SHA256 hash strings",
+        "FTID must be valid SHA256 hash strings",
       );
 
     this.type = "sell";
@@ -66,13 +69,18 @@ class OrderBook {
     this.unit_price = unitPrice;
     this.fee_rate = feeRate;
     this.ft_a_contract_id = ftID;
-    this.ft_a_contract_partialhash = ftPartialHash;
+    const ftScriptLen = ftCodeScript.length / 2;
+    const isCoin = ftScriptLen === coin_length;
+    const partialOffset = isCoin ? coin_partial_offset : ft_v2_partial_offset;
+    this.ft_a_contract_partialhash = partial_sha256.calculate_partial_hash(
+      Buffer.from(ftCodeScript, "hex").subarray(0, partialOffset),
+    );
 
     const tx = new tbc.Transaction();
     tx.from(utxos);
     tx.addOutput(
       new tbc.Transaction.Output({
-        script: this.getSellOrderCode(),
+        script: this.getSellOrderCode(isCoin),
         satoshis: Number(saleVolume),
       }),
     );
@@ -149,8 +157,11 @@ class OrderBook {
     this.unit_price = unitPrice;
     this.fee_rate = feeRate;
     this.ft_a_contract_id = ftID;
+    const ftScriptLen = ftutxos[0].script.length / 2;
+    const isCoin = ftScriptLen === coin_length;
+    const partialOffset = isCoin ? coin_partial_offset : ft_v2_partial_offset;
     this.ft_a_contract_partialhash = partial_sha256.calculate_partial_hash(
-      Buffer.from(ftutxos[0].script, "hex").subarray(0, 1856),
+      Buffer.from(ftutxos[0].script, "hex").subarray(0, partialOffset),
     );
 
     const tx = new tbc.Transaction();
@@ -158,7 +169,7 @@ class OrderBook {
     tx.from(utxos);
 
     // Buy Order Output
-    const buyOrder = this.getBuyOrderCode();
+    const buyOrder = this.getBuyOrderCode(isCoin);
     tx.addOutput(
       new tbc.Transaction.Output({
         script: buyOrder,
@@ -287,7 +298,9 @@ class OrderBook {
 
     const tx = new tbc.Transaction(buyOrderTxRaw);
 
+    const isCoin = tx.outputs[1].script.toBuffer().length === coin_length;
     for (let i = 0; i < preTXs.length; i++) {
+      if (isCoin) tx.setInputSequence(i, 4294967294);
       tx.setInputScript(
         {
           inputIndex: i,
@@ -337,7 +350,7 @@ class OrderBook {
       throw new Error("Invalid FtPrePreTxData string");
 
     const tx = new tbc.Transaction(buyOrderTxRaw);
-
+    const isCoin = tx.outputs[0].script.toBuffer().length === coin_length;
     tx.setInputScript(
       {
         inputIndex: 0,
@@ -345,6 +358,7 @@ class OrderBook {
       tbc.Script.fromASM(`${sigs[0]} ${publicKey} OP_2`),
     );
 
+    if (isCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
       {
         inputIndex: 1,
@@ -378,266 +392,277 @@ class OrderBook {
     return txraw;
   }
 
-  makeSellOrder_privateKey(
-    privateKey: tbc.PrivateKey,
-    saleVolume: bigint,
-    unitPrice: bigint,
-    feeRate: bigint,
-    ftID: string,
-    ftPartialHash: string,
-    utxos: tbc.Transaction.IUnspentOutput[],
-  ) {
-    // const holdAddress = "1Ntohi19LEcLcijug8n42njYKNjSgHuQdq";
-    const holdAddress = privateKey.toAddress().toString();
-    this.type = "sell";
-    this.hold_address = holdAddress;
-    this.sale_volume = saleVolume;
-    this.unit_price = unitPrice;
-    this.fee_rate = feeRate;
-    this.ft_a_contract_id = ftID;
-    this.ft_a_contract_partialhash = ftPartialHash;
+  // makeSellOrder_privateKey(
+  //   privateKey: tbc.PrivateKey,
+  //   saleVolume: bigint,
+  //   unitPrice: bigint,
+  //   feeRate: bigint,
+  //   ftID: string,
+  //   ftCodeScript: string,
+  //   utxos: tbc.Transaction.IUnspentOutput[],
+  // ) {
+  //   // const holdAddress = "1Ntohi19LEcLcijug8n42njYKNjSgHuQdq";
+  //   const holdAddress = privateKey.toAddress().toString();
+  //   this.type = "sell";
+  //   this.hold_address = holdAddress;
+  //   this.sale_volume = saleVolume;
+  //   this.unit_price = unitPrice;
+  //   this.fee_rate = feeRate;
+  //   this.ft_a_contract_id = ftID;
+  //   const ftScriptLen = ftCodeScript.length / 2;
+  //   const isCoin = ftScriptLen === coin_length;
+  //   const partialOffset = isCoin ? coin_partial_offset : ft_v2_partial_offset;
+  //   this.ft_a_contract_partialhash = partial_sha256.calculate_partial_hash(
+  //     Buffer.from(ftCodeScript, "hex").subarray(0, partialOffset),
+  //   );
 
-    const tx = new tbc.Transaction();
-    tx.from(utxos);
-    tx.addOutput(
-      new tbc.Transaction.Output({
-        script: this.getSellOrderCode(),
-        satoshis: Number(saleVolume),
-      }),
-    );
-    tx.change(holdAddress);
-    const txSize = tx.getEstimateSize();
-    tx.fee(txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80));
-    tx.sign(privateKey);
-    tx.seal();
-    const txraw = tx.uncheckedSerialize();
-    return txraw;
-  }
+  //   const tx = new tbc.Transaction();
+  //   tx.from(utxos);
+  //   tx.addOutput(
+  //     new tbc.Transaction.Output({
+  //       script: this.getSellOrderCode(isCoin),
+  //       satoshis: Number(saleVolume),
+  //     }),
+  //   );
+  //   tx.change(holdAddress);
+  //   const txSize = tx.getEstimateSize();
+  //   tx.fee(txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80));
+  //   tx.sign(privateKey);
+  //   tx.seal();
+  //   const txraw = tx.uncheckedSerialize();
+  //   return txraw;
+  // }
 
-  cancelSellOrder_privateKey(
-    privateKey: tbc.PrivateKey,
-    sellutxo: tbc.Transaction.IUnspentOutput,
-    utxos: tbc.Transaction.IUnspentOutput[],
-  ) {
-    const sellData = OrderBook.getOrderData(sellutxo.script);
-    const tx = new tbc.Transaction();
-    tx.from(sellutxo).from(utxos);
-    tx.to(sellData.holdAddress, sellutxo.satoshis);
-    tx.change(sellData.holdAddress);
-    const txSize = tx.getEstimateSize();
-    tx.fee(txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80));
-    tx.setInputScript(
-      {
-        inputIndex: 0,
-      },
-      (tx) => {
-        const sig = tx.getSignature(0, privateKey);
-        const pubKey = privateKey.toPublicKey().toString();
-        return tbc.Script.fromASM(`${sig} ${pubKey} OP_2`);
-      },
-    );
-    tx.sign(privateKey);
-    tx.seal();
-    const txraw = tx.uncheckedSerialize();
-    return txraw;
-  }
+  // cancelSellOrder_privateKey(
+  //   privateKey: tbc.PrivateKey,
+  //   sellutxo: tbc.Transaction.IUnspentOutput,
+  //   utxos: tbc.Transaction.IUnspentOutput[],
+  // ) {
+  //   const sellData = OrderBook.getOrderData(sellutxo.script);
+  //   const tx = new tbc.Transaction();
+  //   tx.from(sellutxo).from(utxos);
+  //   tx.to(sellData.holdAddress, sellutxo.satoshis);
+  //   tx.change(sellData.holdAddress);
+  //   const txSize = tx.getEstimateSize();
+  //   tx.fee(txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80));
+  //   tx.setInputScript(
+  //     {
+  //       inputIndex: 0,
+  //     },
+  //     (tx) => {
+  //       const sig = tx.getSignature(0, privateKey);
+  //       const pubKey = privateKey.toPublicKey().toString();
+  //       return tbc.Script.fromASM(`${sig} ${pubKey} OP_2`);
+  //     },
+  //   );
+  //   tx.sign(privateKey);
+  //   tx.seal();
+  //   const txraw = tx.uncheckedSerialize();
+  //   return txraw;
+  // }
 
-  makeBuyOrder_privateKey(
-    privateKey: tbc.PrivateKey,
-    saleVolume: bigint,
-    unitPrice: bigint,
-    feeRate: bigint,
-    ftID: string,
-    utxos: tbc.Transaction.IUnspentOutput[],
-    ftutxos: tbc.Transaction.IUnspentOutput[],
-    preTXs: tbc.Transaction[],
-    prepreTxData: string[],
-  ) {
-    // const holdAddress = "15MjMwGFvV2B9GanCYpzRupykryJ4A1Lp1";
-    const holdAddress = privateKey.toAddress().toString();
-    this.type = "buy";
-    this.hold_address = holdAddress;
-    this.sale_volume = saleVolume;
-    this.unit_price = unitPrice;
-    this.fee_rate = feeRate;
-    this.ft_a_contract_id = ftID;
-    this.ft_a_contract_partialhash = partial_sha256.calculate_partial_hash(
-      Buffer.from(ftutxos[0].script, "hex").subarray(0, 1856),
-    );
+  // makeBuyOrder_privateKey(
+  //   privateKey: tbc.PrivateKey,
+  //   saleVolume: bigint,
+  //   unitPrice: bigint,
+  //   feeRate: bigint,
+  //   ftID: string,
+  //   utxos: tbc.Transaction.IUnspentOutput[],
+  //   ftutxos: tbc.Transaction.IUnspentOutput[],
+  //   preTXs: tbc.Transaction[],
+  //   prepreTxData: string[],
+  // ) {
+  //   // const holdAddress = "15MjMwGFvV2B9GanCYpzRupykryJ4A1Lp1";
+  //   const holdAddress = privateKey.toAddress().toString();
+  //   this.type = "buy";
+  //   this.hold_address = holdAddress;
+  //   this.sale_volume = saleVolume;
+  //   this.unit_price = unitPrice;
+  //   this.fee_rate = feeRate;
+  //   this.ft_a_contract_id = ftID;
+  //   const ftScriptLen = ftutxos[0].script.length / 2;
+  //   const isCoin = ftScriptLen === coin_length;
+  //   const partialOffset = isCoin ? coin_partial_offset : ft_v2_partial_offset;
+  //   this.ft_a_contract_partialhash = partial_sha256.calculate_partial_hash(
+  //     Buffer.from(ftutxos[0].script, "hex").subarray(0, partialOffset),
+  //   );
 
-    const tx = new tbc.Transaction();
-    tx.from(ftutxos);
-    tx.from(utxos);
+  //   const tx = new tbc.Transaction();
+  //   tx.from(ftutxos);
+  //   tx.from(utxos);
 
-    // Buy Order Output
-    const buyOrder = this.getBuyOrderCode();
-    tx.addOutput(
-      new tbc.Transaction.Output({
-        script: buyOrder,
-        satoshis: this.buy_code_dust,
-      }),
-    );
+  //   // Buy Order Output
+  //   const buyOrder = this.getBuyOrderCode(isCoin);
+  //   tx.addOutput(
+  //     new tbc.Transaction.Output({
+  //       script: buyOrder,
+  //       satoshis: this.buy_code_dust,
+  //     }),
+  //   );
 
-    //FT Code Buy Output
-    const ftAmount = (saleVolume * unitPrice) / this.precision;
-    const tapeAmountSetIn: bigint[] = [];
-    let tapeAmountSum = BigInt(0);
-    for (let i = 0; i < ftutxos.length; i++) {
-      tapeAmountSetIn.push(ftutxos[i].ftBalance!);
-      tapeAmountSum += BigInt(tapeAmountSetIn[i]);
-    }
-    let { amountHex, changeHex } = FT.buildTapeAmount(
-      ftAmount,
-      tapeAmountSetIn,
-    );
-    const ftCode = ftutxos[0].script;
-    const ftTape = preTXs[0].outputs[ftutxos[0].outputIndex + 1].script.toHex();
-    const buyOrderHash160 = tbc.crypto.Hash.sha256ripemd160(
-      tbc.crypto.Hash.sha256(buyOrder.toBuffer()),
-    ).toString("hex");
-    const ftCodeBuy = FT.buildFTtransferCode(ftCode, buyOrderHash160);
-    const ftTapeBuy = FT.buildFTtransferTape(ftTape, amountHex);
-    const ftCodeDust = ftutxos[0].satoshis;
-    tx.addOutput(
-      new tbc.Transaction.Output({
-        script: ftCodeBuy,
-        satoshis: ftCodeDust,
-      }),
-    );
-    tx.addOutput(
-      new tbc.Transaction.Output({
-        script: ftTapeBuy,
-        satoshis: 0,
-      }),
-    );
+  //   //FT Code Buy Output
+  //   const ftAmount = (saleVolume * unitPrice) / this.precision;
+  //   const tapeAmountSetIn: bigint[] = [];
+  //   let tapeAmountSum = BigInt(0);
+  //   for (let i = 0; i < ftutxos.length; i++) {
+  //     tapeAmountSetIn.push(ftutxos[i].ftBalance!);
+  //     tapeAmountSum += BigInt(tapeAmountSetIn[i]);
+  //   }
+  //   let { amountHex, changeHex } = FT.buildTapeAmount(
+  //     ftAmount,
+  //     tapeAmountSetIn,
+  //   );
+  //   const ftCode = ftutxos[0].script;
+  //   const ftTape = preTXs[0].outputs[ftutxos[0].outputIndex + 1].script.toHex();
+  //   const buyOrderHash160 = tbc.crypto.Hash.sha256ripemd160(
+  //     tbc.crypto.Hash.sha256(buyOrder.toBuffer()),
+  //   ).toString("hex");
+  //   const ftCodeBuy = FT.buildFTtransferCode(ftCode, buyOrderHash160);
+  //   const ftTapeBuy = FT.buildFTtransferTape(ftTape, amountHex);
+  //   const ftCodeDust = ftutxos[0].satoshis;
+  //   tx.addOutput(
+  //     new tbc.Transaction.Output({
+  //       script: ftCodeBuy,
+  //       satoshis: ftCodeDust,
+  //     }),
+  //   );
+  //   tx.addOutput(
+  //     new tbc.Transaction.Output({
+  //       script: ftTapeBuy,
+  //       satoshis: 0,
+  //     }),
+  //   );
 
-    if (ftAmount < tapeAmountSum) {
-      const ftCodeChange = FT.buildFTtransferCode(ftCode, holdAddress);
-      const ftTapeChange = FT.buildFTtransferTape(ftTape, changeHex);
-      tx.addOutput(
-        new tbc.Transaction.Output({
-          script: ftCodeChange,
-          satoshis: ftCodeDust,
-        }),
-      );
-      tx.addOutput(
-        new tbc.Transaction.Output({
-          script: ftTapeChange,
-          satoshis: 0,
-        }),
-      );
-    }
+  //   if (ftAmount < tapeAmountSum) {
+  //     const ftCodeChange = FT.buildFTtransferCode(ftCode, holdAddress);
+  //     const ftTapeChange = FT.buildFTtransferTape(ftTape, changeHex);
+  //     tx.addOutput(
+  //       new tbc.Transaction.Output({
+  //         script: ftCodeChange,
+  //         satoshis: ftCodeDust,
+  //       }),
+  //     );
+  //     tx.addOutput(
+  //       new tbc.Transaction.Output({
+  //         script: ftTapeChange,
+  //         satoshis: 0,
+  //       }),
+  //     );
+  //   }
 
-    tx.change(holdAddress);
-    // const txSize = tx.getEstimateSize();
-    // tx.fee(txSize < 1000 ? 80 : Math.ceil(txSize / 1000 * 80));
-    tx.feePerKb(80);
+  //   tx.change(holdAddress);
+  //   // const txSize = tx.getEstimateSize();
+  //   // tx.fee(txSize < 1000 ? 80 : Math.ceil(txSize / 1000 * 80));
+  //   tx.feePerKb(80);
 
-    for (let i = 0; i < ftutxos.length; i++) {
-      tx.setInputScript(
-        {
-          inputIndex: i,
-        },
-        (tx) => {
-          const unlockingScript = new FT(ftID).getFTunlock(
-            privateKey,
-            tx,
-            preTXs[i],
-            prepreTxData[i],
-            i,
-            ftutxos[i].outputIndex,
-          );
-          return unlockingScript;
-        },
-      );
-    }
-    tx.sign(privateKey);
-    tx.seal();
-    const txraw = tx.uncheckedSerialize();
-    return txraw;
-  }
+  //   for (let i = 0; i < ftutxos.length; i++) {
+  //     tx.setInputScript(
+  //       {
+  //         inputIndex: i,
+  //       },
+  //       (tx) => {
+  //         const unlockingScript = new FT(ftID).getFTunlock(
+  //           privateKey,
+  //           tx,
+  //           preTXs[i],
+  //           prepreTxData[i],
+  //           i,
+  //           ftutxos[i].outputIndex,
+  //           isCoin,
+  //         );
+  //         return unlockingScript;
+  //       },
+  //     );
+  //   }
+  //   tx.sign(privateKey);
+  //   tx.seal();
+  //   const txraw = tx.uncheckedSerialize();
+  //   return txraw;
+  // }
 
-  cancelBuyOrder_privateKey(
-    privateKey: tbc.PrivateKey,
-    buyutxo: tbc.Transaction.IUnspentOutput,
-    buyPreTX: tbc.Transaction,
-    ftutxo: tbc.Transaction.IUnspentOutput,
-    ftPreTX: tbc.Transaction,
-    ftPrePreTxData: string,
-    utxos: tbc.Transaction.IUnspentOutput[],
-  ) {
-    const buyData = OrderBook.getOrderData(buyutxo.script);
-    const tx = new tbc.Transaction();
-    tx.from(buyutxo).from(ftutxo).from(utxos);
+  // cancelBuyOrder_privateKey(
+  //   privateKey: tbc.PrivateKey,
+  //   buyutxo: tbc.Transaction.IUnspentOutput,
+  //   buyPreTX: tbc.Transaction,
+  //   ftutxo: tbc.Transaction.IUnspentOutput,
+  //   ftPreTX: tbc.Transaction,
+  //   ftPrePreTxData: string,
+  //   utxos: tbc.Transaction.IUnspentOutput[],
+  // ) {
+  //   const buyData = OrderBook.getOrderData(buyutxo.script);
+  //   const isCoin = ftutxo.script.length / 2 === coin_length;
+  //   const tx = new tbc.Transaction();
+  //   tx.from(buyutxo).from(ftutxo).from(utxos);
 
-    const tapeAmountSetIn: bigint[] = [];
-    tapeAmountSetIn.push(ftutxo.ftBalance!);
-    const tapeAmountSum = BigInt(tapeAmountSetIn[0]);
-    const { amountHex, changeHex } = FT.buildTapeAmount(
-      tapeAmountSum,
-      tapeAmountSetIn,
-      1,
-    );
-    if (
-      changeHex !=
-      "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
-    ) {
-      throw new Error("Change amount is not zero");
-    }
+  //   const tapeAmountSetIn: bigint[] = [];
+  //   tapeAmountSetIn.push(ftutxo.ftBalance!);
+  //   const tapeAmountSum = BigInt(tapeAmountSetIn[0]);
+  //   const { amountHex, changeHex } = FT.buildTapeAmount(
+  //     tapeAmountSum,
+  //     tapeAmountSetIn,
+  //     1,
+  //   );
+  //   if (
+  //     changeHex !=
+  //     "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+  //   ) {
+  //     throw new Error("Change amount is not zero");
+  //   }
 
-    tx.addOutput(
-      new tbc.Transaction.Output({
-        script: FT.buildFTtransferCode(ftutxo.script, buyData.holdAddress),
-        satoshis: ftutxo.satoshis,
-      }),
-    );
-    tx.addOutput(
-      new tbc.Transaction.Output({
-        script: FT.buildFTtransferTape(
-          ftPreTX.outputs[ftutxo.outputIndex + 1].script.toHex(),
-          amountHex,
-        ),
-        satoshis: 0,
-      }),
-    );
-    tx.change(buyData.holdAddress);
-    tx.feePerKb(80);
+  //   tx.addOutput(
+  //     new tbc.Transaction.Output({
+  //       script: FT.buildFTtransferCode(ftutxo.script, buyData.holdAddress),
+  //       satoshis: ftutxo.satoshis,
+  //     }),
+  //   );
+  //   tx.addOutput(
+  //     new tbc.Transaction.Output({
+  //       script: FT.buildFTtransferTape(
+  //         ftPreTX.outputs[ftutxo.outputIndex + 1].script.toHex(),
+  //         amountHex,
+  //       ),
+  //       satoshis: 0,
+  //     }),
+  //   );
+  //   tx.change(buyData.holdAddress);
+  //   tx.feePerKb(80);
 
-    tx.setInputScript(
-      {
-        inputIndex: 0,
-      },
-      (tx) => {
-        const sig = tx.getSignature(0, privateKey);
-        const pubKey = privateKey.toPublicKey().toString();
-        return tbc.Script.fromASM(`${sig} ${pubKey} OP_2`);
-      },
-    );
+  //   tx.setInputScript(
+  //     {
+  //       inputIndex: 0,
+  //     },
+  //     (tx) => {
+  //       const sig = tx.getSignature(0, privateKey);
+  //       const pubKey = privateKey.toPublicKey().toString();
+  //       return tbc.Script.fromASM(`${sig} ${pubKey} OP_2`);
+  //     },
+  //   );
 
-    tx.setInputScript(
-      {
-        inputIndex: 1,
-      },
-      (tx) => {
-        const unlockingScript = new FT(buyData.ftID).getFTunlockSwap(
-          privateKey,
-          tx,
-          ftPreTX,
-          ftPrePreTxData,
-          buyPreTX,
-          1,
-          ftutxo.outputIndex,
-          2,
-        );
-        return unlockingScript;
-      },
-    );
-    tx.sign(privateKey);
-    tx.seal();
-    // console.log(tx.verify());
-    const txraw = tx.uncheckedSerialize();
-    return txraw;
-  }
+  //   tx.setInputScript(
+  //     {
+  //       inputIndex: 1,
+  //     },
+  //     (tx) => {
+  //       const unlockingScript = new FT(buyData.ftID).getFTunlockSwap(
+  //         privateKey,
+  //         tx,
+  //         ftPreTX,
+  //         ftPrePreTxData,
+  //         buyPreTX,
+  //         1,
+  //         ftutxo.outputIndex,
+  //         2,
+  //         isCoin,
+  //       );
+  //       return unlockingScript;
+  //     },
+  //   );
+  //   tx.sign(privateKey);
+  //   tx.seal();
+  //   // console.log(tx.verify());
+  //   const txraw = tx.uncheckedSerialize();
+  //   return txraw;
+  // }
 
   matchOrder(
     privateKey: tbc.PrivateKey,
@@ -841,6 +866,8 @@ class OrderBook {
       },
     );
 
+    const isCoin = ftutxo.script.length / 2 === coin_length;
+    if (isCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
       {
         inputIndex: 1,
@@ -855,6 +882,7 @@ class OrderBook {
           1,
           ftutxo.outputIndex,
           2,
+          isCoin,
         );
         return unlockingScript;
       },
@@ -903,18 +931,13 @@ class OrderBook {
 
     const network = "https://api.tbcdev.org/api/tbc/";
     const Token = new FT(ftID);
-    const TokenInfo = await API.fetchFtInfo(Token.contractTxid, network);
-    let ftPartialHash: string;
-    let offset = 0;
-    if (TokenInfo.codeScript.length / 2 === ft_v1_length) {
-      offset = ft_v1_partial_offset;
-    } else if (TokenInfo.codeScript.length / 2 === ft_v2_length) {
-      offset = ft_v2_partial_offset;
+    let TokenInfo;
+    try {
+      TokenInfo = (await API.fetchCoinInfo(Token.contractTxid, network)).coinInfo;
+    } catch {
+      TokenInfo = await API.fetchFtInfo(Token.contractTxid, network);
     }
-    if (offset > 0)
-      ftPartialHash = partial_sha256.calculate_partial_hash(
-        Buffer.from(TokenInfo.codeScript, "hex").subarray(0, offset),
-      );
+
     const utxos = await API.fetchUTXO(
       privateKey,
       Number(saleVolume) / 1e6 + utxoFee,
@@ -928,13 +951,18 @@ class OrderBook {
     this.unit_price = unitPrice;
     this.fee_rate = feeRate;
     this.ft_a_contract_id = ftID;
-    this.ft_a_contract_partialhash = ftPartialHash;
+    const ftScriptLen = TokenInfo.codeScript.length / 2;
+    const isCoin = ftScriptLen === coin_length;
+    const partialOffset = isCoin ? coin_partial_offset : ft_v2_partial_offset;
+    this.ft_a_contract_partialhash = partial_sha256.calculate_partial_hash(
+      Buffer.from(TokenInfo.codeScript, "hex").subarray(0, partialOffset),
+    );
 
     const tx = new tbc.Transaction();
     tx.from(utxos);
     tx.addOutput(
       new tbc.Transaction.Output({
-        script: this.getSellOrderCode(),
+        script: this.getSellOrderCode(isCoin),
         satoshis: Number(saleVolume),
       }),
     );
@@ -991,21 +1019,39 @@ class OrderBook {
       throw new Error("FTID must be a valid SHA256 hash string");
 
     const network = "https://api.tbcdev.org/api/tbc/";
+
     const Token = new FT(ftID);
-    const TokenInfo = await API.fetchFtInfo(Token.contractTxid, network); //获取FT信息
-    const ftutxo_codeScript = FT.buildFTtransferCode(
+    let TokenInfo;
+    let isCoin = false;
+    try {
+      TokenInfo = (await API.fetchCoinInfo(Token.contractTxid, network)).coinInfo;
+      isCoin = true;
+    } catch {
+      TokenInfo = await API.fetchFtInfo(Token.contractTxid, network);
+    }
+    const ftutxo_codeScript = stableCoin.buildFTtransferCode(
       TokenInfo.codeScript,
       privateKey.toAddress().toString(),
     )
       .toBuffer()
       .toString("hex");
-    const ftutxos = await API.fetchFtUTXOs(
-      ftID,
-      privateKey.toAddress().toString(),
-      ftutxo_codeScript,
-      network,
-      (saleVolume * unitPrice) / 1000000n,
-    ); //准备ft utxo
+    const requiredAmount = (saleVolume * unitPrice) / 1000000n;
+    const ftutxos = isCoin
+      ? await API.fetchCoinUTXOs(
+          Token.contractTxid,
+          privateKey.toAddress().toString(),
+          requiredAmount,
+          ftutxo_codeScript,
+          network,
+          5,
+        )
+      : await API.fetchFtUTXOs(
+          ftID,
+          privateKey.toAddress().toString(),
+          ftutxo_codeScript,
+          network,
+          requiredAmount,
+        );
     let preTXs: tbc.Transaction[] = [];
     let prepreTxData: string[] = [];
     for (let i = 0; i < ftutxos.length; i++) {
@@ -1027,8 +1073,9 @@ class OrderBook {
     this.unit_price = unitPrice;
     this.fee_rate = feeRate;
     this.ft_a_contract_id = ftID;
+    const partialOffset = isCoin ? coin_partial_offset : ft_v2_partial_offset;
     this.ft_a_contract_partialhash = partial_sha256.calculate_partial_hash(
-      Buffer.from(ftutxos[0].script, "hex").subarray(0, 1856),
+      Buffer.from(ftutxos[0].script, "hex").subarray(0, partialOffset),
     );
 
     const tx = new tbc.Transaction();
@@ -1036,7 +1083,7 @@ class OrderBook {
     tx.from(utxos);
 
     // Buy Order Output
-    const buyOrder = this.getBuyOrderCode();
+    const buyOrder = this.getBuyOrderCode(isCoin);
     tx.addOutput(
       new tbc.Transaction.Output({
         script: buyOrder,
@@ -1100,6 +1147,7 @@ class OrderBook {
     tx.feePerKb(80);
 
     for (let i = 0; i < ftutxos.length; i++) {
+      if (isCoin) tx.setInputSequence(i, 4294967294);
       tx.setInputScript(
         {
           inputIndex: i,
@@ -1112,6 +1160,7 @@ class OrderBook {
             prepreTxData[i],
             i,
             ftutxos[i].outputIndex,
+            isCoin,
           );
           return unlockingScript;
         },
@@ -1120,6 +1169,7 @@ class OrderBook {
     tx.sign(privateKey);
     tx.seal();
     const txraw = tx.uncheckedSerialize();
+    console.log(tx.verify());
     // console.log(tx.toObject());
     return txraw;
   }
@@ -1140,6 +1190,7 @@ class OrderBook {
     const utxos = [await API.fetchUTXO(privateKey, utxoFee, network)];
 
     const buyData = OrderBook.getOrderData(buyutxo.script);
+    const isCoin = ftutxo.script.length / 2 === coin_length;
     const tx = new tbc.Transaction();
     tx.from(buyutxo).from(ftutxo).from(utxos);
 
@@ -1187,6 +1238,7 @@ class OrderBook {
       },
     );
 
+    if (isCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
       {
         inputIndex: 1,
@@ -1201,6 +1253,7 @@ class OrderBook {
           1,
           ftutxo.outputIndex,
           2,
+          isCoin,
         );
         return unlockingScript;
       },
@@ -1417,6 +1470,8 @@ class OrderBook {
       },
     );
 
+    const isCoin = ftutxo.script.length / 2 === coin_length;
+    if (isCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
       {
         inputIndex: 1,
@@ -1431,6 +1486,7 @@ class OrderBook {
           1,
           ftutxo.outputIndex,
           2,
+          isCoin,
         );
         return unlockingScript;
       },
@@ -1458,7 +1514,7 @@ class OrderBook {
     console.log("tx fee", tx.getFee());
     // console.log(tx.toObject());
     // console.log(tx.verifyScript(0));
-    // console.log(tx.verify());
+    console.log(tx.verify());
     const txraw = tx.uncheckedSerialize();
     console.log("Transaction Raw:", txraw.length / 2000, "KB");
     return txraw;
@@ -1479,12 +1535,13 @@ class OrderBook {
     return unlockingScript;
   }
 
-  getSellOrderCode(): tbc.Script {
+  getSellOrderCode(isCoin: boolean): tbc.Script {
     const address =
       "14" + new tbc.Address(this.hold_address).hashBuffer.toString("hex");
+    const ftCodeSize = isCoin  ? "dc07" : "5c07";
 
     const sellOrderCode = tbc.Script.fromHex(
-      `765187637556ba01207f77547f75817654958f01289351947901157f597f7701217f597f597f517f7701207f756b517f77816b517f77816b517f776b517f776b7654958f01289379816b7654958f0128935394796b54958f0127935294796b006b7600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575686ca87e6b007e7e7e7e7e7e7e7e7e7ea86c7e7eaa56ba01207f7588006b7600879163a86c7e7e6bbb6c7e7e6bbb6c7e7e6c6c75756b676d6d6d760087916378787e6c6c6c7e7b7c886c55798194547901157f597f5879527a517f77886c76537a517f77887c01217f6c76537a517f77887c597f6c76537a517f7781887c597f6c76537a517f7781887c517f7701207f756c7c886b6b6b6b6b6bbb6c7e7e6b676d6d6c6c6c75756b6868760119885279537f7701147f756c6c6c76547a8700886b6b6bbb6c7e7e6b760119885279537f7701147f756c6c6c76547a8700886b766b557981946b6bbb6c7e7e6b760119885279537f7701147f756c6c6c6c76557a8700886b6b5579819400886bbb6c7e7e6b5279025c0788768255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a935979025c078857798255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a936c6c6c6c765a79885f7988765a79517f7701147f758700885f79517f7701147f75886c6c527a950340420f9676527a950340420f96547988537a947b886ba86c7e7e6bbb6c7e7e6ba86c7e7e6bbb6c7e7ea857ba8867528876a9${address}88ad68516a33ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff`,
+      `765187637556ba01207f77547f75817654958f01289351947901157f597f7701217f597f597f517f7701207f756b517f77816b517f77816b517f776b517f776b7654958f01289379816b7654958f0128935394796b54958f0127935294796b006b7600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575686ca87e6b007e7e7e7e7e7e7e7e7e7ea86c7e7eaa56ba01207f7588006b7600879163a86c7e7e6bbb6c7e7e6bbb6c7e7e6c6c75756b676d6d6d760087916378787e6c6c6c7e7b7c886c55798194547901157f597f5879527a517f77886c76537a517f77887c01217f6c76537a517f77887c597f6c76537a517f7781887c597f6c76537a517f7781887c517f7701207f756c7c886b6b6b6b6b6bbb6c7e7e6b676d6d6c6c6c75756b6868760119885279537f7701147f756c6c6c76547a8700886b6b6bbb6c7e7e6b760119885279537f7701147f756c6c6c76547a8700886b766b557981946b6bbb6c7e7e6b760119885279537f7701147f756c6c6c6c76557a8700886b6b5579819400886bbb6c7e7e6b527902${ftCodeSize}88768255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a93597902${ftCodeSize}8857798255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a936c6c6c6c765a79885f7988765a79517f7701147f758700885f79517f7701147f75886c6c527a950340420f9676527a950340420f96547988537a947b886ba86c7e7e6bbb6c7e7e6ba86c7e7e6bbb6c7e7ea857ba8867528876a9${address}88ad68516a33ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff`,
     );
 
     const sellOrderData = this.buildOrderData();
@@ -1492,12 +1549,13 @@ class OrderBook {
     return sellOrderCode.add(sellOrderData);
   }
 
-  getBuyOrderCode(): tbc.Script {
+  getBuyOrderCode(isCoin: boolean): tbc.Script {
     const address =
       "14" + new tbc.Address(this.hold_address).hashBuffer.toString("hex");
+    const ftCodeSize = isCoin  ? "dc07" : "5c07";
 
     const buyOrderCode = tbc.Script.fromHex(
-      `765187637556ba01207f77547f75817654958f01289351947901157f597f7701217f597f597f517f7701207f756b517f77816b517f77816b517f776b517f776b7654958f0128935394796b54958f0127935294796b006b7600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575686ca87e6b007e7e7e7e7e7e7e7e7e7ea86c7e7eaa56ba01207f7588006b760087636d6d6d7600879163bb6c7e7e676d6d6c686c6c75756b67577957797e6c6c6c7e7b7c885379025c0788788255947f054654617065886c6c765879886b6b537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a935679517f7701147f756b6b6ba86c7e7e6bbb6c7e7e6b527901157f597f6c6c6c6c76577a517f7788547a01217f6c76537a517f77887c597f6c76537a517f7781887c597f6c76537a517f7781767c88527a517f7701207f756c7c88587a517f7781517a950340420f96567a7c886b6b6b6b6b6bbb6c6c5279a97c887e7e6b68760119885279537f7701147f756c6c76537a8700886b6bbb6c7e7e6b760119885279537f7701147f756c6c76537a8700886b5479816b6bbb6c7e7e6b760119885279537f7701147f756c6c6c76547a8878577981936c6c5279950340420f96547a886c527a950340420f967c6b7c6b6b6bbb6c7e7e6b5279025c0788768255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a935979025c078857798255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a936c6c6c6c765a79885f7988765a79517f7701147f758700885f79517f7701147f75870088537a94527a9400886ba86c7e7e6bbb6c7e7e6ba86c7e7e6bbb6c7e7ea857ba8867528876a9${address}88ad68516a1affffffffffffffffffffffffffffffffffffffffffffffffffff`,
+      `765187637556ba01207f77547f75817654958f01289351947901157f597f7701217f597f597f517f7701207f756b517f77816b517f77816b517f776b517f776b7654958f0128935394796b54958f0127935294796b006b7600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575686ca87e6b007e7e7e7e7e7e7e7e7e7ea86c7e7eaa56ba01207f7588006b760087636d6d6d7600879163bb6c7e7e676d6d6c686c6c75756b67577957797e6c6c6c7e7b7c88537902${ftCodeSize}88788255947f054654617065886c6c765879886b6b537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a935679517f7701147f756b6b6ba86c7e7e6bbb6c7e7e6b527901157f597f6c6c6c6c76577a517f7788547a01217f6c76537a517f77887c597f6c76537a517f7781887c597f6c76537a517f7781767c88527a517f7701207f756c7c88587a517f7781517a950340420f96567a7c886b6b6b6b6b6bbb6c6c5279a97c887e7e6b68760119885279537f7701147f756c6c76537a8700886b6bbb6c7e7e6b760119885279537f7701147f756c6c76537a8700886b5479816b6bbb6c7e7e6b760119885279537f7701147f756c6c6c76547a8878577981936c6c5279950340420f96547a886c527a950340420f967c6b7c6b6b6bbb6c7e7e6b527902${ftCodeSize}88768255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a93597902${ftCodeSize}8857798255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a936c6c6c6c765a79885f7988765a79517f7701147f758700885f79517f7701147f75870088537a94527a9400886ba86c7e7e6bbb6c7e7e6ba86c7e7e6bbb6c7e7ea857ba8867528876a9${address}88ad68516a1affffffffffffffffffffffffffffffffffffffffffffffffffff`,
     );
 
     const buyOrderData = this.buildOrderData();

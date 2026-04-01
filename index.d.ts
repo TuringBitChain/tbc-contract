@@ -375,7 +375,7 @@ declare module "tbc-contract" {
       prepreTxData: string,
       currentUnlockIndex: number,
       preTxVout: number,
-      isCoin?: 1,
+      isCoin?: boolean,
     ): Script;
     getFTunlockSwap(
       privateKey_from: PrivateKey,
@@ -899,7 +899,7 @@ declare module "tbc-contract" {
       unitPrice: bigint,
       feeRate: bigint,
       ftID: string,
-      ftPartialHash: string,
+      ftCodeScript: string,
       utxos: Transaction.IUnspentOutput[],
     ): string;
     buildCancelSellOrderTX(
@@ -990,8 +990,8 @@ declare module "tbc-contract" {
       preTX: Transaction,
       preTxVout: number,
     ): Script;
-    getSellOrderCode(): Script;
-    getBuyOrderCode(): Script;
+    getSellOrderCode(isCoin: boolean): Script;
+    getBuyOrderCode(isCoin: boolean): Script;
     buildOrderData(): Script;
     static updateSaleVolume(codeScript: string, newSaleVolume: bigint): Script;
     static getOrderData(codeScript: string): {
