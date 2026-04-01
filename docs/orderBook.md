@@ -26,6 +26,7 @@ const requiredAmount = (saleVolume * unitPrice) / 1000000n;
      * 构建卖单交易
      * 
      * @param {string} holdAddress - 卖方地址,用于接收交易款项的地址
+     * @param {string} taxAddress - 手续费地址，用于接收撮合手续费
      * @param {bigint} saleVolume - 出售数量,表示要出售的tbc数量
      * @param {bigint} unitPrice - 单价,每个tbc的价格
      * @param {bigint} feeRate - 手续费率,交易所需支付的手续费比例
@@ -34,7 +35,7 @@ const requiredAmount = (saleVolume * unitPrice) / 1000000n;
      * @param {tbc.Transaction.IUnspentOutput[]} utxos - 未花费交易输出数组,用于构建交易的输入
      * @returns {string} sellOrderNoSigs - 返回一个待签名的卖单交易字符串
      */
-    const sellOrderNoSigs = order.buildSellOrderTX(holdAddress, saleVolume, unitPrice, feeRate, ftContractTxid, ftCodeScript, utxos);   //待签名交易
+    const sellOrderNoSigs = order.buildSellOrderTX(holdAddress, taxAddress, saleVolume, unitPrice, feeRate, ftContractTxid, ftCodeScript, utxos);   //待签名交易
 
     /**
      * 填充卖单签名
@@ -104,6 +105,7 @@ const requiredAmount = (saleVolume * unitPrice) / 1000000n;
      * 构建买单交易
      * 
      * @param {string} holdAddress - 卖方地址,用于接收交易款项的地址
+     * @param {string} taxAddress - 手续费地址，用于接收撮合手续费
      * @param {bigint} saleVolume - 出售数量,表示要出售的tbc数量
      * @param {bigint} unitPrice - 单价,每个tbc的价格
      * @param {bigint} feeRate - 手续费率,交易所需支付的手续费比例
@@ -113,7 +115,7 @@ const requiredAmount = (saleVolume * unitPrice) / 1000000n;
      * @param {tbc.Transaction[]} preTXs - ftutxo父交易数组
      * @returns {string} buyOrderNoSigs - 返回一个待签名的买单交易字符串
      */
-    const buyOrderNoSigs = order.buildBuyOrderTX(holdAddress, saleVolume, unitPrice, feeRate, ftContractTxid, utxos, ftutxos, preTXs);
+    const buyOrderNoSigs = order.buildBuyOrderTX(holdAddress, taxAddress, saleVolume, unitPrice, feeRate, ftContractTxid, utxos, ftutxos, preTXs);
 
     /**
      * 填充买单签名

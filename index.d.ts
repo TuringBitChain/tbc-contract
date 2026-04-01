@@ -895,6 +895,7 @@ declare module "tbc-contract" {
 
     buildSellOrderTX(
       holdAddress: string,
+      taxAddress: string,
       saleVolume: bigint,
       unitPrice: bigint,
       feeRate: bigint,
@@ -914,6 +915,7 @@ declare module "tbc-contract" {
     ): string;
     buildBuyOrderTX(
       holdAddress: string,
+      taxAddress: string,
       saleVolume: bigint,
       unitPrice: bigint,
       feeRate: bigint,
@@ -958,6 +960,7 @@ declare module "tbc-contract" {
     ): string;
     makeSellOrder_privateKeyOnline(
       privateKey: PrivateKey,
+      taxAddress: string,
       saleVolume: bigint,
       unitPrice: bigint,
       feeRate: bigint,
@@ -969,6 +972,7 @@ declare module "tbc-contract" {
     ): Promise<string>;
     makeBuyOrder_privateKeyOnline(
       privateKey: PrivateKey,
+      taxAddress: string,
       saleVolume: bigint,
       unitPrice: bigint,
       feeRate: bigint,
