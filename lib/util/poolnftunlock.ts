@@ -8,6 +8,8 @@ const ft_v1_length = 1564;
 const ft_v1_partial_offset = 1536;
 const ft_v2_length = 1884;
 const ft_v2_partial_offset = 1856;
+const coin_length = 2012;
+const coin_partial_offset = 1984;
 
 export function getInputsTxdata(tx: tbc.Transaction, vout: number): string {
     const writer = new tbc.encoding.BufferWriter();
@@ -35,8 +37,8 @@ export function getInputsTxdata(tx: tbc.Transaction, vout: number): string {
     writer.write(Buffer.from(outputs1, 'hex'));
 
     const lockingscript = tx.outputs[vout].script.toBuffer();
-    if (lockingscript.length === ft_v1_length || lockingscript.length === ft_v2_length) {
-        const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+    if (lockingscript.length === ft_v1_length || lockingscript.length === ft_v2_length || lockingscript.length === coin_length) {
+        const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
         const size = getSize(lockingscript.length);//size小端序
         const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
         const suffixdata = lockingscript.subarray(offset);
@@ -95,12 +97,12 @@ export function getInputsTxdataSwap(tx: tbc.Transaction, vout: number): string {
     writer.write(tbc.crypto.Hash.sha256(inputWriter2.toBuffer()));
 
     const lockingscript = tx.outputs[vout].script.toBuffer()
-    if (lockingscript.length === ft_v1_length || lockingscript.length === ft_v2_length) {
+    if (lockingscript.length === ft_v1_length || lockingscript.length === ft_v2_length || lockingscript.length === coin_length) {
         const { outputs1, outputs1length, outputs2, outputs2length } = getInputsTxOutputsData(tx, vout, true);
         writer.write(Buffer.from(outputs1length, 'hex'));
         writer.write(Buffer.from(outputs1, 'hex'));
 
-        const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+        const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
         const size = getSize(lockingscript.length);//size小端序
         const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
         const suffixdata = lockingscript.subarray(offset);
@@ -769,7 +771,7 @@ export function getCurrentTxOutputsDataforPool1(tx: tbc.Transaction, option: num
 export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: number, withLock: 0 | 1, swapOption?: number): string {
     const writer = new tbc.encoding.BufferWriter();
     let lockingscript = tx.outputs[2].script.toBuffer()//FTAbyC code部分
-    let offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+    let offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
     let size = getSize(lockingscript.length)
     let partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset))
     let suffixdata = lockingscript.subarray(offset)
@@ -788,7 +790,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
 
             //FTAbyC输出
             lockingscript = tx.outputs[2].script.toBuffer()//FTAbyC code部分
-            offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+            offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
             size = getSize(lockingscript.length);
             partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
             suffixdata = lockingscript.subarray(offset);
@@ -807,7 +809,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
 
             //FT-LP输出
             lockingscript = tx.outputs[4].script.toBuffer()//FT-LP code部分
-            offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+            offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
             size = getSize(lockingscript.length)
             partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset))
             suffixdata = lockingscript.subarray(offset)
@@ -870,7 +872,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                 case 8:
                     for (let i = 6 + withLock; i < tx.outputs.length; i++) {
                         const lockingscript = tx.outputs[i].script.toBuffer();
-                        const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+                        const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
                         const size = getSize(lockingscript.length); // size小端序
                         const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
                         const suffixdata = lockingscript.subarray(offset);
@@ -894,8 +896,8 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                 case 9:
                     for (let i = 6 + withLock; i < tx.outputs.length; i++) {
                         const lockingscript = tx.outputs[i].script.toBuffer();
-                        if (lockingscript.length === ft_v1_length || lockingscript.length === ft_v2_length) {
-                            const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+                        if (lockingscript.length === ft_v1_length || lockingscript.length === ft_v2_length || lockingscript.length === coin_length) {
+                            const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
                             const size = getSize(lockingscript.length); // size小端序
                             const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
                             const suffixdata = lockingscript.subarray(offset);
@@ -943,8 +945,8 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
             writer.write(tx.outputs[1].script.toBuffer());
             for (let i = 2; i < 7; i++) {
                 const lockingscript = tx.outputs[i].script.toBuffer();
-                if (lockingscript.length === ft_v1_length || lockingscript.length === ft_v2_length) {
-                    const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+                if (lockingscript.length === ft_v1_length || lockingscript.length === ft_v2_length || lockingscript.length === coin_length) {
+                    const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
                     const size = getSize(lockingscript.length); // size小端序
                     const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
                     const suffixdata = lockingscript.subarray(offset);
@@ -1025,7 +1027,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                     }
                     else {
                         writer.write(Buffer.from('00', 'hex'));
-                        const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+                        const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
                         const size = getSize(lockingscript.length); // size小端序
                         const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
                         const suffixdata = lockingscript.subarray(offset);
@@ -1078,7 +1080,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                     }
                     else {
                         writer.write(Buffer.from('00', 'hex'));
-                        offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+                        offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
                         size = getSize(lockingscript.length); // size小端序
                         partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
                         suffixdata = lockingscript.subarray(offset);
@@ -1111,8 +1113,8 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                 case 11:
                     for (let i = 7; i < tx.outputs.length; i++) {
                         const lockingscript = tx.outputs[i].script.toBuffer();
-                        if (lockingscript.length === ft_v1_length || lockingscript.length === ft_v2_length) {
-                            const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+                        if (lockingscript.length === ft_v1_length || lockingscript.length === ft_v2_length || lockingscript.length === coin_length) {
+                            const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
                             const size = getSize(lockingscript.length); // size小端序
                             const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
                             const suffixdata = lockingscript.subarray(offset);
@@ -1148,8 +1150,8 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                 case 12:
                     for (let i = 7; i < tx.outputs.length; i++) {
                         const lockingscript = tx.outputs[i].script.toBuffer();
-                        if (lockingscript.length === ft_v1_length || lockingscript.length === ft_v2_length) {
-                            const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+                        if (lockingscript.length === ft_v1_length || lockingscript.length === ft_v2_length || lockingscript.length === coin_length) {
+                            const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
                             const size = getSize(lockingscript.length); // size小端序
                             const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
                             const suffixdata = lockingscript.subarray(offset);
@@ -1200,7 +1202,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                     //FTAbyA输出
                     for (let i = 2; i < 4; i++) {
                         const lockingscript = tx.outputs[i].script.toBuffer();
-                        const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+                        const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
                         const size = getSize(lockingscript.length); // size小端序
                         const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
                         const suffixdata = lockingscript.subarray(offset);
@@ -1261,7 +1263,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                         const pubKeyHash = lockingscript.subarray(3, 23).toString('hex');
                         if (pubKeyHash !== "1eacc275e83741a10d19f139e191d1fe360055e8" && pubKeyHash !== "9fd4106333baf69c11d5b174046f92c9ac963aab") {
                             writer.write(Buffer.from('00', 'hex'));
-                            const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+                            const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
                             const size = getSize(lockingscript.length); // size小端序
                             const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
                             const suffixdata = lockingscript.subarray(offset);
@@ -1308,7 +1310,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                         const pubKeyHash = lockingscript.subarray(3, 23).toString('hex');
                         if (pubKeyHash !== "1eacc275e83741a10d19f139e191d1fe360055e8" && pubKeyHash !== "9fd4106333baf69c11d5b174046f92c9ac963aab") {
                             writer.write(Buffer.from('00', 'hex'));
-                            let offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+                            let offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
                             let size = getSize(lockingscript.length); // size小端序
                             let partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
                             let suffixdata = lockingscript.subarray(offset);
@@ -1348,7 +1350,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                             writer.write(getLengthHex(size.length));
                             writer.write(size);
                             lockingscript = tx.outputs[5].script.toBuffer();
-                            offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+                            offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
                             size = getSize(lockingscript.length); // size小端序
                             partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
                             suffixdata = lockingscript.subarray(offset);
@@ -1369,8 +1371,8 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                     } else if (tx.outputs.length == 8) {
                         for (let i = 4; i < 8; i++) {
                             const lockingscript = tx.outputs[i].script.toBuffer();
-                            if (lockingscript.length === ft_v1_length || lockingscript.length === ft_v2_length) {
-                                const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+                            if (lockingscript.length === ft_v1_length || lockingscript.length === ft_v2_length || lockingscript.length === coin_length) {
+                                const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
                                 const size = getSize(lockingscript.length); // size小端序
                                 const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
                                 const suffixdata = lockingscript.subarray(offset);
@@ -1417,8 +1419,8 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                     writer.write(tx.outputs[1].script.toBuffer());
                     for (let i = 2; i < 5; i++) {
                         const lockingscript = tx.outputs[i].script.toBuffer();
-                        if (lockingscript.length === ft_v1_length || lockingscript.length === ft_v2_length) {
-                            const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+                        if (lockingscript.length === ft_v1_length || lockingscript.length === ft_v2_length || lockingscript.length === coin_length) {
+                            const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
                             const size = getSize(lockingscript.length); // size小端序
                             const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
                             const suffixdata = lockingscript.subarray(offset);
@@ -1495,7 +1497,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                             pubKeyHash = lockingscript.subarray(3, 23).toString('hex');
                             if (pubKeyHash !== "1eacc275e83741a10d19f139e191d1fe360055e8" && pubKeyHash !== "9fd4106333baf69c11d5b174046f92c9ac963aab") {
                                 writer.write(Buffer.from('00', 'hex'));
-                                const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+                                const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
                                 const size = getSize(lockingscript.length); // size小端序
                                 const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
                                 const suffixdata = lockingscript.subarray(offset);
@@ -1543,7 +1545,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                             pubKeyHash = lockingscript.subarray(3, 23).toString('hex');
                             if (pubKeyHash !== "1eacc275e83741a10d19f139e191d1fe360055e8" && pubKeyHash !== "9fd4106333baf69c11d5b174046f92c9ac963aab") {
                                 writer.write(Buffer.from('00', 'hex'));
-                                let offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+                                let offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
                                 let size = getSize(lockingscript.length); // size小端序
                                 let partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
                                 let suffixdata = lockingscript.subarray(offset);
@@ -1583,7 +1585,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                                 writer.write(getLengthHex(size.length));
                                 writer.write(size);
                                 lockingscript = tx.outputs[6].script.toBuffer();
-                                const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+                                const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
                                 size = getSize(lockingscript.length); // size小端序
                                 partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
                                 suffixdata = lockingscript.subarray(offset);
@@ -1606,8 +1608,8 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                         case 9:
                             for (let i = 5; i < 9; i++) {
                                 const lockingscript = tx.outputs[i].script.toBuffer();
-                                if (lockingscript.length === ft_v1_length || lockingscript.length === ft_v2_length) {
-                                    const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+                                if (lockingscript.length === ft_v1_length || lockingscript.length === ft_v2_length || lockingscript.length === coin_length) {
+                                    const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
                                     const size = getSize(lockingscript.length); // size小端序
                                     const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
                                     const suffixdata = lockingscript.subarray(offset);
@@ -1655,7 +1657,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
 
             //FTAbyC输出
             lockingscript = tx.outputs[2].script.toBuffer()//FTAbyC code部分
-            offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : ft_v2_partial_offset;
+            offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
             size = getSize(lockingscript.length); // size小端序
             partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
             suffixdata = lockingscript.subarray(offset);

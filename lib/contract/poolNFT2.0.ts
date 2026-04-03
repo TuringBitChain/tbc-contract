@@ -15,7 +15,7 @@ import {
   getLpCostAmount,
   isLock,
   safeJSONParse,
-  parseDecimalToBigInt
+  parseDecimalToBigInt,
 } from "../util/util";
 const API = require("../api/api");
 const FT = require("./ft");
@@ -25,6 +25,8 @@ const ft_v1_length = 1564;
 const ft_v1_partial_offset = 1536;
 const ft_v2_length = 1884;
 const ft_v2_partial_offset = 1856;
+const coin_length = 2012;
+const coin_partial_offset = 1984;
 
 class poolNFT2 {
   ft_lp_amount: bigint;
@@ -69,7 +71,7 @@ class poolNFT2 {
   initCreate(ftContractTxid: string) {
     if (!/^[0-9a-f]{64}$/.test(ftContractTxid)) {
       throw new Error(
-        "Invalid Input: ftContractTxid must be a 32-byte hash value."
+        "Invalid Input: ftContractTxid must be a 32-byte hash value.",
       );
     } else {
       this.ft_a_contractTxid = ftContractTxid;
@@ -123,7 +125,7 @@ class poolNFT2 {
     tag: string,
     serviceFeeRate?: number,
     lpPlan?: 1 | 2,
-    withLockTime?: boolean
+    withLockTime?: boolean,
   ): Promise<string[]> {
     const privateKey = privateKey_from;
     const publicKeyHash =
@@ -134,54 +136,75 @@ class poolNFT2 {
       .addOutput(
         new tbc.Transaction.Output({
           script: tbc.Script.fromASM(
-            `OP_DUP OP_HASH160 ${publicKeyHash} OP_EQUALVERIFY OP_CHECKSIG OP_RETURN ${flagHex}`
+            `OP_DUP OP_HASH160 ${publicKeyHash} OP_EQUALVERIFY OP_CHECKSIG OP_RETURN ${flagHex}`,
           ),
           satoshis: 9800,
-        })
+        }),
       )
       .change(privateKey.toAddress());
     const txSize = txSource.getEstimateSize();
-    txSource.fee(txSize < 1000 ? 80 : Math.ceil(txSize / 1000 * 80));
+    txSource.fee(txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80));
     txSource.sign(privateKey).seal();
     const txSourceRaw = txSource.uncheckedSerialize(); //Generate txraw
 
     const FTA = new FT(this.ft_a_contractTxid);
-    const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    let FTAInfo;
+    try {
+      FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    } catch {
+      FTAInfo = (await API.fetchCoinInfo(FTA.contractTxid, this.network))
+        .coinInfo;
+    }
     FTA.initialize(FTAInfo);
-    const ftVersion = FTA.codeScript.length / 2 === ft_v2_length? 2 : 1;
-    this.poolnft_code = this.getPoolNftCode(txSource.hash, 0, lpPlan || 1, ftVersion, tag)
+    const isCoin = FTA.codeScript.length / 2 === coin_length;
+    const ftVersion =
+      FTA.codeScript.length / 2 === ft_v2_length || isCoin ? 2 : 1;
+    this.poolnft_code = this.getPoolNftCode(
+      txSource.hash,
+      0,
+      lpPlan || 1,
+      ftVersion,
+      tag,
+      isCoin,
+    )
       .toBuffer()
       .toString("hex");
     const ftlpCode =
-      withLockTime ?? false
+      (withLockTime ?? false)
         ? this.getFtlpCodeWithLockTime(
             tbc.crypto.Hash.sha256(
-              Buffer.from(this.poolnft_code, "hex")
+              Buffer.from(this.poolnft_code, "hex"),
             ).toString("hex"),
             privateKey.toAddress().toString(),
             FTA.tapeScript.length / 2,
-            ftVersion
+            isCoin,
+            ftVersion,
           )
         : this.getFtlpCode(
             tbc.crypto.Hash.sha256(
-              Buffer.from(this.poolnft_code, "hex")
+              Buffer.from(this.poolnft_code, "hex"),
             ).toString("hex"),
             privateKey.toAddress().toString(),
             FTA.tapeScript.length / 2,
-            ftVersion
+            isCoin,
+            ftVersion,
           );
-    const offset = ftVersion === 2 ? ft_v2_partial_offset : ft_v1_partial_offset;
+    const offset = isCoin
+      ? coin_partial_offset
+      : ftVersion === 2
+        ? ft_v2_partial_offset
+        : ft_v1_partial_offset;
     this.ft_lp_partialhash = partial_sha256.calculate_partial_hash(
-      ftlpCode.toBuffer().subarray(0, offset)
+      ftlpCode.toBuffer().subarray(0, offset),
     );
     this.ft_a_partialhash = partial_sha256.calculate_partial_hash(
-      Buffer.from(FTA.codeScript, "hex").subarray(0, offset)
+      Buffer.from(FTA.codeScript, "hex").subarray(0, offset),
     );
     this.service_fee_rate = serviceFeeRate ?? this.service_fee_rate;
     const poolnftTapeScript = this.getPoolNftTape(
       lpPlan || 1,
       false,
-      withLockTime || false
+      withLockTime || false,
     );
 
     const tx = new tbc.Transaction()
@@ -191,13 +214,13 @@ class poolNFT2 {
         new tbc.Transaction.Output({
           script: tbc.Script.fromHex(this.poolnft_code),
           satoshis: this.poolnft_code_dust,
-        })
+        }),
       )
       .addOutput(
         new tbc.Transaction.Output({
           script: poolnftTapeScript,
           satoshis: 0,
-        })
+        }),
       );
     tx.feePerKb(80);
     tx.change(privateKey.toAddress());
@@ -210,7 +233,7 @@ class poolNFT2 {
         const sig = tx.getSignature(0);
         const publickey = privateKey.toPublicKey().toBuffer().toString("hex");
         return tbc.Script.fromASM(`${sig} ${publickey}`);
-      }
+      },
     );
     tx.sign(privateKey);
     tx.seal();
@@ -251,7 +274,7 @@ class poolNFT2 {
     pubKeyLock: string[],
     serviceFeeRate?: number,
     lpPlan?: 1 | 2,
-    withLockTime?: boolean
+    withLockTime?: boolean,
   ): Promise<string[]> {
     const privateKey = privateKey_from;
     const publicKeyHash =
@@ -262,21 +285,29 @@ class poolNFT2 {
       .addOutput(
         new tbc.Transaction.Output({
           script: tbc.Script.fromASM(
-            `OP_DUP OP_HASH160 ${publicKeyHash} OP_EQUALVERIFY OP_CHECKSIG OP_RETURN ${flagHex}`
+            `OP_DUP OP_HASH160 ${publicKeyHash} OP_EQUALVERIFY OP_CHECKSIG OP_RETURN ${flagHex}`,
           ),
           satoshis: 9800,
-        })
+        }),
       )
       .change(privateKey.toAddress());
     const txSize = txSource.getEstimateSize();
-    txSource.fee(txSize < 1000 ? 80 : Math.ceil(txSize / 1000 * 80));
+    txSource.fee(txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80));
     txSource.sign(privateKey).seal();
     const txSourceRaw = txSource.uncheckedSerialize(); //Generate txraw
 
     const FTA = new FT(this.ft_a_contractTxid);
-    const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    let FTAInfo;
+    try {
+      FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    } catch {
+      FTAInfo = (await API.fetchCoinInfo(FTA.contractTxid, this.network))
+        .coinInfo;
+    }
     FTA.initialize(FTAInfo);
-    const ftVersion = FTA.codeScript.length / 2 === ft_v2_length? 2 : 1;
+    const isCoin = FTA.codeScript.length / 2 === coin_length;
+    const ftVersion =
+      FTA.codeScript.length / 2 === ft_v2_length || isCoin ? 2 : 1;
     this.poolnft_code = this.getPoolNftCodeWithLock(
       txSource.hash,
       0,
@@ -285,40 +316,47 @@ class poolNFT2 {
       lpCostTBC,
       pubKeyLock,
       ftVersion,
-      tag
+      tag,
+      isCoin,
     )
       .toBuffer()
       .toString("hex");
     const ftlpCode =
-      withLockTime ?? false
+      (withLockTime ?? false)
         ? this.getFtlpCodeWithLockTime(
             tbc.crypto.Hash.sha256(
-              Buffer.from(this.poolnft_code, "hex")
+              Buffer.from(this.poolnft_code, "hex"),
             ).toString("hex"),
             privateKey.toAddress().toString(),
             FTA.tapeScript.length / 2,
-            ftVersion
+            isCoin,
+            ftVersion,
           )
         : this.getFtlpCode(
             tbc.crypto.Hash.sha256(
-              Buffer.from(this.poolnft_code, "hex")
+              Buffer.from(this.poolnft_code, "hex"),
             ).toString("hex"),
             privateKey.toAddress().toString(),
             FTA.tapeScript.length / 2,
-            ftVersion
+            isCoin,
+            ftVersion,
           );
-    const offset = ftVersion === 2 ? ft_v2_partial_offset : ft_v1_partial_offset;
+    const offset = isCoin
+      ? coin_partial_offset
+      : ftVersion === 2
+        ? ft_v2_partial_offset
+        : ft_v1_partial_offset;
     this.ft_lp_partialhash = partial_sha256.calculate_partial_hash(
-      ftlpCode.toBuffer().subarray(0, offset)
+      ftlpCode.toBuffer().subarray(0, offset),
     );
     this.ft_a_partialhash = partial_sha256.calculate_partial_hash(
-      Buffer.from(FTA.codeScript, "hex").subarray(0, offset)
+      Buffer.from(FTA.codeScript, "hex").subarray(0, offset),
     );
     this.service_fee_rate = serviceFeeRate ?? this.service_fee_rate;
     const poolnftTapeScript = this.getPoolNftTape(
       lpPlan || 1,
       true,
-      withLockTime || false
+      withLockTime || false,
     );
 
     const tx = new tbc.Transaction()
@@ -328,13 +366,13 @@ class poolNFT2 {
         new tbc.Transaction.Output({
           script: tbc.Script.fromHex(this.poolnft_code),
           satoshis: this.poolnft_code_dust,
-        })
+        }),
       )
       .addOutput(
         new tbc.Transaction.Output({
           script: poolnftTapeScript,
           satoshis: 0,
-        })
+        }),
       );
     tx.feePerKb(80);
     tx.change(privateKey.toAddress());
@@ -347,7 +385,7 @@ class poolNFT2 {
         const sig = tx.getSignature(0);
         const publickey = privateKey.toPublicKey().toBuffer().toString("hex");
         return tbc.Script.fromASM(`${sig} ${publickey}`);
-      }
+      },
     );
     tx.sign(privateKey);
     tx.seal();
@@ -388,13 +426,21 @@ class poolNFT2 {
     utxo: tbc.Transaction.IUnspentOutput,
     tbc_amount: number | string,
     ft_a: number | string,
-    lock_time?: number
+    lock_time?: number,
   ): Promise<string> {
     const privateKey = privateKey_from;
     const FTA = new FT(this.ft_a_contractTxid);
-    const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    let FTAInfo;
+    try {
+      FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    } catch {
+      FTAInfo = (await API.fetchCoinInfo(FTA.contractTxid, this.network))
+        .coinInfo;
+    }
     FTA.initialize(FTAInfo);
-    const ftVersion = FTA.codeScript.length / 2 === ft_v2_length? 2 : 1;
+    const isCoin = FTA.codeScript.length / 2 === coin_length;
+    const ftVersion =
+      FTA.codeScript.length / 2 === ft_v2_length || isCoin ? 2 : 1;
     let amount_lpbn = BigInt(0);
     if (Number(tbc_amount) > 0 && Number(ft_a) > 0) {
       amount_lpbn = parseDecimalToBigInt(tbc_amount, 6);
@@ -411,7 +457,7 @@ class poolNFT2 {
       throw new Error("Insufficient TBC amount, please merge UTXOs");
     }
     const poolnft_codehash = tbc.crypto.Hash.sha256(
-      Buffer.from(this.poolnft_code, "hex")
+      Buffer.from(this.poolnft_code, "hex"),
     );
     const poolnft_codehash160 =
       tbc.crypto.Hash.sha256ripemd160(poolnft_codehash).toString("hex");
@@ -423,20 +469,31 @@ class poolNFT2 {
     // }
     const ftutxo_codeScript = FT.buildFTtransferCode(
       FTA.codeScript,
-      privateKey.toAddress().toString()
+      privateKey.toAddress().toString(),
     )
       .toBuffer()
       .toString("hex");
 
     let fttxo_a: tbc.Transaction.IUnspentOutput;
     try {
-      fttxo_a = await API.fetchFtUTXO(
-        this.ft_a_contractTxid,
-        privateKey.toAddress().toString(),
-        this.ft_a_amount,
-        ftutxo_codeScript,
-        this.network
-      );
+      fttxo_a = isCoin
+        ? (
+            await API.fetchCoinUTXOs(
+              this.ft_a_contractTxid,
+              privateKey.toAddress().toString(),
+              this.ft_a_amount,
+              ftutxo_codeScript,
+              this.network,
+              1,
+            )
+          )[0]
+        : await API.fetchFtUTXO(
+            this.ft_a_contractTxid,
+            privateKey.toAddress().toString(),
+            this.ft_a_amount,
+            ftutxo_codeScript,
+            this.network,
+          );
     } catch (error: any) {
       throw new Error(error.message);
     }
@@ -445,7 +502,7 @@ class poolNFT2 {
     const ftPrePreTxData = await API.fetchFtPrePreTxData(
       ftPreTX,
       fttxo_a.outputIndex,
-      this.network
+      this.network,
     );
     if (fttxo_a.ftBalance! < this.ft_a_amount) {
       throw new Error("Insufficient FT-A amount, please merge FT-A UTXOs");
@@ -458,7 +515,7 @@ class poolNFT2 {
     const { amountHex, changeHex } = FT.buildTapeAmount(
       this.ft_a_amount,
       tapeAmountSetIn,
-      1
+      1,
     );
     const poolnftTapeScript = await this.updatePoolNftTape();
     // const poolnftTapeScript = this.getPoolNftTape(1, false, false);
@@ -472,30 +529,30 @@ class poolNFT2 {
         new tbc.Transaction.Output({
           script: tbc.Script.fromHex(this.poolnft_code),
           satoshis: this.poolnft_code_dust + Number(this.tbc_amount),
-        })
+        }),
       )
       .addOutput(
         new tbc.Transaction.Output({
           script: poolnftTapeScript,
           satoshis: 0,
-        })
+        }),
       );
     //FTAbyC
     const ftCodeScript = FT.buildFTtransferCode(
       FTA.codeScript,
-      poolnft_codehash160
+      poolnft_codehash160,
     );
     const ftTapeScript = FT.buildFTtransferTape(FTA.tapeScript, amountHex);
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftCodeScript,
         satoshis: fttxo_a.satoshis,
-      })
+      }),
     ).addOutput(
       new tbc.Transaction.Output({
         script: ftTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     //FTLP
     let ftlpCodeScript: tbc.Script;
@@ -522,14 +579,15 @@ class poolNFT2 {
       const fillSize = FTA.tapeScript.length / 2 - 62;
       const opZeroArray = Array(fillSize).fill("OP_0").join(" ");
       ftlpTapeScript = tbc.Script.fromASM(
-        `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`
+        `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`,
       );
       const tapeSize = ftlpTapeScript.toBuffer().length;
       ftlpCodeScript = this.getFtlpCodeWithLockTime(
         poolnft_codehash.toString("hex"),
         address_to,
         tapeSize,
-        ftVersion
+        isCoin,
+        ftVersion,
       );
     } else {
       const nameHex = Buffer.from(FTA.name, "utf8").toString("hex");
@@ -542,15 +600,23 @@ class poolNFT2 {
       }
       const ftlpTapeAmount = amountwriter.toBuffer().toString("hex");
       // Build the tape script
-      ftlpTapeScript = tbc.Script.fromASM(
-        `OP_FALSE OP_RETURN ${ftlpTapeAmount} 06 ${nameHex} ${symbolHex} 4654617065`
-      );
+      if (isCoin) {
+        ftlpTapeScript = tbc.Script.fromASM(
+          `OP_FALSE OP_RETURN ${ftlpTapeAmount} 06 ${nameHex} ${symbolHex} ${"00000000"} 4654617065`,
+        );
+      } else {
+        ftlpTapeScript = tbc.Script.fromASM(
+          `OP_FALSE OP_RETURN ${ftlpTapeAmount} 06 ${nameHex} ${symbolHex} 4654617065`,
+        );
+      }
+
       const tapeSize = ftlpTapeScript.toBuffer().length;
       ftlpCodeScript = this.getFtlpCode(
         poolnft_codehash.toString("hex"),
         address_to,
         tapeSize,
-        ftVersion
+        isCoin,
+        ftVersion,
       );
     }
 
@@ -558,34 +624,34 @@ class poolNFT2 {
       new tbc.Transaction.Output({
         script: ftlpCodeScript,
         satoshis: 500,
-      })
+      }),
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftlpTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     if (this.ft_a_amount < tapeAmountSum) {
       const changeCodeScript = FT.buildFTtransferCode(
         FTA.codeScript,
-        privateKey.toAddress().toString()
+        privateKey.toAddress().toString(),
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: changeCodeScript,
           satoshis: fttxo_a.satoshis,
-        })
+        }),
       );
       const changeTapeScript = FT.buildFTtransferTape(
         FTA.tapeScript,
-        changeHex
+        changeHex,
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: changeTapeScript,
           satoshis: 0,
-        })
+        }),
       );
     }
     tx.feePerKb(80);
@@ -602,11 +668,12 @@ class poolNFT2 {
           poolnft.txId,
           poolnft.outputIndex,
           0,
-          1
+          1,
         );
         return unlockingScript;
-      }
+      },
     );
+    if (isCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
       {
         inputIndex: 1,
@@ -618,10 +685,11 @@ class poolNFT2 {
           ftPreTX,
           ftPrePreTxData,
           1,
-          fttxo_a.outputIndex
+          fttxo_a.outputIndex,
+          isCoin,
         );
         return unlockingScript;
-      }
+      },
     );
     tx.sign(privateKey);
     await tx.sealAsync();
@@ -656,7 +724,7 @@ class poolNFT2 {
     address_to: string,
     utxo: tbc.Transaction.IUnspentOutput,
     amount_tbc: number | string,
-    lock_time?: number
+    lock_time?: number,
   ): Promise<string> {
     const lockStatus =
       this.with_lock === true ? 1 : 0 || isLock(this.poolnft_code.length);
@@ -664,43 +732,65 @@ class poolNFT2 {
     if (lockStatus) {
       const lpCostAmount = getLpCostAmount(this.poolnft_code);
       const lpCostTBC = Number((lpCostAmount / Math.pow(10, 6)).toFixed(6));
-      if (typeof amount_tbc === 'string') {
+      if (typeof amount_tbc === "string") {
         amount_tbc = (parseFloat(amount_tbc) - lpCostTBC).toString();
       } else {
         amount_tbc = amount_tbc - lpCostTBC;
       }
-      if (Number(amount_tbc) <= 0) throw new Error(`TBC amount input must be greater than LP cost of ${lpCostTBC}`);
+      if (Number(amount_tbc) <= 0)
+        throw new Error(
+          `TBC amount input must be greater than LP cost of ${lpCostTBC}`,
+        );
     }
     if (Number(amount_tbc) <= 0) throw new Error("Invalid TBC amount input");
     const privateKey = privateKey_from;
     const FTA = new FT(this.ft_a_contractTxid);
-    const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    let FTAInfo;
+    try {
+      FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    } catch {
+      FTAInfo = (await API.fetchCoinInfo(FTA.contractTxid, this.network))
+        .coinInfo;
+    }
     FTA.initialize(FTAInfo);
-    const ftVersion = FTA.codeScript.length / 2 === ft_v2_length? 2 : 1;
+    const isCoin = FTA.codeScript.length / 2 === coin_length;
+    const ftVersion =
+      FTA.codeScript.length / 2 === ft_v2_length || isCoin ? 2 : 1;
     const amount_tbcbn = parseDecimalToBigInt(amount_tbc, 6);
     const changeData = this.updatePoolNFT(amount_tbc, FTA.decimal, 2);
     const poolnft_codehash = tbc.crypto.Hash.sha256(
-      Buffer.from(this.poolnft_code, "hex")
+      Buffer.from(this.poolnft_code, "hex"),
     );
     const poolnft_codehash160 =
       tbc.crypto.Hash.sha256ripemd160(poolnft_codehash).toString("hex");
     const tapeAmountSetIn: bigint[] = [];
     const ftutxo_codeScript = FT.buildFTtransferCode(
       FTA.codeScript,
-      privateKey.toAddress().toString()
+      privateKey.toAddress().toString(),
     )
       .toBuffer()
       .toString("hex");
 
     let fttxo_a: tbc.Transaction.IUnspentOutput;
     try {
-      fttxo_a = await API.fetchFtUTXO(
-        this.ft_a_contractTxid,
-        privateKey.toAddress().toString(),
-        changeData.ft_a_difference,
-        ftutxo_codeScript,
-        this.network
-      );
+      fttxo_a = isCoin
+        ? (
+            await API.fetchCoinUTXOs(
+              this.ft_a_contractTxid,
+              privateKey.toAddress().toString(),
+              changeData.ft_a_difference,
+              ftutxo_codeScript,
+              this.network,
+              1,
+            )
+          )[0]
+        : await API.fetchFtUTXO(
+            this.ft_a_contractTxid,
+            privateKey.toAddress().toString(),
+            changeData.ft_a_difference,
+            ftutxo_codeScript,
+            this.network,
+          );
     } catch (error: any) {
       const errorMessage =
         error.message === "Insufficient FTbalance, please merge FT UTXOs"
@@ -714,7 +804,7 @@ class poolNFT2 {
     const ftPrePreTxData = await API.fetchFtPrePreTxData(
       ftPreTX,
       fttxo_a.outputIndex,
-      this.network
+      this.network,
     );
     tapeAmountSetIn.push(fttxo_a.ftBalance!);
     let tapeAmountSum = BigInt(0);
@@ -727,7 +817,7 @@ class poolNFT2 {
     let { amountHex, changeHex } = FT.buildTapeAmount(
       changeData.ft_a_difference,
       tapeAmountSetIn,
-      1
+      1,
     );
     if (utxo.satoshis < Number(amount_tbcbn)) {
       throw new Error("Insufficient TBC amount, please merge UTXOs");
@@ -739,32 +829,32 @@ class poolNFT2 {
       new tbc.Transaction.Output({
         script: tbc.Script.fromHex(this.poolnft_code),
         satoshis: poolnft.satoshis + Number(changeData.tbc_amount_difference),
-      })
+      }),
     );
     const poolnftTapeScript = await this.updatePoolNftTape();
     tx.addOutput(
       new tbc.Transaction.Output({
         script: poolnftTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     // FTAbyC
     const ftabycCodeScript = FT.buildFTtransferCode(
       FTA.codeScript,
-      poolnft_codehash160
+      poolnft_codehash160,
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftabycCodeScript,
         satoshis: fttxo_a.satoshis,
-      })
+      }),
     );
     const ftabycTapeScript = FT.buildFTtransferTape(FTA.tapeScript, amountHex);
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftabycTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     // FTLP
     let ftlpCodeScript: tbc.Script;
@@ -777,7 +867,7 @@ class poolNFT2 {
         throw new Error("Invalid lock time, must be between 0 and 4294967295");
       }
       const ftlp_amount = new tbc.crypto.BN(
-        changeData.ft_lp_difference.toString()
+        changeData.ft_lp_difference.toString(),
       );
       const amountwriter = new tbc.encoding.BufferWriter();
       amountwriter.writeUInt64LEBN(ftlp_amount);
@@ -793,20 +883,21 @@ class poolNFT2 {
       const fillSize = FTA.tapeScript.length / 2 - 62;
       const opZeroArray = Array(fillSize).fill("OP_0").join(" ");
       ftlpTapeScript = tbc.Script.fromASM(
-        `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`
+        `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`,
       );
       const tapeSize = ftlpTapeScript.toBuffer().length;
       ftlpCodeScript = this.getFtlpCodeWithLockTime(
         poolnft_codehash.toString("hex"),
         address_to,
         tapeSize,
-        ftVersion
+        isCoin,
+        ftVersion,
       );
     } else {
       const nameHex = Buffer.from(FTA.name, "utf8").toString("hex");
       const symbolHex = Buffer.from(FTA.symbol, "utf8").toString("hex");
       const ftlp_amount = new tbc.crypto.BN(
-        changeData.ft_lp_difference.toString()
+        changeData.ft_lp_difference.toString(),
       );
       const amountwriter = new tbc.encoding.BufferWriter();
       amountwriter.writeUInt64LEBN(ftlp_amount);
@@ -815,28 +906,35 @@ class poolNFT2 {
       }
       const ftlpTapeAmount = amountwriter.toBuffer().toString("hex");
       // Build the tape script
-      ftlpTapeScript = tbc.Script.fromASM(
-        `OP_FALSE OP_RETURN ${ftlpTapeAmount} 06 ${nameHex} ${symbolHex} 4654617065`
-      );
+      if (isCoin) {
+        ftlpTapeScript = tbc.Script.fromASM(
+          `OP_FALSE OP_RETURN ${ftlpTapeAmount} 06 ${nameHex} ${symbolHex} ${"00000000"} 4654617065`,
+        );
+      } else {
+        ftlpTapeScript = tbc.Script.fromASM(
+          `OP_FALSE OP_RETURN ${ftlpTapeAmount} 06 ${nameHex} ${symbolHex} 4654617065`,
+        );
+      }
       const tapeSize = ftlpTapeScript.toBuffer().length;
       ftlpCodeScript = this.getFtlpCode(
         poolnft_codehash.toString("hex"),
         address_to,
         tapeSize,
-        ftVersion
+        isCoin,
+        ftVersion,
       );
     }
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftlpCodeScript,
         satoshis: 500,
-      })
+      }),
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftlpTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     // P2PKH (若带锁则扣除)
     if (lockStatus) {
@@ -849,23 +947,23 @@ class poolNFT2 {
       // FTAbyA_change
       const ftabya_changeCodeScript = FT.buildFTtransferCode(
         FTA.codeScript,
-        privateKey.toAddress().toString()
+        privateKey.toAddress().toString(),
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: ftabya_changeCodeScript,
           satoshis: fttxo_a.satoshis,
-        })
+        }),
       );
       const ftabya_changeTapeScript = FT.buildFTtransferTape(
         FTA.tapeScript,
-        changeHex
+        changeHex,
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: ftabya_changeTapeScript,
           satoshis: 0,
-        })
+        }),
       );
     }
     tx.feePerKb(80);
@@ -882,11 +980,12 @@ class poolNFT2 {
           poolnft.txId,
           poolnft.outputIndex,
           lockStatus,
-          1
+          1,
         );
         return unlockingScript;
-      }
+      },
     );
+    if (isCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
       {
         inputIndex: 1,
@@ -898,10 +997,11 @@ class poolNFT2 {
           ftPreTX,
           ftPrePreTxData,
           1,
-          fttxo_a.outputIndex
+          fttxo_a.outputIndex,
+          isCoin,
         );
         return unlockingScript;
-      }
+      },
     );
     tx.sign(privateKey);
     await tx.sealAsync();
@@ -938,7 +1038,7 @@ class poolNFT2 {
     address_to: string,
     utxo: tbc.Transaction.IUnspentOutput,
     amount_lp: number | string,
-    lock_time?: number
+    lock_time?: number,
   ): Promise<string> {
     let isNeedUnlock = false;
     let unlockTX: tbc.Transaction;
@@ -946,65 +1046,81 @@ class poolNFT2 {
       if (this.with_lock_time) {
         if (lock_time) {
           if (lock_time < 0 || lock_time > 4294967295) {
-            throw new Error("Invalid lock time, must be between 0 and 4294967295");
+            throw new Error(
+              "Invalid lock time, must be between 0 and 4294967295",
+            );
           }
           if (!Number.isInteger(lock_time)) {
             throw new Error("Lock time must be a positive integer");
           }
         }
-        const unlockTXraw = await this.unlockFTLP(privateKey_from, utxo, lock_time);
-        if(unlockTXraw != null) {
+        const unlockTXraw = await this.unlockFTLP(
+          privateKey_from,
+          utxo,
+          lock_time,
+        );
+        if (unlockTXraw != null) {
           isNeedUnlock = true;
-          const txid = await API.broadcastTXraw(unlockTXraw, this.network)
+          const txid = await API.broadcastTXraw(unlockTXraw, this.network);
           if (!txid) throw new Error("Failed to broadcast unlock transaction");
           unlockTX = new tbc.Transaction(unlockTXraw);
-          await new Promise(resolve => setTimeout(resolve, 3000));
-        };
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+        }
       }
     } catch (error) {
       throw error;
     }
     const privateKey = privateKey_from;
     const FTA = new FT(this.ft_a_contractTxid);
-    const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    let FTAInfo;
+    try {
+      FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    } catch {
+      FTAInfo = (await API.fetchCoinInfo(FTA.contractTxid, this.network))
+        .coinInfo;
+    }
     FTA.initialize(FTAInfo);
-    const ftVersion = FTA.codeScript.length / 2 === ft_v2_length? 2 : 1;
+    const isCoin = FTA.codeScript.length / 2 === coin_length;
+    const ftVersion =
+      FTA.codeScript.length / 2 === ft_v2_length || isCoin ? 2 : 1;
     const amount_lpbn = parseDecimalToBigInt(amount_lp, 6);
     if (this.ft_lp_amount < amount_lpbn) {
       throw new Error("Invalid FT-LP amount input");
     }
     const changeData = this.updatePoolNFT(amount_lp, FTA.decimal, 1);
     const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(
-      tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex"))
+      tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex")),
     ).toString("hex");
     const tapeAmountSetIn: bigint[] = [];
     const lpTapeAmountSetIn: bigint[] = [];
     const ftPreTX: tbc.Transaction[] = [];
     const ftPrePreTxData: string[] = [];
     const ftlpCode =
-      this.with_lock_time ?? false
+      (this.with_lock_time ?? false)
         ? this.getFtlpCodeWithLockTime(
             tbc.crypto.Hash.sha256(
-              Buffer.from(this.poolnft_code, "hex")
+              Buffer.from(this.poolnft_code, "hex"),
             ).toString("hex"),
             privateKey.toAddress().toString(),
             FTA.tapeScript.length / 2,
-            ftVersion
+            isCoin,
+            ftVersion,
           )
         : this.getFtlpCode(
             tbc.crypto.Hash.sha256(
-              Buffer.from(this.poolnft_code, "hex")
+              Buffer.from(this.poolnft_code, "hex"),
             ).toString("hex"),
             privateKey.toAddress().toString(),
             FTA.tapeScript.length / 2,
-            ftVersion
+            isCoin,
+            ftVersion,
           );
     // const ftlpCode = this.getFtlpCode(tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, 'hex')).toString('hex'), privateKey.toAddress().toString(), FTA.tapeScript.length / 2);
     let fttxo_lp: tbc.Transaction.IUnspentOutput;
     try {
       fttxo_lp = await this.fetchFtlpUTXO(
         privateKey.toAddress().toString(),
-        changeData.ft_lp_difference
+        changeData.ft_lp_difference,
       );
     } catch (error: any) {
       throw new Error(error.message);
@@ -1014,27 +1130,36 @@ class poolNFT2 {
       await API.fetchFtPrePreTxData(
         ftPreTX[0],
         fttxo_lp.outputIndex,
-        this.network
-      )
+        this.network,
+      ),
     );
 
     lpTapeAmountSetIn.push(fttxo_lp.ftBalance);
     const ftutxo_codeScript = FT.buildFTtransferCode(
       FTA.codeScript,
-      poolnft_codehash160
+      poolnft_codehash160,
     )
       .toBuffer()
       .toString("hex");
     let fttxo_c: tbc.Transaction.IUnspentOutput[];
     try {
-      fttxo_c = await API.fetchFtUTXOsforPool(
-        this.ft_a_contractTxid,
-        poolnft_codehash160,
-        changeData.ft_a_difference,
-        3,
-        ftutxo_codeScript,
-        this.network
-      );
+      fttxo_c = isCoin
+        ? await API.fetchCoinUTXOs(
+            this.ft_a_contractTxid,
+            poolnft_codehash160,
+            changeData.ft_a_difference,
+            ftutxo_codeScript,
+            this.network,
+            3,
+          )
+        : await API.fetchFtUTXOsforPool(
+            this.ft_a_contractTxid,
+            poolnft_codehash160,
+            changeData.ft_a_difference,
+            3,
+            ftutxo_codeScript,
+            this.network,
+          );
     } catch (error: any) {
       const errorMessage =
         error.message === "Insufficient FTbalance, please merge FT UTXOs"
@@ -1050,8 +1175,8 @@ class poolNFT2 {
         await API.fetchFtPrePreTxData(
           ftPreTX[i + 1],
           fttxo_c[i].outputIndex,
-          this.network
-        )
+          this.network,
+        ),
       );
       tapeAmountSetIn.push(fttxo_c[i].ftBalance);
       tapeAmountSum += BigInt(tapeAmountSetIn[i]);
@@ -1061,42 +1186,37 @@ class poolNFT2 {
     let { amountHex, changeHex } = FT.buildTapeAmount(
       changeData.ft_a_difference,
       tapeAmountSetIn,
-      2
+      2,
     );
     const ftAbyA = amountHex;
     const ftAbyC = changeHex;
     ({ amountHex, changeHex } = FT.buildTapeAmount(
       changeData.ft_lp_difference,
       lpTapeAmountSetIn,
-      1
+      1,
     ));
     const ftlpBurn = amountHex;
     const ftlpChange = changeHex;
     const poolnft = await this.fetchPoolNftUTXO(this.contractTxid);
     const contractTX = await API.fetchTXraw(poolnft.txId, this.network);
     // Construct the transaction
-    const tx = new tbc.Transaction()
-      .from(poolnft)
-      .from(fttxo_lp)
-      .from(fttxo_c);
-    if (this.with_lock_time && isNeedUnlock)
-      tx.addInputFromPrevTx(unlockTX, 2);
-    else 
-      tx.from(utxo);
+    const tx = new tbc.Transaction().from(poolnft).from(fttxo_lp).from(fttxo_c);
+    if (this.with_lock_time && isNeedUnlock) tx.addInputFromPrevTx(unlockTX, 2);
+    else tx.from(utxo);
     //poolNft
     tx.addOutput(
       new tbc.Transaction.Output({
         script: tbc.Script.fromHex(this.poolnft_code),
         satoshis:
           poolnft.satoshis - Number(changeData.tbc_amount_full_difference),
-      })
+      }),
     );
     const poolnftTapeScript = await this.updatePoolNftTape();
     tx.addOutput(
       new tbc.Transaction.Output({
         script: poolnftTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     //FTAbyA
     const ftCodeScript = FT.buildFTtransferCode(FTA.codeScript, address_to);
@@ -1104,24 +1224,24 @@ class poolNFT2 {
       new tbc.Transaction.Output({
         script: ftCodeScript,
         satoshis: 500,
-      })
+      }),
     );
     const ftTapeScript = FT.buildFTtransferTape(FTA.tapeScript, ftAbyA);
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     //P2PKH
     tx.to(
       privateKey.toAddress().toString(),
-      Number(changeData.tbc_amount_full_difference)
+      Number(changeData.tbc_amount_full_difference),
     );
     //FTLP_Burn
     let ftlpCodeScript = FT.buildFTtransferCode(
       ftlpCode.toBuffer().toString("hex"),
-      "1BitcoinEaterAddressDontSendf59kuE"
+      "1BitcoinEaterAddressDontSendf59kuE",
     );
     let ftlpTapeScript: tbc.Script;
     const amountwriter = new tbc.encoding.BufferWriter();
@@ -1136,74 +1256,80 @@ class poolNFT2 {
       const fillSize = FTA.tapeScript.length / 2 - 62;
       const opZeroArray = Array(fillSize).fill("OP_0").join(" ");
       ftlpTapeScript = tbc.Script.fromASM(
-        `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`
+        `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`,
       );
       // ftlpCodeScript = FT.buildFTtransferCode(ftlpCode.toBuffer().toString('hex'), '1BitcoinEaterAddressDontSendf59kuE');
     } else {
       const nameHex = Buffer.from(FTA.name, "utf8").toString("hex");
       const symbolHex = Buffer.from(FTA.symbol, "utf8").toString("hex");
-      ftlpTapeScript = tbc.Script.fromASM(
-        `OP_FALSE OP_RETURN ${ftlpTapeAmount} 06 ${nameHex} ${symbolHex} 4654617065`
-      );
+      if (isCoin) {
+        ftlpTapeScript = tbc.Script.fromASM(
+          `OP_FALSE OP_RETURN ${ftlpTapeAmount} 06 ${nameHex} ${symbolHex} ${"00000000"} 4654617065`,
+        );
+      } else {
+        ftlpTapeScript = tbc.Script.fromASM(
+          `OP_FALSE OP_RETURN ${ftlpTapeAmount} 06 ${nameHex} ${symbolHex} 4654617065`,
+        );
+      }
       // ftlpCodeScript = FT.buildFTtransferCode(ftlpCode.toBuffer().toString('hex'), '1BitcoinEaterAddressDontSendf59kuE');
     }
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftlpCodeScript,
         satoshis: fttxo_lp.satoshis,
-      })
+      }),
     );
     ftlpTapeScript = FT.buildFTtransferTape(
       ftlpTapeScript.toBuffer().toString("hex"),
-      ftlpBurn
+      ftlpBurn,
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftlpTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     // FTLP_change
     if (fttxo_lp.ftBalance! > changeData.ft_lp_difference) {
       const ftlp_changeCodeScript = FT.buildFTtransferCode(
         ftlpCode.toBuffer().toString("hex"),
-        address_to
+        address_to,
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: ftlp_changeCodeScript,
           satoshis: fttxo_lp.satoshis,
-        })
+        }),
       );
       const ftlp_changeTapeScript = FT.buildFTtransferTape(
         ftlpTapeScript.toBuffer().toString("hex"),
-        ftlpChange
+        ftlpChange,
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: ftlp_changeTapeScript,
           satoshis: 0,
-        })
+        }),
       );
     }
     // FTAbyC_change
     if (changeData.ft_a_difference < tapeAmountSum) {
       const ftabycCodeScript = FT.buildFTtransferCode(
         FTA.codeScript,
-        poolnft_codehash160
+        poolnft_codehash160,
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: ftabycCodeScript,
           satoshis: 500,
-        })
+        }),
       );
       const ftabycTapeScript = FT.buildFTtransferTape(FTA.tapeScript, ftAbyC);
       tx.addOutput(
         new tbc.Transaction.Output({
           script: ftabycTapeScript,
           satoshis: 0,
-        })
+        }),
       );
     }
     tx.feePerKb(80);
@@ -1220,10 +1346,10 @@ class poolNFT2 {
           poolnft.txId,
           poolnft.outputIndex,
           isLock(this.poolnft_code.length),
-          2
+          2,
         );
         return unlockingScript;
-      }
+      },
     );
     tx.setInputScript(
       {
@@ -1236,12 +1362,13 @@ class poolNFT2 {
           ftPreTX[0],
           ftPrePreTxData[0],
           1,
-          fttxo_lp.outputIndex
+          fttxo_lp.outputIndex,
         );
         return unlockingScript;
-      }
+      },
     );
     for (let i = 0; i < fttxo_c.length; i++) {
+      if (isCoin) tx.setInputSequence(i + 2, 4294967294);
       tx.setInputScript(
         {
           inputIndex: i + 2,
@@ -1255,10 +1382,11 @@ class poolNFT2 {
             contractTX,
             i + 2,
             fttxo_c[i].outputIndex,
-            ftVersion
+            ftVersion,
+            isCoin,
           );
           return unlockingScript;
-        }
+        },
       );
     }
     tx.sign(privateKey);
@@ -1294,13 +1422,21 @@ class poolNFT2 {
     address_to: string,
     utxo: tbc.Transaction.IUnspentOutput,
     amount_tbc: number | string,
-    lpPlan?: 1 | 2
+    lpPlan?: 1 | 2,
   ): Promise<string> {
     const privateKey = privateKey_from;
     const FTA = new FT(this.ft_a_contractTxid);
-    const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    let FTAInfo;
+    try {
+      FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    } catch {
+      FTAInfo = (await API.fetchCoinInfo(FTA.contractTxid, this.network))
+        .coinInfo;
+    }
     FTA.initialize(FTAInfo);
-    const ftVersion = FTA.codeScript.length / 2 === ft_v2_length? 2 : 1;
+    const isCoin = FTA.codeScript.length / 2 === coin_length;
+    const ftVersion =
+      FTA.codeScript.length / 2 === ft_v2_length || isCoin ? 2 : 1;
     lpPlan =
       this.lp_plan === 1 || this.lp_plan === 2
         ? (this.lp_plan as 1 | 2)
@@ -1310,7 +1446,7 @@ class poolNFT2 {
     }
     // const poolMul = this.ft_a_amount * this.tbc_amount;
     const poolMul = new BN(this.ft_a_amount.toString()).mul(
-      new BN(this.tbc_amount.toString())
+      new BN(this.tbc_amount.toString()),
     );
     const ft_a_amount = this.ft_a_amount;
     const amount_tbcbn = parseDecimalToBigInt(amount_tbc, 6);
@@ -1332,7 +1468,7 @@ class poolNFT2 {
     // console.log(new tbc.crypto.BN(this.tbc_amount.toString()).toNumber());
     // console.log(new tbc.crypto.BN(poolMul.toString()).div(new tbc.crypto.BN(this.tbc_amount.toString())));
     this.ft_a_amount = BigInt(
-      poolMul.div(new BN(this.tbc_amount.toString())).toString()
+      poolMul.div(new BN(this.tbc_amount.toString())).toString(),
     );
     // this.ft_a_amount = BigInt(poolMul) / BigInt(this.tbc_amount);
     // console.log(`ft_a_amount: ${this.ft_a_amount}`);
@@ -1340,26 +1476,35 @@ class poolNFT2 {
       BigInt(ft_a_amount) - BigInt(this.ft_a_amount);
     // console.log(`ft_a_amount_decrement: ${ft_a_amount_decrement}`);
     const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(
-      tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex"))
+      tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex")),
     ).toString("hex");
     const tapeAmountSetIn: bigint[] = [];
     const ftutxo_codeScript = FT.buildFTtransferCode(
       FTA.codeScript,
-      poolnft_codehash160
+      poolnft_codehash160,
     )
       .toBuffer()
       .toString("hex");
 
     let fttxo_c: tbc.Transaction.IUnspentOutput[];
     try {
-      fttxo_c = await API.fetchFtUTXOsforPool(
-        this.ft_a_contractTxid,
-        poolnft_codehash160,
-        ft_a_amount_decrement,
-        4,
-        ftutxo_codeScript,
-        this.network
-      );
+      fttxo_c = isCoin
+        ? await API.fetchCoinUTXOs(
+            this.ft_a_contractTxid,
+            poolnft_codehash160,
+            ft_a_amount_decrement,
+            ftutxo_codeScript,
+            this.network,
+            4,
+          )
+        : await API.fetchFtUTXOsforPool(
+            this.ft_a_contractTxid,
+            poolnft_codehash160,
+            ft_a_amount_decrement,
+            4,
+            ftutxo_codeScript,
+            this.network,
+          );
     } catch (error: any) {
       const errorMessage =
         error.message === "Insufficient FTbalance, please merge FT UTXOs"
@@ -1376,8 +1521,8 @@ class poolNFT2 {
         await API.fetchFtPrePreTxData(
           ftPreTX[i],
           fttxo_c[i].outputIndex,
-          this.network
-        )
+          this.network,
+        ),
       );
       tapeAmountSetIn.push(fttxo_c[i].ftBalance);
       tapeAmountSum += BigInt(new BN(tapeAmountSetIn[i].toString()).toString());
@@ -1386,7 +1531,7 @@ class poolNFT2 {
     const { amountHex, changeHex } = FT.buildTapeAmount(
       ft_a_amount_decrement,
       tapeAmountSetIn,
-      2
+      2,
     );
     if (utxo.satoshis < Number(amount_tbcbn)) {
       throw new Error("Insufficient TBC amount, please merge UTXOs");
@@ -1399,14 +1544,14 @@ class poolNFT2 {
       new tbc.Transaction.Output({
         script: tbc.Script.fromHex(this.poolnft_code),
         satoshis: poolnft.satoshis + Number(amount_tbcbn_swap_lp),
-      })
+      }),
     );
     const poolnftTapeScript = await this.updatePoolNftTape();
     tx.addOutput(
       new tbc.Transaction.Output({
         script: poolnftTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     // FTAbyA
     const ftCodeScript = FT.buildFTtransferCode(FTA.codeScript, address_to);
@@ -1414,14 +1559,14 @@ class poolNFT2 {
       new tbc.Transaction.Output({
         script: ftCodeScript,
         satoshis: 500,
-      })
+      }),
     );
     const ftTapeScript = FT.buildFTtransferTape(FTA.tapeScript, amountHex);
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     // P2PKH_ServiceFee
     if (serviceFeeA >= BigInt(10)) {
@@ -1429,30 +1574,30 @@ class poolNFT2 {
         lpPlan === 1
           ? "13oCEJaqyyiC8iRrfup6PDL2GKZ3xQrsZL"
           : "1Fa6Uy64Ub4qNdB896zX2pNMx4a8zMhtCy",
-        Number(serviceFeeA)
+        Number(serviceFeeA),
       );
     }
     // FTAbyC_Change
     if (ft_a_amount_decrement < tapeAmountSum) {
       const ftabycCodeScript = FT.buildFTtransferCode(
         FTA.codeScript,
-        poolnft_codehash160
+        poolnft_codehash160,
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: ftabycCodeScript,
           satoshis: 500,
-        })
+        }),
       );
       const ftabycTapeScript = FT.buildFTtransferTape(
         FTA.tapeScript,
-        changeHex
+        changeHex,
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: ftabycTapeScript,
           satoshis: 0,
-        })
+        }),
       );
     }
     tx.feePerKb(80);
@@ -1470,12 +1615,13 @@ class poolNFT2 {
           poolnft.outputIndex,
           isLock(this.poolnft_code.length),
           3,
-          1
+          1,
         );
         return unlockingScript;
-      }
+      },
     );
     for (let i = 0; i < fttxo_c.length; i++) {
+      if (isCoin) tx.setInputSequence(i + 2, 4294967294);
       tx.setInputScript(
         {
           inputIndex: i + 2,
@@ -1489,10 +1635,11 @@ class poolNFT2 {
             contractTX,
             i + 2,
             fttxo_c[i].outputIndex,
-            ftVersion
+            ftVersion,
+            isCoin,
           );
           return unlockingScript;
-        }
+        },
       );
     }
     tx.sign(privateKey);
@@ -1527,12 +1674,19 @@ class poolNFT2 {
     address_to: string,
     utxo: tbc.Transaction.IUnspentOutput,
     amount_token: number | string,
-    lpPlan?: 1 | 2
+    lpPlan?: 1 | 2,
   ): Promise<string> {
     const privateKey = privateKey_from;
     const FTA = new FT(this.ft_a_contractTxid);
-    const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    let FTAInfo;
+    try {
+      FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    } catch {
+      FTAInfo = (await API.fetchCoinInfo(FTA.contractTxid, this.network))
+        .coinInfo;
+    }
     FTA.initialize(FTAInfo);
+    const isCoin = FTA.codeScript.length / 2 === coin_length;
     lpPlan =
       this.lp_plan === 1 || this.lp_plan === 2
         ? (this.lp_plan as 1 | 2)
@@ -1542,25 +1696,25 @@ class poolNFT2 {
       throw new Error("Invalid FT amount input");
     }
     const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(
-      tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex"))
+      tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex")),
     ).toString("hex");
     // const poolMul = this.ft_a_amount * this.tbc_amount;
     // console.log(`tbc_amount: ${this.tbc_amount}, ft_a_amount: ${this.ft_a_amount}`);
     const poolMul = new tbc.crypto.BN(this.ft_a_amount.toString()).mul(
-      new tbc.crypto.BN(this.tbc_amount.toString())
+      new tbc.crypto.BN(this.tbc_amount.toString()),
     );
     const tbc_amount = this.tbc_amount;
     // this.ft_a_amount = BigInt(this.ft_a_amount) + BigInt(amount_ftbn);
     this.ft_a_amount = BigInt(
       new BN(this.ft_a_amount.toString())
         .add(new BN(amount_ftbn.toString()))
-        .toString()
+        .toString(),
     );
     // console.log(`poolMul: ${poolMul}, amount_ftbn: ${amount_ftbn}, ft_a_amount: ${this.ft_a_amount}`);
     // console.log(BigInt(new BN(this.ft_a_amount.toString()).add(new BN(amount_ftbn.toString())).toString()));
     // this.tbc_amount = BigInt(poolMul) / BigInt(this.ft_a_amount);
     this.tbc_amount = BigInt(
-      poolMul.div(new tbc.crypto.BN(this.ft_a_amount.toString())).toString()
+      poolMul.div(new tbc.crypto.BN(this.ft_a_amount.toString())).toString(),
     );
     // console.log(`tbc_amount: ${this.tbc_amount}`);
     const tbc_amount_decrement = BigInt(tbc_amount) - BigInt(this.tbc_amount);
@@ -1582,19 +1736,30 @@ class poolNFT2 {
     const ftPrePreTxData: string[] = [];
     const ftutxo_codeScript_a = FT.buildFTtransferCode(
       FTA.codeScript,
-      privateKey.toAddress().toString()
+      privateKey.toAddress().toString(),
     )
       .toBuffer()
       .toString("hex");
     let fttxo_a: tbc.Transaction.IUnspentOutput;
     try {
-      fttxo_a = await API.fetchFtUTXO(
-        this.ft_a_contractTxid,
-        privateKey.toAddress().toString(),
-        amount_ftbn,
-        ftutxo_codeScript_a,
-        this.network
-      );
+      fttxo_a = isCoin
+        ? (
+            await API.fetchCoinUTXOs(
+              this.ft_a_contractTxid,
+              privateKey.toAddress().toString(),
+              amount_ftbn,
+              ftutxo_codeScript_a,
+              this.network,
+              1,
+            )
+          )[0]
+        : await API.fetchFtUTXO(
+            this.ft_a_contractTxid,
+            privateKey.toAddress().toString(),
+            amount_ftbn,
+            ftutxo_codeScript_a,
+            this.network,
+          );
     } catch (error: any) {
       throw new Error(error.message);
     }
@@ -1603,8 +1768,8 @@ class poolNFT2 {
       await API.fetchFtPrePreTxData(
         ftPreTX[0],
         fttxo_a.outputIndex,
-        this.network
-      )
+        this.network,
+      ),
     );
     tapeAmountSetIn.push(BigInt(fttxo_a.ftBalance!));
 
@@ -1612,7 +1777,7 @@ class poolNFT2 {
     const { amountHex, changeHex } = FT.buildTapeAmount(
       BigInt(amount_ftbn),
       tapeAmountSetIn,
-      1
+      1,
     );
     const poolnft = await this.fetchPoolNftUTXO(this.contractTxid);
     //const contractTX = await API.fetchTXraw(poolnft.txId, this.network);
@@ -1623,33 +1788,33 @@ class poolNFT2 {
       new tbc.Transaction.Output({
         script: tbc.Script.fromHex(this.poolnft_code),
         satoshis: poolnft.satoshis - Number(tbc_amount_decrement_swap_lp),
-      })
+      }),
     );
     const poolnftTapeScript = await this.updatePoolNftTape();
     tx.addOutput(
       new tbc.Transaction.Output({
         script: poolnftTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     tx.to(address_to, Number(tbc_amount_decrement_swap));
     // FTAbyC
     const ftCodeScript = FT.buildFTtransferCode(
       FTA.codeScript,
-      poolnft_codehash160
+      poolnft_codehash160,
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftCodeScript,
         satoshis: fttxo_a.satoshis,
-      })
+      }),
     );
     const ftTapeScript = FT.buildFTtransferTape(FTA.tapeScript, amountHex);
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     // P2PKH_ServiceFee
     if (serviceFeeA >= BigInt(10)) {
@@ -1657,31 +1822,31 @@ class poolNFT2 {
         lpPlan === 1
           ? "13oCEJaqyyiC8iRrfup6PDL2GKZ3xQrsZL"
           : "1Fa6Uy64Ub4qNdB896zX2pNMx4a8zMhtCy",
-        Number(serviceFeeA)
+        Number(serviceFeeA),
       );
     }
     // FTAbyA_change
     if (amount_ftbn < fttxo_a.ftBalance!) {
       const ftabyaCodeScript = FT.buildFTtransferCode(
         FTA.codeScript,
-        privateKey.toAddress().toString()
+        privateKey.toAddress().toString(),
       );
 
       tx.addOutput(
         new tbc.Transaction.Output({
           script: ftabyaCodeScript,
           satoshis: fttxo_a.satoshis,
-        })
+        }),
       );
       const ftabyaTapeScript = FT.buildFTtransferTape(
         FTA.tapeScript,
-        changeHex
+        changeHex,
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: ftabyaTapeScript,
           satoshis: 0,
-        })
+        }),
       );
     }
     tx.feePerKb(80);
@@ -1699,11 +1864,12 @@ class poolNFT2 {
           poolnft.outputIndex,
           isLock(this.poolnft_code.length),
           3,
-          2
+          2,
         );
         return unlockingScript;
-      }
+      },
     );
+    if (isCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
       {
         inputIndex: 1,
@@ -1715,10 +1881,11 @@ class poolNFT2 {
           ftPreTX[0],
           ftPrePreTxData[0],
           1,
-          fttxo_a.outputIndex
+          fttxo_a.outputIndex,
+          isCoin,
         );
         return unlockingScript;
-      }
+      },
     );
     tx.sign(privateKey);
     await tx.sealAsync();
@@ -1749,13 +1916,20 @@ class poolNFT2 {
     ftPrePreTxData: string[],
     amount_token: number | string,
     lpPlan?: 1 | 2,
-    utxo?: tbc.Transaction.IUnspentOutput
+    utxo?: tbc.Transaction.IUnspentOutput,
   ): Promise<string> {
     const privateKey = privateKey_from;
     const fttxo_a = ftutxo;
     const FTA = new FT(this.ft_a_contractTxid);
-    const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    let FTAInfo;
+    try {
+      FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    } catch {
+      FTAInfo = (await API.fetchCoinInfo(FTA.contractTxid, this.network))
+        .coinInfo;
+    }
     FTA.initialize(FTAInfo);
+    const isCoin = FTA.codeScript.length / 2 === coin_length;
     lpPlan =
       this.lp_plan === 1 || this.lp_plan === 2
         ? (this.lp_plan as 1 | 2)
@@ -1765,22 +1939,22 @@ class poolNFT2 {
       throw new Error("Invalid FT amount input");
     }
     const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(
-      tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex"))
+      tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex")),
     ).toString("hex");
     // const poolMul = this.ft_a_amount * this.tbc_amount;
     const poolMul = new tbc.crypto.BN(this.ft_a_amount.toString()).mul(
-      new tbc.crypto.BN(this.tbc_amount.toString())
+      new tbc.crypto.BN(this.tbc_amount.toString()),
     );
     const tbc_amount = this.tbc_amount;
     // this.ft_a_amount = BigInt(this.ft_a_amount) + BigInt(amount_ftbn);
     this.ft_a_amount = BigInt(
       new BN(this.ft_a_amount.toString())
         .add(new BN(amount_ftbn.toString()))
-        .toString()
+        .toString(),
     );
     // this.tbc_amount = BigInt(poolMul) / BigInt(this.ft_a_amount);
     this.tbc_amount = BigInt(
-      poolMul.div(new tbc.crypto.BN(this.ft_a_amount.toString())).toString()
+      poolMul.div(new tbc.crypto.BN(this.ft_a_amount.toString())).toString(),
     );
     const tbc_amount_decrement = BigInt(tbc_amount) - BigInt(this.tbc_amount);
     const serviceFee =
@@ -1803,7 +1977,7 @@ class poolNFT2 {
     const { amountHex, changeHex } = FT.buildTapeAmount(
       BigInt(amount_ftbn),
       tapeAmountSetIn,
-      1
+      1,
     );
     const poolnft = await this.fetchPoolNftUTXO(this.contractTxid);
     // Construct the transaction
@@ -1816,33 +1990,33 @@ class poolNFT2 {
       new tbc.Transaction.Output({
         script: tbc.Script.fromHex(this.poolnft_code),
         satoshis: poolnft.satoshis - Number(tbc_amount_decrement_swap_lp),
-      })
+      }),
     );
     const poolnftTapeScript = await this.updatePoolNftTape();
     tx.addOutput(
       new tbc.Transaction.Output({
         script: poolnftTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     tx.to(address_to, Number(tbc_amount_decrement_swap));
     // FTAbyC
     const ftCodeScript = FT.buildFTtransferCode(
       FTA.codeScript,
-      poolnft_codehash160
+      poolnft_codehash160,
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftCodeScript,
         satoshis: fttxo_a.satoshis,
-      })
+      }),
     );
     const ftTapeScript = FT.buildFTtransferTape(FTA.tapeScript, amountHex);
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     // P2PKH_ServiceFee
     if (serviceFeeA >= BigInt(10)) {
@@ -1850,31 +2024,31 @@ class poolNFT2 {
         lpPlan === 1
           ? "13oCEJaqyyiC8iRrfup6PDL2GKZ3xQrsZL"
           : "1Fa6Uy64Ub4qNdB896zX2pNMx4a8zMhtCy",
-        Number(serviceFeeA)
+        Number(serviceFeeA),
       );
     }
     // FTAbyA_change
     if (amount_ftbn < fttxo_a.ftBalance!) {
       const ftabyaCodeScript = FT.buildFTtransferCode(
         FTA.codeScript,
-        privateKey.toAddress().toString()
+        privateKey.toAddress().toString(),
       );
 
       tx.addOutput(
         new tbc.Transaction.Output({
           script: ftabyaCodeScript,
           satoshis: fttxo_a.satoshis,
-        })
+        }),
       );
       const ftabyaTapeScript = FT.buildFTtransferTape(
         FTA.tapeScript,
-        changeHex
+        changeHex,
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: ftabyaTapeScript,
           satoshis: 0,
-        })
+        }),
       );
     }
     tx.feePerKb(80);
@@ -1883,11 +2057,11 @@ class poolNFT2 {
     const poolNftPreTX = await API.fetchTXraw(poolnft.txId, this.network);
     const poolNftPrePreTX = await API.fetchTXraw(
       poolNftPreTX.inputs[poolnft.outputIndex].prevTxId.toString("hex"),
-      this.network
+      this.network,
     );
     const inputsTXs = ftPreTX;
     inputsTXs.push(
-      utxo ? await API.fetchTXraw(utxo.txId, this.network) : ftPreTX[0]
+      utxo ? await API.fetchTXraw(utxo.txId, this.network) : ftPreTX[0],
     );
     tx.setInputScript(
       {
@@ -1903,11 +2077,12 @@ class poolNFT2 {
           inputsTXs,
           isLock(this.poolnft_code.length),
           3,
-          2
+          2,
         );
         return unlockingScript;
-      }
+      },
     );
+    if (isCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
       {
         inputIndex: 1,
@@ -1919,10 +2094,11 @@ class poolNFT2 {
           ftPreTX[0],
           ftPrePreTxData[0],
           1,
-          fttxo_a.outputIndex
+          fttxo_a.outputIndex,
+          isCoin,
         );
         return unlockingScript;
-      }
+      },
     );
     tx.sign(privateKey);
     tx.seal();
@@ -1969,8 +2145,9 @@ class poolNFT2 {
     try {
       // const response = await (await fetch(url)).json();
 
-      const response_new = await fetch(url).then(response => response.text())
-        .then(text => {
+      const response_new = await fetch(url)
+        .then((response) => response.text())
+        .then((text) => {
           const result = safeJSONParse(text);
           return result;
         });
@@ -2013,7 +2190,7 @@ class poolNFT2 {
    * 4. 如果在获取信息时发生错误，则抛出一个错误。
    */
   async fetchPoolNftUTXO(
-    contractTxid: string
+    contractTxid: string,
   ): Promise<tbc.Transaction.IUnspentOutput> {
     try {
       const poolNftInfo = await this.fetchPoolNftInfo(contractTxid);
@@ -2040,19 +2217,19 @@ class poolNFT2 {
    */
   async fetchFtlpUTXO(
     address: string,
-    amount: bigint
+    amount: bigint,
   ): Promise<tbc.Transaction.IUnspentOutput> {
     try {
       const ftUtxoList = await this.fetchFtlpUTXOList(address);
       const checkLockTime = async (
-        utxo: tbc.Transaction.IUnspentOutput
+        utxo: tbc.Transaction.IUnspentOutput,
       ): Promise<boolean> => {
         if (!this.with_lock_time) return true;
 
         const ftlpTapeScript = (await API.fetchTXraw(utxo.txId, this.network))
           .outputs[utxo.outputIndex + 1].script;
         const lockTimeFromTape = new tbc.encoding.BufferReader(
-          ftlpTapeScript.chunks[3].buf
+          ftlpTapeScript.chunks[3].buf,
         ).readInt32LE();
         return lockTimeFromTape === 0;
       };
@@ -2071,7 +2248,7 @@ class poolNFT2 {
           ftUtxoList.map(async (utxo) => ({
             utxo,
             isValid: await checkLockTime(utxo),
-          }))
+          })),
         );
 
         const ftlpBalance = validUtxos
@@ -2132,28 +2309,40 @@ class poolNFT2 {
    * - satoshis: Number of satoshis in the UTXO
    * - ftBalance: FTLP balance
    */
-  async fetchFtlpUTXOList(address: string): Promise<tbc.Transaction.IUnspentOutput[]> {
+  async fetchFtlpUTXOList(
+    address: string,
+  ): Promise<tbc.Transaction.IUnspentOutput[]> {
     const FTA = new FT(this.ft_a_contractTxid);
-    const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    let FTAInfo;
+    try {
+      FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    } catch {
+      FTAInfo = (await API.fetchCoinInfo(FTA.contractTxid, this.network))
+        .coinInfo;
+    }
     FTA.initialize(FTAInfo);
-    const ftVersion = FTA.codeScript.length / 2 === ft_v2_length? 2 : 1;
+    const isCoin = FTA.codeScript.length / 2 === coin_length;
+    const ftVersion =
+      FTA.codeScript.length / 2 === ft_v2_length || isCoin ? 2 : 1;
     const ftlpCode =
-      this.with_lock_time ?? false
+      (this.with_lock_time ?? false)
         ? this.getFtlpCodeWithLockTime(
             tbc.crypto.Hash.sha256(
-              Buffer.from(this.poolnft_code, "hex")
+              Buffer.from(this.poolnft_code, "hex"),
             ).toString("hex"),
             address,
             FTA.tapeScript.length / 2,
-            ftVersion
+            isCoin,
+            ftVersion,
           ).toBuffer()
         : this.getFtlpCode(
             tbc.crypto.Hash.sha256(
-              Buffer.from(this.poolnft_code, "hex")
+              Buffer.from(this.poolnft_code, "hex"),
             ).toString("hex"),
             address,
             FTA.tapeScript.length / 2,
-            ftVersion
+            isCoin,
+            ftVersion,
           ).toBuffer();
     const ftlpHash = tbc.crypto.Hash.sha256(ftlpCode).reverse().toString("hex");
     const url_testnet = `https://api.tbcdev.org/api/tbc/pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
@@ -2168,19 +2357,22 @@ class poolNFT2 {
         (this.network.endsWith("/") ? this.network : this.network + "/") +
         `pool/lputxo/scriptpubkeyhash/${ftlpHash}`;
     }
-    const response = await fetch(url).then(response => response.text())
-    .then(text => {
-      const result = safeJSONParse(text);
-      return result;
-    });
+    const response = await fetch(url)
+      .then((response) => response.text())
+      .then((text) => {
+        const result = safeJSONParse(text);
+        return result;
+      });
     const ftUtxoList = response.data.utxos;
-    const ftUtxoArray: tbc.Transaction.IUnspentOutput[] = ftUtxoList.map(data => ({
-      txId: data.txid,
-      outputIndex: data.index,
-      script: ftlpCode.toString("hex"),
-      satoshis: data.tbc_balance,
-      ftBalance: data.lp_balance,
-    }));
+    const ftUtxoArray: tbc.Transaction.IUnspentOutput[] = ftUtxoList.map(
+      (data) => ({
+        txId: data.txid,
+        outputIndex: data.index,
+        script: ftlpCode.toString("hex"),
+        satoshis: data.tbc_balance,
+        ftBalance: data.lp_balance,
+      }),
+    );
     return ftUtxoArray;
   }
 
@@ -2206,37 +2398,46 @@ class poolNFT2 {
    * - If lockTime < 500000000: Indicates locking by block height
    * - If lockTime >= 500000000: Indicates locking by Unix timestamp
    */
-  async fetchFtlpLockTime(address: string): Promise<Array<{ftBalance: bigint, lockTime: number}>> {
+  async fetchFtlpLockTime(
+    address: string,
+  ): Promise<Array<{ ftBalance: bigint; lockTime: number }>> {
     try {
       const ftUtxoList = await this.fetchFtlpUTXOList(address);
-      let lockTimeList: Array<{ftBalance: bigint, lockTime: number}> = [];
+      let lockTimeList: Array<{ ftBalance: bigint; lockTime: number }> = [];
       const batchSize = 1;
       const lockTimeResults = await fetchInBatches<
         tbc.Transaction.IUnspentOutput,
-        {ftBalance: bigint, lockTime: number}
+        { ftBalance: bigint; lockTime: number }
       >(
         ftUtxoList,
         batchSize,
         async (batch) => {
           const results = await Promise.all(
-        batch.map(async (utxo) => {
-          const txid = utxo.txId;
-          const index = utxo.outputIndex + 1;
-          const lpBalance = utxo.ftBalance;
-          const ftlpTapeScript = (await API.fetchTXraw(txid, this.network)).outputs[index].script;
-          const lockTime = new tbc.encoding.BufferReader(ftlpTapeScript.chunks[3].buf).readInt32LE();
-          if (lockTime < 500000000) 
-            console.log(lpBalance, "Freeze before block height:", lockTime);
-          else
-            console.log(lpBalance, "Freeze before UTC time:", new Date(lockTime * 1000).toISOString());
-          return { ftBalance: lpBalance, lockTime };
-        })
+            batch.map(async (utxo) => {
+              const txid = utxo.txId;
+              const index = utxo.outputIndex + 1;
+              const lpBalance = utxo.ftBalance;
+              const ftlpTapeScript = (await API.fetchTXraw(txid, this.network))
+                .outputs[index].script;
+              const lockTime = new tbc.encoding.BufferReader(
+                ftlpTapeScript.chunks[3].buf,
+              ).readInt32LE();
+              if (lockTime < 500000000)
+                console.log(lpBalance, "Freeze before block height:", lockTime);
+              else
+                console.log(
+                  lpBalance,
+                  "Freeze before UTC time:",
+                  new Date(lockTime * 1000).toISOString(),
+                );
+              return { ftBalance: lpBalance, lockTime };
+            }),
           );
           return results;
         },
-        "fetchFtlpLockTime"
+        "fetchFtlpLockTime",
       );
-      
+
       lockTimeList = lockTimeResults.flat();
       return lockTimeList;
     } catch (error: any) {
@@ -2260,7 +2461,7 @@ class poolNFT2 {
     const my_lp_amount = await this.fetchFtlpBalance(address);
     const pool_lp_amount = BigInt(this.ft_lp_amount);
     const pool_tbc_amount_full = BigInt(
-      this.tbc_amount_full - BigInt(this.poolnft_code_dust)
+      this.tbc_amount_full - BigInt(this.poolnft_code_dust),
     );
     const ratio =
       (pool_lp_amount * BigInt(this.precision)) / BigInt(my_lp_amount);
@@ -2294,10 +2495,16 @@ class poolNFT2 {
   async mergeFTLP(
     privateKey_from: tbc.PrivateKey,
     utxo: tbc.Transaction.IUnspentOutput,
-    lock_time?: number
+    lock_time?: number,
   ): Promise<boolean | string> {
     const FTA = new FT(this.ft_a_contractTxid);
-    const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    let FTAInfo;
+    try {
+      FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    } catch {
+      FTAInfo = (await API.fetchCoinInfo(FTA.contractTxid, this.network))
+        .coinInfo;
+    }
     FTA.initialize(FTAInfo);
     const privateKey = privateKey_from;
     const address = privateKey.toAddress().toString();
@@ -2315,18 +2522,29 @@ class poolNFT2 {
         return true;
       } else {
         if (this.with_lock_time) {
-          const currentBlockHeight = (await API.fetchBlockHeaders(this.network))[0].height - 2; // subtract 2 to ensure safety
-          const currentTime = Math.floor(Date.now() / 1000) - 1800;// subtract 30 minutes to ensure safety
+          const currentBlockHeight =
+            (await API.fetchBlockHeaders(this.network))[0].height - 2; // subtract 2 to ensure safety
+          const currentTime = Math.floor(Date.now() / 1000) - 1800; // subtract 30 minutes to ensure safety
 
           for (let i = 0; i < ftUtxoList.length && ftutxo.length < 6; i++) {
-            const ftlpTapeScript = (await API.fetchTXraw(ftUtxoList[i].txId, this.network)).outputs[ftUtxoList[i].outputIndex + 1].script;
-            const lockTimeFromTape = new tbc.encoding.BufferReader(ftlpTapeScript.chunks[3].buf).readInt32LE();
+            const ftlpTapeScript = (
+              await API.fetchTXraw(ftUtxoList[i].txId, this.network)
+            ).outputs[ftUtxoList[i].outputIndex + 1].script;
+            const lockTimeFromTape = new tbc.encoding.BufferReader(
+              ftlpTapeScript.chunks[3].buf,
+            ).readInt32LE();
             if (lock_time) {
               if (lockTimeFromTape === 0) {
                 ftutxo.push(ftUtxoList[i]);
-              } else if (lock_time < 500000000 && lockTimeFromTape <= lock_time) {
+              } else if (
+                lock_time < 500000000 &&
+                lockTimeFromTape <= lock_time
+              ) {
                 ftutxo.push(ftUtxoList[i]);
-              } else if (lockTimeFromTape >= 500000000 && lockTimeFromTape <= lock_time) {
+              } else if (
+                lockTimeFromTape >= 500000000 &&
+                lockTimeFromTape <= lock_time
+              ) {
                 ftutxo.push(ftUtxoList[i]);
               }
             } else {
@@ -2336,7 +2554,11 @@ class poolNFT2 {
                 lockTimeFromTape <= currentBlockHeight
               )
                 ftutxo.push(ftUtxoList[i]);
-              else if (lockTimeFromTape >= 500000000 && lockTimeFromTape <= currentTime) ftutxo.push(ftUtxoList[i]);
+              else if (
+                lockTimeFromTape >= 500000000 &&
+                lockTimeFromTape <= currentTime
+              )
+                ftutxo.push(ftUtxoList[i]);
             }
           }
 
@@ -2366,13 +2588,13 @@ class poolNFT2 {
           await API.fetchFtPrePreTxData(
             ftPreTX[i],
             ftutxo[i].outputIndex,
-            this.network
-          )
+            this.network,
+          ),
         );
       }
       const { amountHex, changeHex } = FT.buildTapeAmount(
         tapeAmountSum,
-        tapeAmountSetIn
+        tapeAmountSetIn,
       );
       if (
         changeHex !=
@@ -2386,7 +2608,7 @@ class poolNFT2 {
         new tbc.Transaction.Output({
           script: codeScript,
           satoshis: 500,
-        })
+        }),
       );
       let tapeScript: tbc.Script;
       if (this.with_lock_time) {
@@ -2399,7 +2621,7 @@ class poolNFT2 {
         const fillSize = FTA.tapeScript.length / 2 - 62;
         const opZeroArray = Array(fillSize).fill("OP_0").join(" ");
         const ftlpTapeScript = tbc.Script.fromASM(
-          `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`
+          `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`,
         );
         tapeScript = FT.buildFTtransferTape(ftlpTapeScript.toHex(), amountHex);
       } else {
@@ -2410,7 +2632,7 @@ class poolNFT2 {
         new tbc.Transaction.Output({
           script: tapeScript,
           satoshis: 0,
-        })
+        }),
       );
       tx.feePerKb(80);
       tx.change(privateKey.toAddress());
@@ -2427,17 +2649,14 @@ class poolNFT2 {
               ftPreTX[i],
               ftPrePreTxData[i],
               i,
-              ftutxo[i].outputIndex
+              ftutxo[i].outputIndex,
             );
             return unlockingScript;
-          }
+          },
         );
       }
       tx.sign(privateKey);
-      if (this.with_lock_time)
-        tx.setLockTime(
-          lock_time || lockTimeMax
-        );
+      if (this.with_lock_time) tx.setLockTime(lock_time || lockTimeMax);
       await tx.sealAsync();
       const txraw = tx.uncheckedSerialize();
       console.log("Merge FTLPUTXO:");
@@ -2452,29 +2671,29 @@ class poolNFT2 {
   }
 
   /**
-  * 销毁FTLP代币。
-  *
-  * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
-  * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
-  * @returns {Promise<string>} 返回一个Promise，解析为字符串形式的未检查交易数据。
-  *
-  * 该函数执行以下主要步骤：
-  * 1. 初始化FT实例并获取相关信息，包括合约交易ID和网络信息。
-  * 2. 获取指定地址的所有FTLP UTXO列表（最多5个）。
-  * 3. 如果没有可用的FT UTXO，则抛出错误。
-  * 4. 获取所有FTLP UTXO的前置交易数据和余额信息。
-  * 5. 构建销毁交易的金额数据，确保找零金额为零。
-  * 6. 创建交易，将所有FTLP UTXO作为输入，将代币转移到黑洞地址（1BitcoinEaterAddressDontSendf59kuE）。
-  * 7. 构建代码脚本和tape脚本用于销毁操作。
-  * 8. 设置每千字节的交易费用，并指定找零地址。
-  * 9. 为每个输入设置解锁脚本并签名交易。
-  * 10. 封装交易并返回序列化后的未检查交易数据。
-  *
-  * @throws {Error} 如果没有可用的FT UTXO或找零金额不为零，将抛出错误。
-  */
+   * 销毁FTLP代币。
+   *
+   * @param {tbc.PrivateKey} privateKey_from - 用于签名交易的私钥。
+   * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
+   * @returns {Promise<string>} 返回一个Promise，解析为字符串形式的未检查交易数据。
+   *
+   * 该函数执行以下主要步骤：
+   * 1. 初始化FT实例并获取相关信息，包括合约交易ID和网络信息。
+   * 2. 获取指定地址的所有FTLP UTXO列表（最多5个）。
+   * 3. 如果没有可用的FT UTXO，则抛出错误。
+   * 4. 获取所有FTLP UTXO的前置交易数据和余额信息。
+   * 5. 构建销毁交易的金额数据，确保找零金额为零。
+   * 6. 创建交易，将所有FTLP UTXO作为输入，将代币转移到黑洞地址（1BitcoinEaterAddressDontSendf59kuE）。
+   * 7. 构建代码脚本和tape脚本用于销毁操作。
+   * 8. 设置每千字节的交易费用，并指定找零地址。
+   * 9. 为每个输入设置解锁脚本并签名交易。
+   * 10. 封装交易并返回序列化后的未检查交易数据。
+   *
+   * @throws {Error} 如果没有可用的FT UTXO或找零金额不为零，将抛出错误。
+   */
   async burnFTLP(
     privateKey_from: tbc.PrivateKey,
-    utxo: tbc.Transaction.IUnspentOutput
+    utxo: tbc.Transaction.IUnspentOutput,
   ): Promise<string> {
     const FTA = new FT(this.ft_a_contractTxid);
     const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
@@ -2503,13 +2722,13 @@ class poolNFT2 {
           await API.fetchFtPrePreTxData(
             ftPreTX[i],
             ftutxo[i].outputIndex,
-            this.network
-          )
+            this.network,
+          ),
         );
       }
       const { amountHex, changeHex } = FT.buildTapeAmount(
         tapeAmountSum,
-        tapeAmountSetIn
+        tapeAmountSetIn,
       );
       if (
         changeHex !=
@@ -2520,20 +2739,20 @@ class poolNFT2 {
       const tx = new tbc.Transaction().from(ftutxo).from(utxo);
       const codeScript = FT.buildFTtransferCode(
         ftutxo_codeScript,
-        "1BitcoinEaterAddressDontSendf59kuE"
+        "1BitcoinEaterAddressDontSendf59kuE",
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: codeScript,
           satoshis: 500,
-        })
+        }),
       );
       const tapeScript = FT.buildFTtransferTape(FTA.tapeScript, amountHex);
       tx.addOutput(
         new tbc.Transaction.Output({
           script: tapeScript,
           satoshis: 0,
-        })
+        }),
       );
       tx.feePerKb(80);
       tx.change(privateKey.toAddress());
@@ -2550,10 +2769,10 @@ class poolNFT2 {
               ftPreTX[i],
               ftPrePreTxData[i],
               i,
-              ftutxo[i].outputIndex
+              ftutxo[i].outputIndex,
             );
             return unlockingScript;
-          }
+          },
         );
       }
       tx.sign(privateKey);
@@ -2577,29 +2796,43 @@ class poolNFT2 {
   async mergeFTinPool(
     privateKey_from: tbc.PrivateKey,
     utxo: tbc.Transaction.IUnspentOutput,
-    times?: number
+    times?: number,
   ): Promise<Array<{ txraw: string }>> {
     const privateKey = privateKey_from;
     try {
       const FTA = new FT(this.ft_a_contractTxid);
-      const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+      let FTAInfo;
+      try {
+        FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+      } catch {
+        FTAInfo = (await API.fetchCoinInfo(FTA.contractTxid, this.network))
+          .coinInfo;
+      }
       FTA.initialize(FTAInfo);
+      const isCoin = FTA.codeScript.length / 2 === coin_length;
 
       const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(
-        tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex"))
+        tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex")),
       ).toString("hex");
       const ftutxo_codeScript = FT.buildFTtransferCode(
         FTA.codeScript,
-        poolnft_codehash160
+        poolnft_codehash160,
       )
         .toBuffer()
         .toString("hex");
-      const ftutxolist = await API.fetchFtUTXOList(
-        this.ft_a_contractTxid,
-        poolnft_codehash160,
-        ftutxo_codeScript,
-        this.network
-      );
+      const ftutxolist = isCoin
+        ? await API.fetchCoinUTXOList(
+            this.ft_a_contractTxid,
+            poolnft_codehash160,
+            ftutxo_codeScript,
+            this.network,
+          )
+        : await API.fetchFtUTXOList(
+            this.ft_a_contractTxid,
+            poolnft_codehash160,
+            ftutxo_codeScript,
+            this.network,
+          );
       ftutxolist.sort((a, b) => (b.ftBalance > a.ftBalance ? 1 : -1));
 
       let ftutxos = ftutxolist.slice(0, 4);
@@ -2608,7 +2841,7 @@ class poolNFT2 {
       let poolnftPreTX = await API.fetchTXraw(poolnft.txId, this.network);
       let poolnftPrePreTX = await API.fetchTXraw(
         poolnftPreTX.inputs[0].prevTxId.toString("hex"),
-        this.network
+        this.network,
       );
       let tx = new tbc.Transaction();
 
@@ -2626,7 +2859,7 @@ class poolNFT2 {
                 ftutxos,
                 FTA,
                 txsraw,
-                utxo
+                utxo,
               );
             } else {
               tx = await this._mergeFTinPool(
@@ -2635,7 +2868,7 @@ class poolNFT2 {
                 poolnftPrePreTX,
                 ftutxos,
                 FTA,
-                txsraw
+                txsraw,
               );
             }
             poolnftPrePreTX = poolnftPreTX;
@@ -2678,7 +2911,7 @@ class poolNFT2 {
     ftutxos: tbc.Transaction.IUnspentOutput[],
     FTA: InstanceType<typeof FT>,
     txsraw: Array<{ txraw: string }>,
-    utxo?: tbc.Transaction.IUnspentOutput
+    utxo?: tbc.Transaction.IUnspentOutput,
   ): Promise<tbc.Transaction> {
     const poolnft: tbc.Transaction.IUnspentOutput = {
       txId: poolnftPreTX.hash,
@@ -2687,7 +2920,7 @@ class poolNFT2 {
       satoshis: poolnftPreTX.outputs[0].satoshis,
     };
     const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(
-      tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex"))
+      tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex")),
     ).toString("hex");
 
     try {
@@ -2710,9 +2943,9 @@ class poolNFT2 {
         batchSize,
         (batch) =>
           Promise.all(
-            batch.map((utxo) => API.fetchTXraw(utxo.txId, this.network))
+            batch.map((utxo) => API.fetchTXraw(utxo.txId, this.network)),
           ),
-        "fetchFtPreTXData"
+        "fetchFtPreTXData",
       );
       ftPrePreTxData = await fetchInBatches<
         tbc.Transaction.IUnspentOutput,
@@ -2727,16 +2960,16 @@ class poolNFT2 {
               return API.fetchFtPrePreTxData(
                 ftPreTX[globalIndex],
                 utxo.outputIndex,
-                this.network
+                this.network,
               );
-            })
+            }),
           ),
-        "fetchFtPrePreTxData"
+        "fetchFtPrePreTxData",
       );
       const { amountHex, changeHex } = FT.buildTapeAmount(
         tapeAmountSum,
         tapeAmountSetIn,
-        1
+        1,
       );
       if (
         changeHex !=
@@ -2752,32 +2985,32 @@ class poolNFT2 {
         new tbc.Transaction.Output({
           script: tbc.Script.fromHex(this.poolnft_code),
           satoshis: poolnft.satoshis,
-        })
+        }),
       );
       const poolnftTapeScript = await this.updatePoolNftTape();
       tx.addOutput(
         new tbc.Transaction.Output({
           script: poolnftTapeScript,
           satoshis: 0,
-        })
+        }),
       );
       //FTAbyC
       const codeScript = FT.buildFTtransferCode(
         FTA.codeScript,
-        poolnft_codehash160
+        poolnft_codehash160,
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: codeScript,
           satoshis: 500,
-        })
+        }),
       );
       const tapeScript = FT.buildFTtransferTape(FTA.tapeScript, amountHex);
       tx.addOutput(
         new tbc.Transaction.Output({
           script: tapeScript,
           satoshis: 0,
-        })
+        }),
       );
       tx.feePerKb(80);
       tx.change(privateKey.toAddress());
@@ -2785,7 +3018,7 @@ class poolNFT2 {
       //除第一个输入，剩余的输入交易存入inputsTXs
       const inputsTXs = ftPreTX;
       inputsTXs.push(
-        utxo ? await API.fetchTXraw(utxo.txId, this.network) : poolnftPreTX
+        utxo ? await API.fetchTXraw(utxo.txId, this.network) : poolnftPreTX,
       );
       await tx.setInputScriptAsync(
         {
@@ -2800,14 +3033,17 @@ class poolNFT2 {
             poolnftPrePreTX,
             inputsTXs,
             isLock(this.poolnft_code.length),
-            4
+            4,
           );
           return unlockingScript;
-        }
+        },
       );
       const contractTX = poolnftPreTX;
-      const ftVersion = ftutxos[0].script.length / 2 === ft_v2_length? 2 : 1;
+      const isCoin = ftutxos[0].script.length / 2 === coin_length;
+      const ftVersion =
+        ftutxos[0].script.length / 2 === ft_v2_length || isCoin ? 2 : 1;
       for (let i = 0; i < ftutxos.length; i++) {
+        if (isCoin) tx.setInputSequence(i + 1, 4294967294);
         tx.setInputScript(
           {
             inputIndex: i + 1,
@@ -2821,10 +3057,11 @@ class poolNFT2 {
               contractTX,
               i + 1,
               ftutxos[i].outputIndex,
-              ftVersion
+              ftVersion,
+              isCoin,
             );
             return unlockingScript;
-          }
+          },
         );
       }
       tx.sign(privateKey);
@@ -2872,12 +3109,19 @@ class poolNFT2 {
     utxo: tbc.Transaction.IUnspentOutput,
     tbc_amount: number,
     ft_a: number,
-    lock_time: number
+    lock_time: number,
   ): Promise<string> {
     const privateKey = privateKey_from;
     const FTA = new FT(this.ft_a_contractTxid);
-    const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    let FTAInfo;
+    try {
+      FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    } catch {
+      FTAInfo = (await API.fetchCoinInfo(FTA.contractTxid, this.network))
+        .coinInfo;
+    }
     FTA.initialize(FTAInfo);
+    const isCoin = FTA.codeScript.length / 2 === coin_length;
     let amount_lpbn = BigInt(0);
     if (tbc_amount > 0 && ft_a > 0) {
       amount_lpbn = BigInt(Math.round(tbc_amount * Math.pow(10, 6)));
@@ -2885,7 +3129,7 @@ class poolNFT2 {
       this.ft_lp_amount = this.tbc_amount;
       this.ft_a_number = ft_a;
       this.ft_a_amount = BigInt(
-        Math.round(this.ft_a_number * Math.pow(10, FTA.decimal))
+        Math.round(this.ft_a_number * Math.pow(10, FTA.decimal)),
       );
     } else {
       throw new Error("Invalid amount Input");
@@ -2896,7 +3140,7 @@ class poolNFT2 {
       throw new Error("Insufficient TBC amount, please merge UTXOs");
     }
     const poolnft_codehash = tbc.crypto.Hash.sha256(
-      Buffer.from(this.poolnft_code, "hex")
+      Buffer.from(this.poolnft_code, "hex"),
     );
     const poolnft_codehash160 =
       tbc.crypto.Hash.sha256ripemd160(poolnft_codehash).toString("hex");
@@ -2908,20 +3152,31 @@ class poolNFT2 {
     // }
     const ftutxo_codeScript = FT.buildFTtransferCode(
       FTA.codeScript,
-      privateKey.toAddress().toString()
+      privateKey.toAddress().toString(),
     )
       .toBuffer()
       .toString("hex");
 
     let fttxo_a: tbc.Transaction.IUnspentOutput;
     try {
-      fttxo_a = await API.fetchFtUTXO(
-        this.ft_a_contractTxid,
-        privateKey.toAddress().toString(),
-        this.ft_a_amount,
-        ftutxo_codeScript,
-        this.network
-      );
+      fttxo_a = isCoin
+        ? (
+            await API.fetchCoinUTXOs(
+              this.ft_a_contractTxid,
+              privateKey.toAddress().toString(),
+              this.ft_a_amount,
+              ftutxo_codeScript,
+              this.network,
+              1,
+            )
+          )[0]
+        : await API.fetchFtUTXO(
+            this.ft_a_contractTxid,
+            privateKey.toAddress().toString(),
+            this.ft_a_amount,
+            ftutxo_codeScript,
+            this.network,
+          );
     } catch (error: any) {
       throw new Error(error.message);
     }
@@ -2930,7 +3185,7 @@ class poolNFT2 {
     const ftPrePreTxData = await API.fetchFtPrePreTxData(
       ftPreTX,
       fttxo_a.outputIndex,
-      this.network
+      this.network,
     );
     if (fttxo_a.ftBalance! < this.ft_a_amount) {
       throw new Error("Insufficient FT-A amount, please merge FT-A UTXOs");
@@ -2943,7 +3198,7 @@ class poolNFT2 {
     const { amountHex, changeHex } = FT.buildTapeAmount(
       this.ft_a_amount,
       tapeAmountSetIn,
-      1
+      1,
     );
     const poolnftTapeScript = await this.updatePoolNftTape();
     const poolnft = await this.fetchPoolNftUTXO(this.contractTxid);
@@ -2956,30 +3211,30 @@ class poolNFT2 {
         new tbc.Transaction.Output({
           script: tbc.Script.fromHex(this.poolnft_code),
           satoshis: this.poolnft_code_dust + Number(this.tbc_amount),
-        })
+        }),
       )
       .addOutput(
         new tbc.Transaction.Output({
           script: poolnftTapeScript,
           satoshis: 0,
-        })
+        }),
       );
     //FTAbyC
     const ftCodeScript = FT.buildFTtransferCode(
       FTA.codeScript,
-      poolnft_codehash160
+      poolnft_codehash160,
     );
     const ftTapeScript = FT.buildFTtransferTape(FTA.tapeScript, amountHex);
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftCodeScript,
         satoshis: fttxo_a.satoshis,
-      })
+      }),
     ).addOutput(
       new tbc.Transaction.Output({
         script: ftTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     //FTLP
     const ftlp_amount = new tbc.crypto.BN(amount_lpbn.toString());
@@ -2999,47 +3254,48 @@ class poolNFT2 {
     const fillSize = FTA.tapeScript.length / 2 - 62;
     const opZeroArray = Array(fillSize).fill("OP_0").join(" ");
     const ftlpTapeScript = tbc.Script.fromASM(
-      `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`
+      `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`,
     );
     const tapeSize = ftlpTapeScript.toBuffer().length;
     const ftlpCodeScript = this.getFtlpCodeWithLockTime(
       poolnft_codehash.toString("hex"),
       address_to,
-      tapeSize
+      tapeSize,
+      isCoin,
     );
     // console.log(partial_sha256.calculate_partial_hash(ftlpCodeScript.toBuffer().subarray(0, 1536)));
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftlpCodeScript,
         satoshis: 500,
-      })
+      }),
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftlpTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     if (this.ft_a_amount < tapeAmountSum) {
       const changeCodeScript = FT.buildFTtransferCode(
         FTA.codeScript,
-        privateKey.toAddress().toString()
+        privateKey.toAddress().toString(),
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: changeCodeScript,
           satoshis: fttxo_a.satoshis,
-        })
+        }),
       );
       const changeTapeScript = FT.buildFTtransferTape(
         FTA.tapeScript,
-        changeHex
+        changeHex,
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: changeTapeScript,
           satoshis: 0,
-        })
+        }),
       );
     }
     tx.feePerKb(80);
@@ -3056,11 +3312,12 @@ class poolNFT2 {
           poolnft.txId,
           poolnft.outputIndex,
           0,
-          1
+          1,
         );
         return unlockingScript;
-      }
+      },
     );
+    if (isCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
       {
         inputIndex: 1,
@@ -3072,10 +3329,11 @@ class poolNFT2 {
           ftPreTX,
           ftPrePreTxData,
           1,
-          fttxo_a.outputIndex
+          fttxo_a.outputIndex,
+          isCoin,
         );
         return unlockingScript;
-      }
+      },
     );
     tx.sign(privateKey);
     await tx.sealAsync();
@@ -3112,7 +3370,7 @@ class poolNFT2 {
     address_to: string,
     utxo: tbc.Transaction.IUnspentOutput,
     amount_tbc: number,
-    lock_time: number
+    lock_time: number,
   ): Promise<string> {
     const lockStatus =
       this.with_lock === true ? 1 : 0 || isLock(this.poolnft_code.length);
@@ -3121,32 +3379,50 @@ class poolNFT2 {
     if (amount_tbc <= 0) throw new Error("Invalid TBC amount input");
     const privateKey = privateKey_from;
     const FTA = new FT(this.ft_a_contractTxid);
-    const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    let FTAInfo;
+    try {
+      FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    } catch {
+      FTAInfo = (await API.fetchCoinInfo(FTA.contractTxid, this.network))
+        .coinInfo;
+    }
     FTA.initialize(FTAInfo);
+    const isCoin = FTA.codeScript.length / 2 === coin_length;
     const amount_tbcbn = BigInt(Math.round(amount_tbc * Math.pow(10, 6)));
     const changeData = this.updatePoolNFT(amount_tbc, FTA.decimal, 2);
     const poolnft_codehash = tbc.crypto.Hash.sha256(
-      Buffer.from(this.poolnft_code, "hex")
+      Buffer.from(this.poolnft_code, "hex"),
     );
     const poolnft_codehash160 =
       tbc.crypto.Hash.sha256ripemd160(poolnft_codehash).toString("hex");
     const tapeAmountSetIn: bigint[] = [];
     const ftutxo_codeScript = FT.buildFTtransferCode(
       FTA.codeScript,
-      privateKey.toAddress().toString()
+      privateKey.toAddress().toString(),
     )
       .toBuffer()
       .toString("hex");
 
     let fttxo_a: tbc.Transaction.IUnspentOutput;
     try {
-      fttxo_a = await API.fetchFtUTXO(
-        this.ft_a_contractTxid,
-        privateKey.toAddress().toString(),
-        changeData.ft_a_difference,
-        ftutxo_codeScript,
-        this.network
-      );
+      fttxo_a = isCoin
+        ? (
+            await API.fetchCoinUTXOs(
+              this.ft_a_contractTxid,
+              privateKey.toAddress().toString(),
+              changeData.ft_a_difference,
+              ftutxo_codeScript,
+              this.network,
+              1,
+            )
+          )[0]
+        : await API.fetchFtUTXO(
+            this.ft_a_contractTxid,
+            privateKey.toAddress().toString(),
+            changeData.ft_a_difference,
+            ftutxo_codeScript,
+            this.network,
+          );
     } catch (error: any) {
       const errorMessage =
         error.message === "Insufficient FTbalance, please merge FT UTXOs"
@@ -3160,7 +3436,7 @@ class poolNFT2 {
     const ftPrePreTxData = await API.fetchFtPrePreTxData(
       ftPreTX,
       fttxo_a.outputIndex,
-      this.network
+      this.network,
     );
     tapeAmountSetIn.push(fttxo_a.ftBalance!);
     let tapeAmountSum = BigInt(0);
@@ -3173,7 +3449,7 @@ class poolNFT2 {
     let { amountHex, changeHex } = FT.buildTapeAmount(
       changeData.ft_a_difference,
       tapeAmountSetIn,
-      1
+      1,
     );
     if (utxo.satoshis < Number(amount_tbcbn)) {
       throw new Error("Insufficient TBC amount, please merge UTXOs");
@@ -3185,36 +3461,36 @@ class poolNFT2 {
       new tbc.Transaction.Output({
         script: tbc.Script.fromHex(this.poolnft_code),
         satoshis: poolnft.satoshis + Number(changeData.tbc_amount_difference),
-      })
+      }),
     );
     const poolnftTapeScript = await this.updatePoolNftTape();
     tx.addOutput(
       new tbc.Transaction.Output({
         script: poolnftTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     // FTAbyC
     const ftabycCodeScript = FT.buildFTtransferCode(
       FTA.codeScript,
-      poolnft_codehash160
+      poolnft_codehash160,
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftabycCodeScript,
         satoshis: fttxo_a.satoshis,
-      })
+      }),
     );
     const ftabycTapeScript = FT.buildFTtransferTape(FTA.tapeScript, amountHex);
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftabycTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     // FTLP
     const ftlp_amount = new tbc.crypto.BN(
-      changeData.ft_lp_difference.toString()
+      changeData.ft_lp_difference.toString(),
     );
     const amountwriter = new tbc.encoding.BufferWriter();
     amountwriter.writeUInt64LEBN(ftlp_amount);
@@ -3232,25 +3508,26 @@ class poolNFT2 {
     const fillSize = FTA.tapeScript.length / 2 - 62;
     const opZeroArray = Array(fillSize).fill("OP_0").join(" ");
     const ftlpTapeScript = tbc.Script.fromASM(
-      `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`
+      `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`,
     );
     const tapeSize = ftlpTapeScript.toBuffer().length;
     const ftlpCodeScript = this.getFtlpCodeWithLockTime(
       poolnft_codehash.toString("hex"),
       address_to,
-      tapeSize
+      tapeSize,
+      isCoin,
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftlpCodeScript,
         satoshis: 500,
-      })
+      }),
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftlpTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     // P2PKH (若带锁则扣除)
     if (lockStatus) {
@@ -3263,23 +3540,23 @@ class poolNFT2 {
       // FTAbyA_change
       const ftabya_changeCodeScript = FT.buildFTtransferCode(
         FTA.codeScript,
-        privateKey.toAddress().toString()
+        privateKey.toAddress().toString(),
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: ftabya_changeCodeScript,
           satoshis: fttxo_a.satoshis,
-        })
+        }),
       );
       const ftabya_changeTapeScript = FT.buildFTtransferTape(
         FTA.tapeScript,
-        changeHex
+        changeHex,
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: ftabya_changeTapeScript,
           satoshis: 0,
-        })
+        }),
       );
     }
     tx.feePerKb(80);
@@ -3296,11 +3573,12 @@ class poolNFT2 {
           poolnft.txId,
           poolnft.outputIndex,
           lockStatus,
-          1
+          1,
         );
         return unlockingScript;
-      }
+      },
     );
+    if (isCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
       {
         inputIndex: 1,
@@ -3312,10 +3590,11 @@ class poolNFT2 {
           ftPreTX,
           ftPrePreTxData,
           1,
-          fttxo_a.outputIndex
+          fttxo_a.outputIndex,
+          isCoin,
         );
         return unlockingScript;
-      }
+      },
     );
     tx.sign(privateKey);
     await tx.sealAsync();
@@ -3352,19 +3631,26 @@ class poolNFT2 {
     privateKey_from: tbc.PrivateKey,
     address_to: string,
     utxo: tbc.Transaction.IUnspentOutput,
-    amount_lp: number
+    amount_lp: number,
   ): Promise<string> {
     const privateKey = privateKey_from;
     const FTA = new FT(this.ft_a_contractTxid);
-    const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    let FTAInfo;
+    try {
+      FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    } catch {
+      FTAInfo = (await API.fetchCoinInfo(FTA.contractTxid, this.network))
+        .coinInfo;
+    }
     FTA.initialize(FTAInfo);
+    const isCoin = FTA.codeScript.length / 2 === coin_length;
     const amount_lpbn = BigInt(Math.round(amount_lp * Math.pow(10, 6)));
     if (this.ft_lp_amount < amount_lpbn) {
       throw new Error("Invalid FT-LP amount input");
     }
     const changeData = this.updatePoolNFT(amount_lp, FTA.decimal, 1);
     const poolnft_codehash160 = tbc.crypto.Hash.sha256ripemd160(
-      tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex"))
+      tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex")),
     ).toString("hex");
     const tapeAmountSetIn: bigint[] = [];
     const lpTapeAmountSetIn: bigint[] = [];
@@ -3372,16 +3658,17 @@ class poolNFT2 {
     const ftPrePreTxData: string[] = [];
     const ftlpCode = this.getFtlpCodeWithLockTime(
       tbc.crypto.Hash.sha256(Buffer.from(this.poolnft_code, "hex")).toString(
-        "hex"
+        "hex",
       ),
       privateKey.toAddress().toString(),
-      FTA.tapeScript.length / 2
+      FTA.tapeScript.length / 2,
+      isCoin,
     );
     let fttxo_lp: tbc.Transaction.IUnspentOutput;
     try {
       fttxo_lp = await this.fetchFtlpUTXO(
         privateKey.toAddress().toString(),
-        changeData.ft_lp_difference
+        changeData.ft_lp_difference,
       );
       // fttxo_lp = {
       //     txId: "8d946b6459eed3c98fa50c286b5d6d223217cdf8c73e99dc4f8ae9ab51753f69",
@@ -3398,27 +3685,36 @@ class poolNFT2 {
       await API.fetchFtPrePreTxData(
         ftPreTX[0],
         fttxo_lp.outputIndex,
-        this.network
-      )
+        this.network,
+      ),
     );
 
     lpTapeAmountSetIn.push(fttxo_lp.ftBalance);
     const ftutxo_codeScript = FT.buildFTtransferCode(
       FTA.codeScript,
-      poolnft_codehash160
+      poolnft_codehash160,
     )
       .toBuffer()
       .toString("hex");
     let fttxo_c: tbc.Transaction.IUnspentOutput[];
     try {
-      fttxo_c = await API.fetchFtUTXOsforPool(
-        this.ft_a_contractTxid,
-        poolnft_codehash160,
-        changeData.ft_a_difference,
-        3,
-        ftutxo_codeScript,
-        this.network
-      );
+      fttxo_c = isCoin
+        ? await API.fetchCoinUTXOs(
+            this.ft_a_contractTxid,
+            poolnft_codehash160,
+            changeData.ft_a_difference,
+            ftutxo_codeScript,
+            this.network,
+            3,
+          )
+        : await API.fetchFtUTXOsforPool(
+            this.ft_a_contractTxid,
+            poolnft_codehash160,
+            changeData.ft_a_difference,
+            3,
+            ftutxo_codeScript,
+            this.network,
+          );
     } catch (error: any) {
       const errorMessage =
         error.message === "Insufficient FTbalance, please merge FT UTXOs"
@@ -3434,8 +3730,8 @@ class poolNFT2 {
         await API.fetchFtPrePreTxData(
           ftPreTX[i + 1],
           fttxo_c[i].outputIndex,
-          this.network
-        )
+          this.network,
+        ),
       );
       tapeAmountSetIn.push(fttxo_c[i].ftBalance);
       tapeAmountSum += BigInt(tapeAmountSetIn[i]);
@@ -3445,14 +3741,14 @@ class poolNFT2 {
     let { amountHex, changeHex } = FT.buildTapeAmount(
       changeData.ft_a_difference,
       tapeAmountSetIn,
-      2
+      2,
     );
     const ftAbyA = amountHex;
     const ftAbyC = changeHex;
     ({ amountHex, changeHex } = FT.buildTapeAmount(
       changeData.ft_lp_difference,
       lpTapeAmountSetIn,
-      1
+      1,
     ));
     const ftlpBurn = amountHex;
     const ftlpChange = changeHex;
@@ -3470,14 +3766,14 @@ class poolNFT2 {
         script: tbc.Script.fromHex(this.poolnft_code),
         satoshis:
           poolnft.satoshis - Number(changeData.tbc_amount_full_difference),
-      })
+      }),
     );
     const poolnftTapeScript = await this.updatePoolNftTape();
     tx.addOutput(
       new tbc.Transaction.Output({
         script: poolnftTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     //FTAbyA
     const ftCodeScript = FT.buildFTtransferCode(FTA.codeScript, address_to);
@@ -3485,19 +3781,19 @@ class poolNFT2 {
       new tbc.Transaction.Output({
         script: ftCodeScript,
         satoshis: 500,
-      })
+      }),
     );
     const ftTapeScript = FT.buildFTtransferTape(FTA.tapeScript, ftAbyA);
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     //P2PKH
     tx.to(
       privateKey.toAddress().toString(),
-      Number(changeData.tbc_amount_full_difference)
+      Number(changeData.tbc_amount_full_difference),
     );
     //FTLP_Burn
     const amountwriter = new tbc.encoding.BufferWriter();
@@ -3509,69 +3805,69 @@ class poolNFT2 {
     const fillSize = FTA.tapeScript.length / 2 - 62;
     const opZeroArray = Array(fillSize).fill("OP_0").join(" ");
     let ftlpTapeScript = tbc.Script.fromASM(
-      `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`
+      `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`,
     );
     const ftlpCodeScript = FT.buildFTtransferCode(
       ftlpCode.toBuffer().toString("hex"),
-      "1BitcoinEaterAddressDontSendf59kuE"
+      "1BitcoinEaterAddressDontSendf59kuE",
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftlpCodeScript,
         satoshis: fttxo_lp.satoshis,
-      })
+      }),
     );
     ftlpTapeScript = FT.buildFTtransferTape(
       ftlpTapeScript.toBuffer().toString("hex"),
-      ftlpBurn
+      ftlpBurn,
     );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: ftlpTapeScript,
         satoshis: 0,
-      })
+      }),
     );
     // FTLP_change
     if (fttxo_lp.ftBalance! > changeData.ft_lp_difference) {
       const ftlp_changeCodeScript = FT.buildFTtransferCode(
         ftlpCode.toBuffer().toString("hex"),
-        address_to
+        address_to,
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: ftlp_changeCodeScript,
           satoshis: fttxo_lp.satoshis,
-        })
+        }),
       );
       const ftlp_changeTapeScript = FT.buildFTtransferTape(
         ftlpTapeScript.toBuffer().toString("hex"),
-        ftlpChange
+        ftlpChange,
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: ftlp_changeTapeScript,
           satoshis: 0,
-        })
+        }),
       );
     }
     // FTAbyC_change
     if (changeData.ft_a_difference < tapeAmountSum) {
       const ftabycCodeScript = FT.buildFTtransferCode(
         FTA.codeScript,
-        poolnft_codehash160
+        poolnft_codehash160,
       );
       tx.addOutput(
         new tbc.Transaction.Output({
           script: ftabycCodeScript,
           satoshis: 500,
-        })
+        }),
       );
       const ftabycTapeScript = FT.buildFTtransferTape(FTA.tapeScript, ftAbyC);
       tx.addOutput(
         new tbc.Transaction.Output({
           script: ftabycTapeScript,
           satoshis: 0,
-        })
+        }),
       );
     }
     tx.feePerKb(80);
@@ -3588,10 +3884,10 @@ class poolNFT2 {
           poolnft.txId,
           poolnft.outputIndex,
           isLock(this.poolnft_code.length),
-          2
+          2,
         );
         return unlockingScript;
-      }
+      },
     );
     tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
@@ -3605,12 +3901,14 @@ class poolNFT2 {
           ftPreTX[0],
           ftPrePreTxData[0],
           1,
-          fttxo_lp.outputIndex
+          fttxo_lp.outputIndex,
+          isCoin,
         );
         return unlockingScript;
-      }
+      },
     );
     for (let i = 0; i < fttxo_c.length; i++) {
+      if (isCoin) tx.setInputSequence(i + 2, 4294967294);
       tx.setInputScript(
         {
           inputIndex: i + 2,
@@ -3623,10 +3921,12 @@ class poolNFT2 {
             ftPrePreTxData[i + 1],
             contractTX,
             i + 2,
-            fttxo_c[i].outputIndex
+            fttxo_c[i].outputIndex,
+            undefined,
+            isCoin,
           );
           return unlockingScript;
-        }
+        },
       );
     }
     tx.sign(privateKey);
@@ -3643,11 +3943,18 @@ class poolNFT2 {
   async unlockFTLP(
     privateKey_from: tbc.PrivateKey,
     utxo: tbc.Transaction.IUnspentOutput,
-    lock_time?: number
+    lock_time?: number,
   ): Promise<string> | null {
     const FTA = new FT(this.ft_a_contractTxid);
-    const FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    let FTAInfo;
+    try {
+      FTAInfo = await API.fetchFtInfo(FTA.contractTxid, this.network);
+    } catch {
+      FTAInfo = (await API.fetchCoinInfo(FTA.contractTxid, this.network))
+        .coinInfo;
+    }
     FTA.initialize(FTAInfo);
+    const isCoin = FTA.codeScript.length / 2 === coin_length;
     const privateKey = privateKey_from;
     const address = privateKey.toAddress().toString();
     try {
@@ -3659,19 +3966,27 @@ class poolNFT2 {
       if (ftUtxoList.length === 0) {
         throw new Error("No FT UTXO available");
       }
-      const currentBlockHeight = (await API.fetchBlockHeaders(this.network))[0].height - 2; // subtract 2 to ensure safety
-      const currentTime = Math.floor(Date.now() / 1000) - 1800;// subtract 30 minutes to ensure safety
+      const currentBlockHeight =
+        (await API.fetchBlockHeaders(this.network))[0].height - 2; // subtract 2 to ensure safety
+      const currentTime = Math.floor(Date.now() / 1000) - 1800; // subtract 30 minutes to ensure safety
 
       for (let i = 0; i < ftUtxoList.length && ftutxo.length < 6; i++) {
-        const ftlpTapeScript = (await API.fetchTXraw(ftUtxoList[i].txId, this.network)).outputs[ftUtxoList[i].outputIndex + 1].script;
-        const lockTimeFromTape = new tbc.encoding.BufferReader(ftlpTapeScript.chunks[3].buf).readInt32LE();
+        const ftlpTapeScript = (
+          await API.fetchTXraw(ftUtxoList[i].txId, this.network)
+        ).outputs[ftUtxoList[i].outputIndex + 1].script;
+        const lockTimeFromTape = new tbc.encoding.BufferReader(
+          ftlpTapeScript.chunks[3].buf,
+        ).readInt32LE();
         if (lock_time) {
           if (lockTimeFromTape === 0) {
             ftutxo.push(ftUtxoList[i]);
             zeroLockTimeCount += 1;
           } else if (lock_time < 500000000 && lockTimeFromTape <= lock_time) {
             ftutxo.push(ftUtxoList[i]);
-          } else if (lockTimeFromTape >= 500000000 && lockTimeFromTape <= lock_time) {
+          } else if (
+            lockTimeFromTape >= 500000000 &&
+            lockTimeFromTape <= lock_time
+          ) {
             ftutxo.push(ftUtxoList[i]);
           }
         } else {
@@ -3679,17 +3994,21 @@ class poolNFT2 {
           if (lockTimeFromTape === 0) {
             ftutxo.push(ftUtxoList[i]);
             zeroLockTimeCount += 1;
-          }
-          else if (
+          } else if (
             lockTimeFromTape < 500000000 &&
             lockTimeFromTape <= currentBlockHeight
           )
             ftutxo.push(ftUtxoList[i]);
-          else if (lockTimeFromTape >= 500000000 && lockTimeFromTape <= currentTime) ftutxo.push(ftUtxoList[i]);
+          else if (
+            lockTimeFromTape >= 500000000 &&
+            lockTimeFromTape <= currentTime
+          )
+            ftutxo.push(ftUtxoList[i]);
         }
       }
 
-      if (zeroLockTimeCount === ftutxo.length && zeroLockTimeCount === 1) return null;
+      if (zeroLockTimeCount === ftutxo.length && zeroLockTimeCount === 1)
+        return null;
 
       if (!lock_time) {
         lockTimeMax < 500000000
@@ -3711,13 +4030,13 @@ class poolNFT2 {
           await API.fetchFtPrePreTxData(
             ftPreTX[i],
             ftutxo[i].outputIndex,
-            this.network
-          )
+            this.network,
+          ),
         );
       }
       const { amountHex, changeHex } = FT.buildTapeAmount(
         tapeAmountSum,
-        tapeAmountSetIn
+        tapeAmountSetIn,
       );
       if (
         changeHex !=
@@ -3731,7 +4050,7 @@ class poolNFT2 {
         new tbc.Transaction.Output({
           script: codeScript,
           satoshis: 500,
-        })
+        }),
       );
 
       const amountwriter = new tbc.encoding.BufferWriter();
@@ -3743,11 +4062,11 @@ class poolNFT2 {
       const fillSize = FTA.tapeScript.length / 2 - 62;
       const opZeroArray = Array(fillSize).fill("OP_0").join(" ");
       const ftlpTapeScript = tbc.Script.fromASM(
-        `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`
+        `OP_FALSE OP_RETURN ${ftlpTapeAmount} ${lockTimeHex} ${opZeroArray} 4654617065`,
       );
       const tapeScript = FT.buildFTtransferTape(
         ftlpTapeScript.toHex(),
-        amountHex
+        amountHex,
       );
       // const originalBuffer = originalTapeScript.toBuffer();
       // const lockTime = Buffer.from('0400000000', 'hex');
@@ -3762,7 +4081,7 @@ class poolNFT2 {
         new tbc.Transaction.Output({
           script: tapeScript,
           satoshis: 0,
-        })
+        }),
       );
       tx.feePerKb(80);
       tx.change(privateKey.toAddress());
@@ -3779,10 +4098,10 @@ class poolNFT2 {
               ftPreTX[i],
               ftPrePreTxData[i],
               i,
-              ftutxo[i].outputIndex
+              ftutxo[i].outputIndex,
             );
             return unlockingScript;
-          }
+          },
         );
       }
       tx.sign(privateKey);
@@ -3823,7 +4142,7 @@ class poolNFT2 {
     inputsTXs: tbc.Transaction[],
     withLock: 0 | 1,
     option: 1 | 2 | 3 | 4,
-    swapOption?: 1 | 2
+    swapOption?: 1 | 2,
   ): tbc.Script {
     const privateKey = privateKey_from;
     const preTX = poolnftPreTX;
@@ -3841,7 +4160,7 @@ class poolNFT2 {
       } else {
         currentinputstxdata += getInputsTxdata(
           inputsTX,
-          currentTX.inputs[i].outputIndex
+          currentTX.inputs[i].outputIndex,
         );
       }
     }
@@ -3850,7 +4169,7 @@ class poolNFT2 {
       currentTX,
       option,
       withLock,
-      swapOption
+      swapOption,
     );
 
     let unlockingScript = new tbc.Script("");
@@ -3866,19 +4185,19 @@ class poolNFT2 {
       switch (option) {
         case 1:
           unlockingScript = new tbc.Script(
-            `${currentinputstxdata}${currentinputsdata}${currenttxoutputsdata}${optionHex}${prepretxdata}${pretxdata}`
+            `${currentinputstxdata}${currentinputsdata}${currenttxoutputsdata}${optionHex}${prepretxdata}${pretxdata}`,
           );
           break;
         case 2:
           unlockingScript = new tbc.Script(
-            `${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`
+            `${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`,
           );
           break;
         case 3:
           if (withLock) {
             const signature = currentTX.getSignature(
               currentUnlockIndex,
-              privateKey
+              privateKey,
             );
             const sig =
               (signature.length / 2).toString(16).padStart(2, "0") + signature;
@@ -3887,17 +4206,17 @@ class poolNFT2 {
                 .toString(16)
                 .padStart(2, "0") + privateKey.toPublicKey().toString();
             unlockingScript = new tbc.Script(
-              `${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`
+              `${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`,
             );
           } else {
             unlockingScript = new tbc.Script(
-              `${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`
+              `${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`,
             );
           }
           break;
         case 4:
           unlockingScript = new tbc.Script(
-            `${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`
+            `${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`,
           );
           break;
         default:
@@ -3914,22 +4233,22 @@ class poolNFT2 {
       switch (option) {
         case 1:
           unlockingScript = new tbc.Script(
-            `${sig}${publicKey}${currentinputstxdata}${currentinputsdata}${currenttxoutputsdata}${optionHex}${prepretxdata}${pretxdata}`
+            `${sig}${publicKey}${currentinputstxdata}${currentinputsdata}${currenttxoutputsdata}${optionHex}${prepretxdata}${pretxdata}`,
           );
           break;
         case 2:
           unlockingScript = new tbc.Script(
-            `${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`
+            `${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`,
           );
           break;
         case 3:
           unlockingScript = new tbc.Script(
-            `${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`
+            `${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`,
           );
           break;
         case 4:
           unlockingScript = new tbc.Script(
-            `${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`
+            `${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`,
           );
           break;
         default:
@@ -3965,14 +4284,14 @@ class poolNFT2 {
     preVout: number,
     withLock: 0 | 1,
     option: 1 | 2 | 3 | 4,
-    swapOption?: 1 | 2
+    swapOption?: 1 | 2,
   ): Promise<tbc.Script> {
     const privateKey = privateKey_from;
     const preTX = await API.fetchTXraw(preTxId, this.network);
     const pretxdata = getPoolNFTPreTxdata(preTX);
     const prepreTX = await API.fetchTXraw(
       preTX.inputs[preVout].prevTxId.toString("hex"),
-      this.network
+      this.network,
     );
     const prepretxdata = getPoolNFTPrePreTxdata(prepreTX);
     let currentinputsdata = getCurrentInputsdata(currentTX);
@@ -3980,7 +4299,7 @@ class poolNFT2 {
     for (let i = 1; i < currentTX.inputs.length; i++) {
       const inputsTX = await API.fetchTXraw(
         currentTX.inputs[i].prevTxId.toString("hex"),
-        this.network
+        this.network,
       );
       if (option == 3) {
         currentinputstxdata =
@@ -3989,7 +4308,7 @@ class poolNFT2 {
       } else {
         currentinputstxdata += getInputsTxdata(
           inputsTX,
-          currentTX.inputs[i].outputIndex
+          currentTX.inputs[i].outputIndex,
         );
       }
     }
@@ -3998,7 +4317,7 @@ class poolNFT2 {
       currentTX,
       option,
       withLock,
-      swapOption
+      swapOption,
     );
 
     let unlockingScript = new tbc.Script("");
@@ -4015,19 +4334,19 @@ class poolNFT2 {
       switch (option) {
         case 1:
           unlockingScript = new tbc.Script(
-            `${currentinputstxdata}${currentinputsdata}${currenttxoutputsdata}${optionHex}${prepretxdata}${pretxdata}`
+            `${currentinputstxdata}${currentinputsdata}${currenttxoutputsdata}${optionHex}${prepretxdata}${pretxdata}`,
           );
           break;
         case 2:
           unlockingScript = new tbc.Script(
-            `${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`
+            `${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`,
           );
           break;
         case 3:
           if (withLock) {
             const signature = currentTX.getSignature(
               currentUnlockIndex,
-              privateKey
+              privateKey,
             );
             const sig =
               (signature.length / 2).toString(16).padStart(2, "0") + signature;
@@ -4036,17 +4355,17 @@ class poolNFT2 {
                 .toString(16)
                 .padStart(2, "0") + privateKey.toPublicKey().toString();
             unlockingScript = new tbc.Script(
-              `${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`
+              `${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`,
             );
           } else {
             unlockingScript = new tbc.Script(
-              `${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`
+              `${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`,
             );
           }
           break;
         case 4:
           unlockingScript = new tbc.Script(
-            `${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`
+            `${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`,
           );
           break;
         default:
@@ -4064,22 +4383,22 @@ class poolNFT2 {
       switch (option) {
         case 1:
           unlockingScript = new tbc.Script(
-            `${sig}${publicKey}${currentinputstxdata}${currentinputsdata}${currenttxoutputsdata}${optionHex}${prepretxdata}${pretxdata}`
+            `${sig}${publicKey}${currentinputstxdata}${currentinputsdata}${currenttxoutputsdata}${optionHex}${prepretxdata}${pretxdata}`,
           );
           break;
         case 2:
           unlockingScript = new tbc.Script(
-            `${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`
+            `${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`,
           );
           break;
         case 3:
           unlockingScript = new tbc.Script(
-            `${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`
+            `${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`,
           );
           break;
         case 4:
           unlockingScript = new tbc.Script(
-            `${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`
+            `${sig}${publicKey}${currenttxoutputsdata}${currentinputstxdata}${currentinputsdata}${optionHex}${prepretxdata}${pretxdata}`,
           );
           break;
         default:
@@ -4114,7 +4433,7 @@ class poolNFT2 {
   updatePoolNFT(
     increment: number | string,
     ft_a_decimal: number,
-    option: 1 | 2 | 3
+    option: 1 | 2 | 3,
   ): poolNFTDifference {
     const ft_a_old = this.ft_a_amount;
     const ft_lp_old = this.ft_lp_amount;
@@ -4248,7 +4567,7 @@ class poolNFT2 {
   private getPoolNftTape(
     lpPlan: 1 | 2,
     withLock?: boolean,
-    withLockTime?: boolean
+    withLockTime?: boolean,
   ): tbc.Script {
     const writer = new tbc.encoding.BufferWriter();
     writer.writeUInt64LEBN(new tbc.crypto.BN(this.ft_lp_amount));
@@ -4268,7 +4587,7 @@ class poolNFT2 {
         this.ft_lp_partialhash + this.ft_a_partialhash
       } ${amountData} ${
         this.ft_a_contractTxid
-      } ${serviceFeeRateHex} ${lpPlanHex} ${withLockHex} ${withLockTimeHex} 4e54617065`
+      } ${serviceFeeRateHex} ${lpPlanHex} ${withLockHex} ${withLockTimeHex} 4e54617065`,
     );
     return poolnftTapeScript;
   }
@@ -4321,7 +4640,8 @@ class poolNFT2 {
     vout: number,
     lpPlan: 1 | 2,
     ftVersion: 1 | 2,
-    tag?: string
+    tag?: string,
+    isCoin?: boolean,
   ): tbc.Script {
     const writer = new tbc.encoding.BufferWriter();
     writer.writeReverse(Buffer.from(txid, "hex"));
@@ -4331,15 +4651,15 @@ class poolNFT2 {
     const pumpPublicKeyHash = tbc.Address.fromString(
       lpPlan === 1
         ? "13oCEJaqyyiC8iRrfup6PDL2GKZ3xQrsZL"
-        : "1Fa6Uy64Ub4qNdB896zX2pNMx4a8zMhtCy"
+        : "1Fa6Uy64Ub4qNdB896zX2pNMx4a8zMhtCy",
     ).hashBuffer.toString("hex");
-    const ftCodeSize = ftVersion === 1 ? "1c06" : "5c07";
+    const ftCodeSize = isCoin ? "dc07" : ftVersion === 1 ? "1c06" : "5c07";
     const tagValue = tag || "NULL";
     const tagLengthHex = tagValue.length.toString(16).padStart(2, "0");
     tagWriter.write(Buffer.from(tagValue, "utf8"));
     const tagHex = tagWriter.toBuffer().toString("hex");
     const poolNftCode = new tbc.Script(
-      `OP_4 OP_PICK OP_BIN2NUM OP_TOALTSTACK OP_1 OP_PICK OP_3 OP_SPLIT OP_NIP 0x01 0x20 OP_SPLIT 0x01 0x20 OP_SPLIT OP_1 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_TOALTSTACK OP_BIN2NUM OP_TOALTSTACK OP_BIN2NUM OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_1 OP_PICK OP_TOALTSTACK OP_CAT OP_CAT OP_SHA256 OP_CAT OP_1 OP_PICK 0x01 0x24 OP_SPLIT OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_HASH256 OP_6 OP_PUSH_META 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_1 OP_PICK OP_TOALTSTACK OP_CAT OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_SWAP OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUAL OP_IF OP_DROP OP_ELSE 0x24 0x${utxoHex} OP_EQUALVERIFY OP_ENDIF OP_DUP OP_1 OP_EQUAL OP_IF OP_DROP OP_DUP OP_0 OP_EQUAL OP_IF OP_TOALTSTACK OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_4 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_HASH160 OP_SWAP OP_TOALTSTACK OP_EQUAL OP_0 OP_EQUALVERIFY OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_ENDIF OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_8 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_2DUP OP_SHA256 OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_3 OP_PICK OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_NIP OP_2 OP_ROLL OP_BIN2NUM OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_4 OP_ROLL OP_TOALTSTACK OP_4 OP_ROLL OP_DUP OP_HASH160 OP_TOALTSTACK OP_9 OP_ROLL OP_EQUALVERIFY OP_6 OP_ROLL OP_BIN2NUM OP_SWAP OP_2DUP OP_GREATERTHAN OP_1 OP_EQUALVERIFY OP_2DUP OP_SUB OP_2DUP OP_GREATERTHANOREQUAL OP_IF OP_DUP OP_TOALTSTACK OP_SWAP 0x02 0xe803 OP_BIN2NUM OP_SUB 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_NIP OP_SWAP OP_FROMALTSTACK OP_ADD OP_TOALTSTACK OP_2DUP OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_5 OP_PICK OP_EQUALVERIFY OP_SWAP OP_4 OP_ROLL OP_ADD OP_TOALTSTACK OP_2DUP OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_3 OP_PICK OP_EQUALVERIFY OP_DROP OP_ADD OP_FROMALTSTACK OP_FROMALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP 0x02 0xe803 OP_BIN2NUM OP_SUB OP_3 OP_PICK OP_0 OP_EQUAL OP_NOTIF OP_DIV OP_NIP OP_SWAP OP_FROMALTSTACK OP_ADD OP_TOALTSTACK OP_2DUP OP_MUL 0x03 0x40420f OP_BIN2NUM OP_DIV OP_5 OP_PICK OP_EQUALVERIFY OP_SWAP OP_4 OP_ROLL OP_ADD OP_TOALTSTACK OP_2DUP OP_MUL 0x03 0x40420f OP_BIN2NUM OP_DIV OP_3 OP_PICK OP_EQUALVERIFY OP_DROP OP_ADD OP_FROMALTSTACK OP_FROMALTSTACK OP_ELSE OP_2DROP OP_DROP OP_FROMALTSTACK OP_ADD OP_TOALTSTACK OP_3 OP_ROLL OP_ADD OP_TOALTSTACK OP_ADD OP_FROMALTSTACK OP_FROMALTSTACK OP_ENDIF OP_ENDIF OP_3 OP_ROLL OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4e54617065 OP_EQUALVERIFY 0x01 0x44 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_3 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_2 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_EQUALVERIFY OP_DUP OP_SHA256 OP_5 OP_PUSH_META OP_EQUALVERIFY OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_1 OP_EQUALVERIFY OP_ELSE OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SHA256 OP_5 OP_PUSH_META OP_EQUALVERIFY OP_TOALTSTACK OP_0 OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUAL OP_IF OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_5 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUAL OP_IF OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_5 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUAL OP_IF OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_5 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUAL OP_IF OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_5 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUAL OP_IF OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_5 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_2DROP OP_DUP OP_0 OP_EQUAL OP_IF OP_TOALTSTACK OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_4 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_HASH160 OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_ENDIF OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP 0x14 0x759d6677091e973b9e9d99f19c68fbf43e3f05f9 OP_EQUALVERIFY OP_OVER OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_FROMALTSTACK OP_4 OP_PICK OP_BIN2NUM OP_TOALTSTACK OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_2 OP_PICK OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_2DUP OP_SHA256 OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_3 OP_PICK OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_NIP OP_2 OP_ROLL OP_BIN2NUM OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_6 OP_ROLL OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK 0x02 0xe803 OP_BIN2NUM OP_SUB OP_7 OP_ROLL 0x02 0xe803 OP_BIN2NUM OP_SUB OP_2DUP OP_2DUP OP_GREATERTHAN OP_1 OP_EQUALVERIFY OP_SUB OP_8 OP_PICK OP_EQUALVERIFY OP_DROP OP_3 OP_ROLL OP_4 OP_ROLL OP_2DUP OP_SUB OP_TOALTSTACK OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_2DUP OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_6 OP_ROLL OP_EQUALVERIFY OP_SWAP OP_DROP OP_2DUP OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_SWAP OP_TOALTSTACK OP_SUB OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_2DUP OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_3 OP_PICK OP_EQUALVERIFY OP_DROP OP_SWAP OP_SUB OP_FROMALTSTACK OP_FROMALTSTACK OP_2 OP_ROLL OP_2 OP_ROLL OP_3 OP_ROLL OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4e54617065 OP_EQUALVERIFY 0x01 0x44 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_3 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_2 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_EQUALVERIFY OP_ELSE OP_DUP OP_3 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SHA256 OP_5 OP_PUSH_META OP_EQUALVERIFY 0x01 0x28 OP_SPLIT OP_NIP OP_FROMALTSTACK OP_FROMALTSTACK OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_0 OP_TOALTSTACK OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_8 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_8 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_8 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_8 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_2DROP OP_DUP OP_0 OP_EQUAL OP_IF OP_TOALTSTACK OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_6 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_2 OP_PICK OP_3 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP 0x14 0x${pumpPublicKeyHash} OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_ENDIF OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_OVER OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_2DUP OP_SHA256 OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_3 OP_PICK OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_NIP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4e54617065 OP_EQUALVERIFY 0x01 0x44 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_SWAP OP_4 OP_ROLL OP_BIN2NUM OP_FROMALTSTACK OP_FROMALTSTACK OP_6 OP_ROLL OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_2DUP OP_MUL OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_6 OP_PICK OP_DUP OP_TOALTSTACK OP_2 OP_PICK OP_GREATERTHAN OP_1 OP_EQUALVERIFY OP_5 OP_PICK OP_2DUP OP_SWAP OP_GREATERTHAN OP_1 OP_EQUALVERIFY OP_7 OP_PICK OP_GREATERTHANOREQUAL OP_1 OP_EQUALVERIFY OP_2DROP OP_2 OP_ROLL OP_SUB OP_DUP OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_DIV OP_EQUALVERIFY OP_4 OP_ROLL OP_EQUALVERIFY OP_3 OP_ROLL OP_BIN2NUM OP_EQUALVERIFY OP_2DROP OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_7 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_7 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_7 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_7 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_7 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_DROP OP_DUP OP_0 OP_EQUAL OP_IF OP_TOALTSTACK OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_2 OP_PICK OP_3 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP 0x14 0x${pumpPublicKeyHash} OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_10 OP_PICK OP_BIN2NUM OP_SUB OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_ENDIF OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_4 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_2 OP_ROLL OP_EQUALVERIFY OP_OVER OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_FROMALTSTACK OP_4 OP_PICK OP_BIN2NUM OP_TOALTSTACK OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_2DUP OP_SHA256 OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_3 OP_PICK OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_NIP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4e54617065 OP_EQUALVERIFY 0x01 0x44 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_SWAP OP_4 OP_ROLL OP_BIN2NUM OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_7 OP_ROLL OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_2DUP OP_MUL OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_6 OP_ROLL OP_2DUP OP_GREATERTHAN OP_1 OP_EQUALVERIFY OP_SUB OP_5 OP_PICK OP_EQUALVERIFY OP_5 OP_PICK OP_SUB OP_4 OP_ROLL OP_GREATERTHANOREQUAL OP_1 OP_EQUALVERIFY OP_2 OP_ROLL OP_ADD OP_DUP OP_FROMALTSTACK OP_SWAP OP_DIV OP_3 OP_ROLL OP_EQUALVERIFY OP_2 OP_ROLL OP_EQUALVERIFY OP_SWAP OP_BIN2NUM OP_EQUALVERIFY OP_ENDIF OP_ENDIF OP_ELSE OP_4 OP_EQUALVERIFY OP_DUP OP_SHA256 OP_5 OP_PUSH_META OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_DROP OP_TOALTSTACK OP_0 OP_TOALTSTACK OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_6 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_6 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_6 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_6 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_6 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_2DROP OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_TOALTSTACK OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_6 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_2DUP OP_SHA256 OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_3 OP_PICK OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_NIP OP_2 OP_ROLL OP_BIN2NUM OP_FROMALTSTACK OP_3 OP_ROLL OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_4 OP_ROLL OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4e54617065 OP_EQUALVERIFY 0x01 0x44 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_3 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_2 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_EQUALVERIFY OP_FROMALTSTACK OP_EQUALVERIFY OP_ENDIF OP_ENDIF OP_ENDIF OP_2 OP_PUSH_META OP_BIN2NUM OP_0 OP_EQUALVERIFY OP_TRUE OP_RETURN 0x${tagLengthHex} 0x${tagHex} 0x05 0x32436f6465`
+      `OP_4 OP_PICK OP_BIN2NUM OP_TOALTSTACK OP_1 OP_PICK OP_3 OP_SPLIT OP_NIP 0x01 0x20 OP_SPLIT 0x01 0x20 OP_SPLIT OP_1 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_TOALTSTACK OP_BIN2NUM OP_TOALTSTACK OP_BIN2NUM OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_1 OP_PICK OP_TOALTSTACK OP_CAT OP_CAT OP_SHA256 OP_CAT OP_1 OP_PICK 0x01 0x24 OP_SPLIT OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_HASH256 OP_6 OP_PUSH_META 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_1 OP_PICK OP_TOALTSTACK OP_CAT OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_SWAP OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUAL OP_IF OP_DROP OP_ELSE 0x24 0x${utxoHex} OP_EQUALVERIFY OP_ENDIF OP_DUP OP_1 OP_EQUAL OP_IF OP_DROP OP_DUP OP_0 OP_EQUAL OP_IF OP_TOALTSTACK OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_4 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_HASH160 OP_SWAP OP_TOALTSTACK OP_EQUAL OP_0 OP_EQUALVERIFY OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_ENDIF OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_8 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_2DUP OP_SHA256 OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_3 OP_PICK OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_NIP OP_2 OP_ROLL OP_BIN2NUM OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_4 OP_ROLL OP_TOALTSTACK OP_4 OP_ROLL OP_DUP OP_HASH160 OP_TOALTSTACK OP_9 OP_ROLL OP_EQUALVERIFY OP_6 OP_ROLL OP_BIN2NUM OP_SWAP OP_2DUP OP_GREATERTHAN OP_1 OP_EQUALVERIFY OP_2DUP OP_SUB OP_2DUP OP_GREATERTHANOREQUAL OP_IF OP_DUP OP_TOALTSTACK OP_SWAP 0x02 0xe803 OP_BIN2NUM OP_SUB 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_NIP OP_SWAP OP_FROMALTSTACK OP_ADD OP_TOALTSTACK OP_2DUP OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_5 OP_PICK OP_EQUALVERIFY OP_SWAP OP_4 OP_ROLL OP_ADD OP_TOALTSTACK OP_2DUP OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_3 OP_PICK OP_EQUALVERIFY OP_DROP OP_ADD OP_FROMALTSTACK OP_FROMALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP 0x02 0xe803 OP_BIN2NUM OP_SUB OP_3 OP_PICK OP_0 OP_EQUAL OP_NOTIF OP_DIV OP_NIP OP_SWAP OP_FROMALTSTACK OP_ADD OP_TOALTSTACK OP_2DUP OP_MUL 0x03 0x40420f OP_BIN2NUM OP_DIV OP_5 OP_PICK OP_EQUALVERIFY OP_SWAP OP_4 OP_ROLL OP_ADD OP_TOALTSTACK OP_2DUP OP_MUL 0x03 0x40420f OP_BIN2NUM OP_DIV OP_3 OP_PICK OP_EQUALVERIFY OP_DROP OP_ADD OP_FROMALTSTACK OP_FROMALTSTACK OP_ELSE OP_2DROP OP_DROP OP_FROMALTSTACK OP_ADD OP_TOALTSTACK OP_3 OP_ROLL OP_ADD OP_TOALTSTACK OP_ADD OP_FROMALTSTACK OP_FROMALTSTACK OP_ENDIF OP_ENDIF OP_3 OP_ROLL OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4e54617065 OP_EQUALVERIFY 0x01 0x44 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_3 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_2 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_EQUALVERIFY OP_DUP OP_SHA256 OP_5 OP_PUSH_META OP_EQUALVERIFY OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_1 OP_EQUALVERIFY OP_ELSE OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SHA256 OP_5 OP_PUSH_META OP_EQUALVERIFY OP_TOALTSTACK OP_0 OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUAL OP_IF OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_5 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUAL OP_IF OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_5 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUAL OP_IF OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_5 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUAL OP_IF OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_5 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUAL OP_IF OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_5 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_2DROP OP_DUP OP_0 OP_EQUAL OP_IF OP_TOALTSTACK OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_4 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_HASH160 OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_ENDIF OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP 0x14 0x759d6677091e973b9e9d99f19c68fbf43e3f05f9 OP_EQUALVERIFY OP_OVER OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_FROMALTSTACK OP_4 OP_PICK OP_BIN2NUM OP_TOALTSTACK OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_2 OP_PICK OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_2DUP OP_SHA256 OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_3 OP_PICK OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_NIP OP_2 OP_ROLL OP_BIN2NUM OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_6 OP_ROLL OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK 0x02 0xe803 OP_BIN2NUM OP_SUB OP_7 OP_ROLL 0x02 0xe803 OP_BIN2NUM OP_SUB OP_2DUP OP_2DUP OP_GREATERTHAN OP_1 OP_EQUALVERIFY OP_SUB OP_8 OP_PICK OP_EQUALVERIFY OP_DROP OP_3 OP_ROLL OP_4 OP_ROLL OP_2DUP OP_SUB OP_TOALTSTACK OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_2DUP OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_6 OP_ROLL OP_EQUALVERIFY OP_SWAP OP_DROP OP_2DUP OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_SWAP OP_TOALTSTACK OP_SUB OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_2DUP OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_3 OP_PICK OP_EQUALVERIFY OP_DROP OP_SWAP OP_SUB OP_FROMALTSTACK OP_FROMALTSTACK OP_2 OP_ROLL OP_2 OP_ROLL OP_3 OP_ROLL OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4e54617065 OP_EQUALVERIFY 0x01 0x44 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_3 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_2 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_EQUALVERIFY OP_ELSE OP_DUP OP_3 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SHA256 OP_5 OP_PUSH_META OP_EQUALVERIFY 0x01 0x28 OP_SPLIT OP_NIP OP_FROMALTSTACK OP_FROMALTSTACK OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_0 OP_TOALTSTACK OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_8 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_8 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_8 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_8 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_2DROP OP_DUP OP_0 OP_EQUAL OP_IF OP_TOALTSTACK OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_6 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_2 OP_PICK OP_3 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP 0x14 0x${pumpPublicKeyHash} OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_ENDIF OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_OVER OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_2DUP OP_SHA256 OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_3 OP_PICK OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_NIP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4e54617065 OP_EQUALVERIFY 0x01 0x44 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_SWAP OP_4 OP_ROLL OP_BIN2NUM OP_FROMALTSTACK OP_FROMALTSTACK OP_6 OP_ROLL OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_2DUP OP_MUL OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_6 OP_PICK OP_DUP OP_TOALTSTACK OP_2 OP_PICK OP_GREATERTHAN OP_1 OP_EQUALVERIFY OP_5 OP_PICK OP_2DUP OP_SWAP OP_GREATERTHAN OP_1 OP_EQUALVERIFY OP_7 OP_PICK OP_GREATERTHANOREQUAL OP_1 OP_EQUALVERIFY OP_2DROP OP_2 OP_ROLL OP_SUB OP_DUP OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_DIV OP_EQUALVERIFY OP_4 OP_ROLL OP_EQUALVERIFY OP_3 OP_ROLL OP_BIN2NUM OP_EQUALVERIFY OP_2DROP OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_7 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_7 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_7 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_7 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_7 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_DROP OP_DUP OP_0 OP_EQUAL OP_IF OP_TOALTSTACK OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_2 OP_PICK OP_3 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP 0x14 0x${pumpPublicKeyHash} OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_10 OP_PICK OP_BIN2NUM OP_SUB OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_ENDIF OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_4 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_2 OP_ROLL OP_EQUALVERIFY OP_OVER OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_FROMALTSTACK OP_4 OP_PICK OP_BIN2NUM OP_TOALTSTACK OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_2DUP OP_SHA256 OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_3 OP_PICK OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_NIP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4e54617065 OP_EQUALVERIFY 0x01 0x44 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_SWAP OP_4 OP_ROLL OP_BIN2NUM OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_7 OP_ROLL OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_2DUP OP_MUL OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_6 OP_ROLL OP_2DUP OP_GREATERTHAN OP_1 OP_EQUALVERIFY OP_SUB OP_5 OP_PICK OP_EQUALVERIFY OP_5 OP_PICK OP_SUB OP_4 OP_ROLL OP_GREATERTHANOREQUAL OP_1 OP_EQUALVERIFY OP_2 OP_ROLL OP_ADD OP_DUP OP_FROMALTSTACK OP_SWAP OP_DIV OP_3 OP_ROLL OP_EQUALVERIFY OP_2 OP_ROLL OP_EQUALVERIFY OP_SWAP OP_BIN2NUM OP_EQUALVERIFY OP_ENDIF OP_ENDIF OP_ELSE OP_4 OP_EQUALVERIFY OP_DUP OP_SHA256 OP_5 OP_PUSH_META OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_DROP OP_TOALTSTACK OP_0 OP_TOALTSTACK OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_6 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_6 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_6 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_6 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_6 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_2DROP OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_TOALTSTACK OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_6 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_2DUP OP_SHA256 OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_3 OP_PICK OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_NIP OP_2 OP_ROLL OP_BIN2NUM OP_FROMALTSTACK OP_3 OP_ROLL OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_4 OP_ROLL OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4e54617065 OP_EQUALVERIFY 0x01 0x44 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_3 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_2 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_EQUALVERIFY OP_FROMALTSTACK OP_EQUALVERIFY OP_ENDIF OP_ENDIF OP_ENDIF OP_2 OP_PUSH_META OP_BIN2NUM OP_0 OP_EQUALVERIFY OP_TRUE OP_RETURN 0x${tagLengthHex} 0x${tagHex} 0x05 0x32436f6465`,
     );
     return poolNftCode;
   }
@@ -4352,7 +4672,8 @@ class poolNFT2 {
     lpCostTBC: number,
     pubKeyLock: string[],
     ftVersion: 1 | 2,
-    tag?: string
+    tag?: string,
+    isCoin?: boolean,
   ): tbc.Script {
     if (pubKeyLock.length < 1 || pubKeyLock.length > 10)
       throw new Error("pubKeyLock must be an array with 1 to 10 elements");
@@ -4360,7 +4681,7 @@ class poolNFT2 {
     for (const pubKeyLockHex of pubKeyLock) {
       if (pubKeyLockHexLength !== pubKeyLockHex.length)
         throw new Error(
-          "pubKeyLock must be an array with elements of the same length"
+          "pubKeyLock must be an array with elements of the same length",
         );
       if (pubKeyLockHex === "")
         throw new Error("pubKeyLock cannot contain empty strings");
@@ -4389,9 +4710,9 @@ class poolNFT2 {
     const pumpPublicKeyHash = tbc.Address.fromString(
       lpPlan === 1
         ? "13oCEJaqyyiC8iRrfup6PDL2GKZ3xQrsZL"
-        : "1Fa6Uy64Ub4qNdB896zX2pNMx4a8zMhtCy"
+        : "1Fa6Uy64Ub4qNdB896zX2pNMx4a8zMhtCy",
     ).hashBuffer.toString("hex");
-    const ftCodeSize = ftVersion === 1 ? "1c06" : "5c07";
+    const ftCodeSize = isCoin ? "dc07" : ftVersion === 1 ? "1c06" : "5c07";
     const tagValue = tag || "NULL";
     const tagLengthHex = tagValue.length.toString(16).padStart(2, "0");
     tagWriter.write(Buffer.from(tagValue, "utf8"));
@@ -4400,19 +4721,19 @@ class poolNFT2 {
     const scriptLength = getOpCode(pubKeyLockLength);
 
     const poolNftCodePre = new tbc.Script(
-      `OP_4 OP_PICK OP_BIN2NUM OP_TOALTSTACK OP_1 OP_PICK OP_3 OP_SPLIT OP_NIP 0x01 0x20 OP_SPLIT 0x01 0x20 OP_SPLIT OP_1 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_TOALTSTACK OP_BIN2NUM OP_TOALTSTACK OP_BIN2NUM OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_1 OP_PICK OP_TOALTSTACK OP_CAT OP_CAT OP_SHA256 OP_CAT OP_1 OP_PICK 0x01 0x24 OP_SPLIT OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_HASH256 OP_6 OP_PUSH_META 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_1 OP_PICK OP_TOALTSTACK OP_CAT OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_SWAP OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUAL OP_IF OP_DROP OP_ELSE 0x24 0x${utxoHex} OP_EQUALVERIFY OP_ENDIF OP_DUP OP_1 OP_EQUAL OP_IF OP_DROP OP_DUP OP_0 OP_EQUAL OP_IF OP_TOALTSTACK OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_4 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_HASH160 OP_SWAP OP_TOALTSTACK OP_EQUAL OP_0 OP_EQUALVERIFY OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_2 OP_PICK OP_3 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP 0x14 0x${lpCostAddressHex} OP_EQUALVERIFY OP_PARTIAL_HASH OP_OVER 0x08 0x${lpCostAmountHex} OP_EQUALVERIFY OP_CAT OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_ENDIF OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_8 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_2DUP OP_SHA256 OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_3 OP_PICK OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_NIP OP_2 OP_ROLL OP_BIN2NUM OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_4 OP_ROLL OP_TOALTSTACK OP_4 OP_ROLL OP_DUP OP_HASH160 OP_TOALTSTACK OP_9 OP_ROLL OP_EQUALVERIFY OP_6 OP_ROLL OP_BIN2NUM OP_SWAP OP_2DUP OP_GREATERTHAN OP_1 OP_EQUALVERIFY OP_2DUP OP_SUB OP_2DUP OP_GREATERTHANOREQUAL OP_IF OP_DUP OP_TOALTSTACK OP_SWAP 0x02 0xe803 OP_BIN2NUM OP_SUB 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_NIP OP_SWAP OP_FROMALTSTACK OP_ADD OP_TOALTSTACK OP_2DUP OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_5 OP_PICK OP_EQUALVERIFY OP_SWAP OP_4 OP_ROLL OP_ADD OP_TOALTSTACK OP_2DUP OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_3 OP_PICK OP_EQUALVERIFY OP_DROP OP_ADD OP_FROMALTSTACK OP_FROMALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP 0x02 0xe803 OP_BIN2NUM OP_SUB OP_3 OP_PICK OP_0 OP_EQUAL OP_NOTIF OP_DIV OP_NIP OP_SWAP OP_FROMALTSTACK OP_ADD OP_TOALTSTACK OP_2DUP OP_MUL 0x03 0x40420f OP_BIN2NUM OP_DIV OP_5 OP_PICK OP_EQUALVERIFY OP_SWAP OP_4 OP_ROLL OP_ADD OP_TOALTSTACK OP_2DUP OP_MUL 0x03 0x40420f OP_BIN2NUM OP_DIV OP_3 OP_PICK OP_EQUALVERIFY OP_DROP OP_ADD OP_FROMALTSTACK OP_FROMALTSTACK OP_ELSE OP_2DROP OP_DROP OP_FROMALTSTACK OP_ADD OP_TOALTSTACK OP_3 OP_ROLL OP_ADD OP_TOALTSTACK OP_ADD OP_FROMALTSTACK OP_FROMALTSTACK OP_ENDIF OP_ENDIF OP_3 OP_ROLL OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4e54617065 OP_EQUALVERIFY 0x01 0x44 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_3 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_2 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_EQUALVERIFY OP_DUP OP_SHA256 OP_5 OP_PUSH_META OP_EQUALVERIFY OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_1 OP_EQUALVERIFY OP_ELSE OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SHA256 OP_5 OP_PUSH_META OP_EQUALVERIFY OP_TOALTSTACK OP_0 OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUAL OP_IF OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_5 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUAL OP_IF OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_5 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUAL OP_IF OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_5 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUAL OP_IF OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_5 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUAL OP_IF OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_5 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_2DROP OP_DUP OP_0 OP_EQUAL OP_IF OP_TOALTSTACK OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_4 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_HASH160 OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_ENDIF OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP 0x14 0x759d6677091e973b9e9d99f19c68fbf43e3f05f9 OP_EQUALVERIFY OP_OVER OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_FROMALTSTACK OP_4 OP_PICK OP_BIN2NUM OP_TOALTSTACK OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_2 OP_PICK OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_2DUP OP_SHA256 OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_3 OP_PICK OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_NIP OP_2 OP_ROLL OP_BIN2NUM OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_6 OP_ROLL OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK 0x02 0xe803 OP_BIN2NUM OP_SUB OP_7 OP_ROLL 0x02 0xe803 OP_BIN2NUM OP_SUB OP_2DUP OP_2DUP OP_GREATERTHAN OP_1 OP_EQUALVERIFY OP_SUB OP_8 OP_PICK OP_EQUALVERIFY OP_DROP OP_3 OP_ROLL OP_4 OP_ROLL OP_2DUP OP_SUB OP_TOALTSTACK OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_2DUP OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_6 OP_ROLL OP_EQUALVERIFY OP_SWAP OP_DROP OP_2DUP OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_SWAP OP_TOALTSTACK OP_SUB OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_2DUP OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_3 OP_PICK OP_EQUALVERIFY OP_DROP OP_SWAP OP_SUB OP_FROMALTSTACK OP_FROMALTSTACK OP_2 OP_ROLL OP_2 OP_ROLL OP_3 OP_ROLL OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4e54617065 OP_EQUALVERIFY 0x01 0x44 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_3 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_2 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_EQUALVERIFY OP_ELSE OP_DUP OP_3 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SHA256 OP_5 OP_PUSH_META OP_EQUALVERIFY 0x01 0x28 OP_SPLIT OP_NIP OP_FROMALTSTACK OP_FROMALTSTACK OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_0 OP_TOALTSTACK OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_8 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_8 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_8 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_8 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_2DROP OP_DUP OP_0 OP_EQUAL OP_IF OP_TOALTSTACK OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_6 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_2 OP_PICK OP_3 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP 0x14 0x${pumpPublicKeyHash} OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_ENDIF OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_OVER OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_2DUP OP_SHA256 OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_3 OP_PICK OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_NIP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4e54617065 OP_EQUALVERIFY 0x01 0x44 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_SWAP OP_4 OP_ROLL OP_BIN2NUM OP_FROMALTSTACK OP_FROMALTSTACK OP_6 OP_ROLL OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_2DUP OP_MUL OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_6 OP_PICK OP_DUP OP_TOALTSTACK OP_2 OP_PICK OP_GREATERTHAN OP_1 OP_EQUALVERIFY OP_5 OP_PICK OP_2DUP OP_SWAP OP_GREATERTHAN OP_1 OP_EQUALVERIFY OP_7 OP_PICK OP_GREATERTHANOREQUAL OP_1 OP_EQUALVERIFY OP_2DROP OP_2 OP_ROLL OP_SUB OP_DUP OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_DIV OP_EQUALVERIFY OP_4 OP_ROLL OP_EQUALVERIFY OP_3 OP_ROLL OP_BIN2NUM OP_EQUALVERIFY OP_2DROP OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_7 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_7 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_7 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_7 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_7 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_DROP OP_DUP OP_0 OP_EQUAL OP_IF OP_TOALTSTACK OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_2 OP_PICK OP_3 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP 0x14 0x${pumpPublicKeyHash} OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_10 OP_PICK OP_BIN2NUM OP_SUB OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_ENDIF OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_4 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_2 OP_ROLL OP_EQUALVERIFY OP_OVER OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_FROMALTSTACK OP_4 OP_PICK OP_BIN2NUM OP_TOALTSTACK OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_2DUP OP_SHA256 OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_3 OP_PICK OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_NIP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4e54617065 OP_EQUALVERIFY 0x01 0x44 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_SWAP OP_4 OP_ROLL OP_BIN2NUM OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_7 OP_ROLL OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_2DUP OP_MUL OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_6 OP_ROLL OP_2DUP OP_GREATERTHAN OP_1 OP_EQUALVERIFY OP_SUB OP_5 OP_PICK OP_EQUALVERIFY OP_5 OP_PICK OP_SUB OP_4 OP_ROLL OP_GREATERTHANOREQUAL OP_1 OP_EQUALVERIFY OP_2 OP_ROLL OP_ADD OP_DUP OP_FROMALTSTACK OP_SWAP OP_DIV OP_3 OP_ROLL OP_EQUALVERIFY OP_2 OP_ROLL OP_EQUALVERIFY OP_SWAP OP_BIN2NUM OP_EQUALVERIFY OP_ENDIF OP_ENDIF`
+      `OP_4 OP_PICK OP_BIN2NUM OP_TOALTSTACK OP_1 OP_PICK OP_3 OP_SPLIT OP_NIP 0x01 0x20 OP_SPLIT 0x01 0x20 OP_SPLIT OP_1 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_TOALTSTACK OP_BIN2NUM OP_TOALTSTACK OP_BIN2NUM OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_1 OP_PICK OP_TOALTSTACK OP_CAT OP_CAT OP_SHA256 OP_CAT OP_1 OP_PICK 0x01 0x24 OP_SPLIT OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_HASH256 OP_6 OP_PUSH_META 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_1 OP_PICK OP_TOALTSTACK OP_CAT OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_SWAP OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUAL OP_IF OP_DROP OP_ELSE 0x24 0x${utxoHex} OP_EQUALVERIFY OP_ENDIF OP_DUP OP_1 OP_EQUAL OP_IF OP_DROP OP_DUP OP_0 OP_EQUAL OP_IF OP_TOALTSTACK OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_4 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_HASH160 OP_SWAP OP_TOALTSTACK OP_EQUAL OP_0 OP_EQUALVERIFY OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_2 OP_PICK OP_3 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP 0x14 0x${lpCostAddressHex} OP_EQUALVERIFY OP_PARTIAL_HASH OP_OVER 0x08 0x${lpCostAmountHex} OP_EQUALVERIFY OP_CAT OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_ENDIF OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_8 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_2DUP OP_SHA256 OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_3 OP_PICK OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_NIP OP_2 OP_ROLL OP_BIN2NUM OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_4 OP_ROLL OP_TOALTSTACK OP_4 OP_ROLL OP_DUP OP_HASH160 OP_TOALTSTACK OP_9 OP_ROLL OP_EQUALVERIFY OP_6 OP_ROLL OP_BIN2NUM OP_SWAP OP_2DUP OP_GREATERTHAN OP_1 OP_EQUALVERIFY OP_2DUP OP_SUB OP_2DUP OP_GREATERTHANOREQUAL OP_IF OP_DUP OP_TOALTSTACK OP_SWAP 0x02 0xe803 OP_BIN2NUM OP_SUB 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_NIP OP_SWAP OP_FROMALTSTACK OP_ADD OP_TOALTSTACK OP_2DUP OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_5 OP_PICK OP_EQUALVERIFY OP_SWAP OP_4 OP_ROLL OP_ADD OP_TOALTSTACK OP_2DUP OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_3 OP_PICK OP_EQUALVERIFY OP_DROP OP_ADD OP_FROMALTSTACK OP_FROMALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP 0x02 0xe803 OP_BIN2NUM OP_SUB OP_3 OP_PICK OP_0 OP_EQUAL OP_NOTIF OP_DIV OP_NIP OP_SWAP OP_FROMALTSTACK OP_ADD OP_TOALTSTACK OP_2DUP OP_MUL 0x03 0x40420f OP_BIN2NUM OP_DIV OP_5 OP_PICK OP_EQUALVERIFY OP_SWAP OP_4 OP_ROLL OP_ADD OP_TOALTSTACK OP_2DUP OP_MUL 0x03 0x40420f OP_BIN2NUM OP_DIV OP_3 OP_PICK OP_EQUALVERIFY OP_DROP OP_ADD OP_FROMALTSTACK OP_FROMALTSTACK OP_ELSE OP_2DROP OP_DROP OP_FROMALTSTACK OP_ADD OP_TOALTSTACK OP_3 OP_ROLL OP_ADD OP_TOALTSTACK OP_ADD OP_FROMALTSTACK OP_FROMALTSTACK OP_ENDIF OP_ENDIF OP_3 OP_ROLL OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4e54617065 OP_EQUALVERIFY 0x01 0x44 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_3 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_2 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_EQUALVERIFY OP_DUP OP_SHA256 OP_5 OP_PUSH_META OP_EQUALVERIFY OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_1 OP_EQUALVERIFY OP_ELSE OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SHA256 OP_5 OP_PUSH_META OP_EQUALVERIFY OP_TOALTSTACK OP_0 OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUAL OP_IF OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_5 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUAL OP_IF OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_5 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUAL OP_IF OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_5 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUAL OP_IF OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_5 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUAL OP_IF OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_5 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_ELSE OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_3 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_2DROP OP_DUP OP_0 OP_EQUAL OP_IF OP_TOALTSTACK OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_4 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_HASH160 OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_ENDIF OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_5 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP 0x14 0x759d6677091e973b9e9d99f19c68fbf43e3f05f9 OP_EQUALVERIFY OP_OVER OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_FROMALTSTACK OP_4 OP_PICK OP_BIN2NUM OP_TOALTSTACK OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_2 OP_PICK OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_2DUP OP_SHA256 OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_3 OP_PICK OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_NIP OP_2 OP_ROLL OP_BIN2NUM OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_6 OP_ROLL OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK 0x02 0xe803 OP_BIN2NUM OP_SUB OP_7 OP_ROLL 0x02 0xe803 OP_BIN2NUM OP_SUB OP_2DUP OP_2DUP OP_GREATERTHAN OP_1 OP_EQUALVERIFY OP_SUB OP_8 OP_PICK OP_EQUALVERIFY OP_DROP OP_3 OP_ROLL OP_4 OP_ROLL OP_2DUP OP_SUB OP_TOALTSTACK OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_2DUP OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_6 OP_ROLL OP_EQUALVERIFY OP_SWAP OP_DROP OP_2DUP OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_SWAP OP_TOALTSTACK OP_SUB OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_2DUP OP_SWAP 0x03 0x40420f OP_BIN2NUM OP_MUL OP_SWAP OP_DIV OP_3 OP_PICK OP_EQUALVERIFY OP_DROP OP_SWAP OP_SUB OP_FROMALTSTACK OP_FROMALTSTACK OP_2 OP_ROLL OP_2 OP_ROLL OP_3 OP_ROLL OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4e54617065 OP_EQUALVERIFY 0x01 0x44 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_3 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_2 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_EQUALVERIFY OP_ELSE OP_DUP OP_3 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SHA256 OP_5 OP_PUSH_META OP_EQUALVERIFY 0x01 0x28 OP_SPLIT OP_NIP OP_FROMALTSTACK OP_FROMALTSTACK OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_0 OP_TOALTSTACK OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_8 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_8 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_8 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_8 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_8 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_2DROP OP_DUP OP_0 OP_EQUAL OP_IF OP_TOALTSTACK OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_6 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_2 OP_PICK OP_3 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP 0x14 0x${pumpPublicKeyHash} OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_ENDIF OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_DUP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_OVER OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_2DUP OP_SHA256 OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_3 OP_PICK OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_NIP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4e54617065 OP_EQUALVERIFY 0x01 0x44 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_SWAP OP_4 OP_ROLL OP_BIN2NUM OP_FROMALTSTACK OP_FROMALTSTACK OP_6 OP_ROLL OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_2DUP OP_MUL OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_6 OP_PICK OP_DUP OP_TOALTSTACK OP_2 OP_PICK OP_GREATERTHAN OP_1 OP_EQUALVERIFY OP_5 OP_PICK OP_2DUP OP_SWAP OP_GREATERTHAN OP_1 OP_EQUALVERIFY OP_7 OP_PICK OP_GREATERTHANOREQUAL OP_1 OP_EQUALVERIFY OP_2DROP OP_2 OP_ROLL OP_SUB OP_DUP OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_DIV OP_EQUALVERIFY OP_4 OP_ROLL OP_EQUALVERIFY OP_3 OP_ROLL OP_BIN2NUM OP_EQUALVERIFY OP_2DROP OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_7 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_7 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_7 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_7 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x01 0x19 OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_ELSE OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_7 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUAL OP_0 OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_ENDIF OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK 0x01 0x28 OP_SPLIT OP_TOALTSTACK 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_DROP OP_DUP OP_0 OP_EQUAL OP_IF OP_TOALTSTACK OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_ENDIF OP_DUP OP_0 OP_EQUAL OP_IF OP_DROP OP_ELSE OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_2 OP_PICK OP_3 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP 0x14 0x${pumpPublicKeyHash} OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_10 OP_PICK OP_BIN2NUM OP_SUB OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_ENDIF OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_4 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_7 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_2 OP_ROLL OP_EQUALVERIFY OP_OVER OP_3 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_SWAP OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_FROMALTSTACK OP_4 OP_PICK OP_BIN2NUM OP_TOALTSTACK OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_2DUP OP_SHA256 OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_3 OP_PICK OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_NIP OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4e54617065 OP_EQUALVERIFY 0x01 0x44 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_SWAP OP_BIN2NUM OP_SWAP OP_4 OP_ROLL OP_BIN2NUM OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_7 OP_ROLL OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_2DUP OP_MUL OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_6 OP_ROLL OP_2DUP OP_GREATERTHAN OP_1 OP_EQUALVERIFY OP_SUB OP_5 OP_PICK OP_EQUALVERIFY OP_5 OP_PICK OP_SUB OP_4 OP_ROLL OP_GREATERTHANOREQUAL OP_1 OP_EQUALVERIFY OP_2 OP_ROLL OP_ADD OP_DUP OP_FROMALTSTACK OP_SWAP OP_DIV OP_3 OP_ROLL OP_EQUALVERIFY OP_2 OP_ROLL OP_EQUALVERIFY OP_SWAP OP_BIN2NUM OP_EQUALVERIFY OP_ENDIF OP_ENDIF`,
     );
 
     const poolNftCodeLast = new tbc.Script(
-      `OP_ELSE OP_4 OP_EQUALVERIFY OP_DUP OP_SHA256 OP_5 OP_PUSH_META OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_DROP OP_TOALTSTACK OP_0 OP_TOALTSTACK OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_6 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_6 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_6 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_6 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_6 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_2DROP OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_TOALTSTACK OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_6 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_2DUP OP_SHA256 OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_3 OP_PICK OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_NIP OP_2 OP_ROLL OP_BIN2NUM OP_FROMALTSTACK OP_3 OP_ROLL OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_4 OP_ROLL OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4e54617065 OP_EQUALVERIFY 0x01 0x44 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_3 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_2 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_EQUALVERIFY OP_FROMALTSTACK OP_EQUALVERIFY OP_ENDIF OP_ENDIF OP_ENDIF OP_2 OP_PUSH_META OP_BIN2NUM OP_0 OP_EQUALVERIFY OP_TRUE OP_RETURN 0x${tagLengthHex} 0x${tagHex} 0x05 0x32436f6465`
+      `OP_ELSE OP_4 OP_EQUALVERIFY OP_DUP OP_SHA256 OP_5 OP_PUSH_META OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_DROP OP_TOALTSTACK OP_0 OP_TOALTSTACK OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_6 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_6 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_6 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_6 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_OVER 0x02 0x${ftCodeSize} OP_EQUAL OP_IF OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_TOALTSTACK OP_6 OP_PICK OP_BIN2NUM OP_ADD OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_SIZE 0x01 0x28 OP_SUB OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_2 OP_ROLL OP_EQUALVERIFY OP_TOALTSTACK OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_2DROP OP_DUP 0x01 0x19 OP_EQUALVERIFY OP_PARTIAL_HASH OP_CAT OP_TOALTSTACK OP_2 OP_PICK 0x02 0x${ftCodeSize} OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_6 OP_PICK OP_EQUALVERIFY OP_DUP OP_TOALTSTACK OP_HASH160 OP_6 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_TOALTSTACK OP_2DUP OP_SHA256 OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_3 OP_PICK OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_NIP OP_2 OP_ROLL OP_BIN2NUM OP_FROMALTSTACK OP_3 OP_ROLL OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_4 OP_ROLL OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4e54617065 OP_EQUALVERIFY 0x01 0x44 OP_SPLIT OP_NIP OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_3 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_2 OP_ROLL OP_EQUALVERIFY OP_BIN2NUM OP_EQUALVERIFY OP_FROMALTSTACK OP_EQUALVERIFY OP_ENDIF OP_ENDIF OP_ENDIF OP_2 OP_PUSH_META OP_BIN2NUM OP_0 OP_EQUALVERIFY OP_TRUE OP_RETURN 0x${tagLengthHex} 0x${tagHex} 0x05 0x32436f6465`,
     );
     const firstCode = tbc.Script.fromASM(
-      `OP_DUP ${scriptLength} OP_SPLIT OP_DROP`
+      `OP_DUP ${scriptLength} OP_SPLIT OP_DROP`,
     );
     let lastCode = new tbc.Script();
     if (pubKeyLock.length === 1) {
       lastCode = tbc.Script.fromASM(
-        `${pubKeyLock[0]} OP_EQUALVERIFY OP_CHECKSIGVERIFY`
+        `${pubKeyLock[0]} OP_EQUALVERIFY OP_CHECKSIGVERIFY`,
       );
     } else {
       let script = "";
@@ -4433,7 +4754,7 @@ class poolNFT2 {
         " " +
         lastCode.toString() +
         " " +
-        poolNftCodeLast.toString()
+        poolNftCodeLast.toString(),
     );
     return code;
     //OP_DUP OP_1 OP_SPLIT OP_NIP OP_5 OP_SPLIT OP_DROP 0x05 0x0000000000 OP_EQUALVERIFY
@@ -4443,7 +4764,8 @@ class poolNFT2 {
     poolNftCodeHash: string,
     address: any,
     tapeSize: number,
-    ftVersion?: 1 | 2
+    isCoin: boolean,
+    ftVersion?: 1 | 2,
   ): tbc.Script {
     const codeHash = poolNftCodeHash;
     const publicKeyHash =
@@ -4452,14 +4774,25 @@ class poolNFT2 {
     const tapeSizeHex = getSize(tapeSize).toString("hex");
 
     const ftlpCodePre = new tbc.Script(
-      `OP_9 OP_PICK OP_TOALTSTACK OP_1 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_5 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_4 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_3 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_2 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_1 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_0 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_FROMALTSTACK OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_TOALTSTACK OP_SHA256 OP_FROMALTSTACK OP_CAT OP_CAT OP_HASH256 OP_6 OP_PUSH_META 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_DUP OP_HASH160 OP_FROMALTSTACK OP_EQUALVERIFY OP_CHECKSIGVERIFY OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_ELSE OP_TOALTSTACK OP_PARTIAL_HASH OP_DUP 0x20 0x${codeHash} OP_EQUALVERIFY OP_ENDIF OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_7 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_0 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_SHA256 OP_7 OP_PUSH_META OP_EQUAL OP_NIP`
+      `OP_9 OP_PICK OP_TOALTSTACK OP_1 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_5 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_4 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_3 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_2 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_1 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_0 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_FROMALTSTACK OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_TOALTSTACK OP_SHA256 OP_FROMALTSTACK OP_CAT OP_CAT OP_HASH256 OP_6 OP_PUSH_META 0x01 0x20 OP_SPLIT OP_DROP OP_EQUALVERIFY OP_DUP OP_HASH160 OP_FROMALTSTACK OP_EQUALVERIFY OP_CHECKSIGVERIFY OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_ELSE OP_TOALTSTACK OP_PARTIAL_HASH OP_DUP 0x20 0x${codeHash} OP_EQUALVERIFY OP_ENDIF OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_7 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_0 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_SHA256 OP_7 OP_PUSH_META OP_EQUAL OP_NIP`,
     );
     let ftlpCodeLast: tbc.Script;
-    if (ftVersion === 2) {
-      ftlpCodeLast = tbc.Script.fromString(`OP_PUSHDATA2 0x01c1 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff OP_DROP OP_RETURN 0x15 0x${hash} 0x05 0x02436f6465`);
+    if (isCoin) {
+      ftlpCodeLast = tbc.Script.fromString(
+        `OP_PUSHDATA2 0x0241 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff OP_DROP OP_RETURN 0x15 0x${hash} 0x05 0x02436f6465`,
+      );
     } else {
-      ftlpCodeLast = tbc.Script.fromString(`OP_PUSHDATA1 0x82 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff OP_DROP OP_RETURN 0x15 0x${hash} 0x05 0x02436f6465`);
+      if (ftVersion === 2) {
+        ftlpCodeLast = tbc.Script.fromString(
+          `OP_PUSHDATA2 0x01c1 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff OP_DROP OP_RETURN 0x15 0x${hash} 0x05 0x02436f6465`,
+        );
+      } else {
+        ftlpCodeLast = tbc.Script.fromString(
+          `OP_PUSHDATA1 0x82 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff OP_DROP OP_RETURN 0x15 0x${hash} 0x05 0x02436f6465`,
+        );
+      }
     }
+
     const ftlpCode = ftlpCodePre.add(ftlpCodeLast);
     return ftlpCode;
   }
@@ -4468,7 +4801,8 @@ class poolNFT2 {
     poolNftCodeHash: string,
     address: any,
     tapeSize: number,
-    ftVersion?: 1 | 2
+    isCoin: boolean,
+    ftVersion?: 1 | 2,
   ): tbc.Script {
     const codeHash = poolNftCodeHash;
     const publicKeyHash =
@@ -4477,14 +4811,25 @@ class poolNFT2 {
     const tapeSizeHex = getSize(tapeSize).toString("hex");
 
     const ftlpCodePre = new tbc.Script(
-      `OP_9 OP_PICK OP_TOALTSTACK OP_1 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_1 OP_SPLIT OP_NIP OP_4 OP_SPLIT OP_DROP OP_BIN2NUM OP_2 OP_PUSH_META OP_BIN2NUM OP_LESSTHANOREQUAL OP_1 OP_EQUALVERIFY OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_5 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_4 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_3 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_2 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_1 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_0 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_FROMALTSTACK OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_TOALTSTACK OP_SHA256 OP_FROMALTSTACK OP_CAT OP_CAT OP_HASH256 OP_6 OP_PUSH_META 0x01 0x20 OP_SPLIT OP_4 OP_SPLIT OP_NIP OP_BIN2NUM 0x04 0xffffffff OP_BIN2NUM OP_NUMNOTEQUAL OP_1 OP_EQUALVERIFY OP_EQUALVERIFY OP_DUP OP_HASH160 OP_FROMALTSTACK OP_EQUALVERIFY OP_CHECKSIGVERIFY OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_ELSE OP_TOALTSTACK OP_PARTIAL_HASH OP_DUP 0x20 0x${codeHash} OP_EQUALVERIFY OP_ENDIF OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_7 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_0 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_SHA256 OP_7 OP_PUSH_META OP_EQUAL OP_NIP`
+      `OP_9 OP_PICK OP_TOALTSTACK OP_1 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_8 OP_SPLIT OP_1 OP_SPLIT OP_NIP OP_4 OP_SPLIT OP_DROP OP_BIN2NUM OP_2 OP_PUSH_META OP_BIN2NUM OP_LESSTHANOREQUAL OP_1 OP_EQUALVERIFY OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_5 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_4 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_3 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_2 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_1 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_SWAP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_DUP OP_0 0x01 0x28 OP_MUL OP_SPLIT 0x01 0x20 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_ENDIF OP_ADD OP_FROMALTSTACK OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_TOALTSTACK OP_3 OP_PICK OP_1 OP_SPLIT OP_NIP 0x01 0x14 OP_SPLIT OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_TOALTSTACK OP_SHA256 OP_FROMALTSTACK OP_CAT OP_CAT OP_HASH256 OP_6 OP_PUSH_META 0x01 0x20 OP_SPLIT OP_4 OP_SPLIT OP_NIP OP_BIN2NUM 0x04 0xffffffff OP_BIN2NUM OP_NUMNOTEQUAL OP_1 OP_EQUALVERIFY OP_EQUALVERIFY OP_DUP OP_HASH160 OP_FROMALTSTACK OP_EQUALVERIFY OP_CHECKSIGVERIFY OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUAL OP_IF OP_TOALTSTACK OP_PARTIAL_HASH OP_ELSE OP_TOALTSTACK OP_PARTIAL_HASH OP_DUP 0x20 0x${codeHash} OP_EQUALVERIFY OP_ENDIF OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_2 OP_PICK OP_2 OP_PICK OP_CAT OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_EQUALVERIFY OP_TOALTSTACK OP_PARTIAL_HASH OP_CAT OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_EQUALVERIFY OP_ENDIF OP_7 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_SWAP OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_DUP OP_2 OP_EQUAL OP_IF OP_DROP OP_DUP OP_SIZE OP_DUP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUALVERIFY OP_3 OP_SPLIT OP_SWAP OP_DROP OP_FROMALTSTACK OP_DUP OP_8 OP_MUL OP_2 OP_ROLL OP_SWAP OP_SPLIT OP_8 OP_SPLIT OP_DROP OP_BIN2NUM OP_DUP OP_0 OP_EQUAL OP_NOTIF OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_9 OP_PICK OP_9 OP_PICK OP_CAT OP_EQUALVERIFY OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_FROMALTSTACK OP_SWAP OP_SUB OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_TOALTSTACK OP_PARTIAL_HASH OP_FROMALTSTACK OP_CAT OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ELSE OP_DROP 0x01 0x${tapeSizeHex} OP_EQUAL OP_IF OP_2 OP_PICK OP_SIZE OP_5 OP_SUB OP_SPLIT 0x05 0x4654617065 OP_EQUAL OP_0 OP_EQUALVERIFY OP_DROP OP_ENDIF OP_PARTIAL_HASH OP_CAT OP_FROMALTSTACK OP_FROMALTSTACK OP_FROMALTSTACK OP_3 OP_ROLL OP_FROMALTSTACK OP_CAT OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_TOALTSTACK OP_ENDIF OP_ENDIF OP_1 OP_EQUALVERIFY OP_FROMALTSTACK OP_FROMALTSTACK OP_0 OP_EQUALVERIFY OP_DROP OP_FROMALTSTACK OP_FROMALTSTACK OP_SHA256 OP_7 OP_PUSH_META OP_EQUAL OP_NIP`,
     );
     let ftlpCodeLast: tbc.Script;
-    if (ftVersion === 2) {
-      ftlpCodeLast = tbc.Script.fromString(`OP_PUSHDATA2 0x01a9 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff OP_DROP OP_RETURN 0x15 0x${hash} 0x05 0x02436f6465`);
+    if (isCoin) {
+      ftlpCodeLast = tbc.Script.fromString(
+        `OP_PUSHDATA2 0x0229 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff OP_DROP OP_RETURN 0x15 0x${hash} 0x05 0x02436f6465`,
+      );
     } else {
-      ftlpCodeLast = tbc.Script.fromString(`OP_PUSHDATA1 0x6a 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff OP_DROP OP_RETURN 0x15 0x${hash} 0x05 0x02436f6465`);
+      if (ftVersion === 2) {
+        ftlpCodeLast = tbc.Script.fromString(
+          `OP_PUSHDATA2 0x01a9 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff OP_DROP OP_RETURN 0x15 0x${hash} 0x05 0x02436f6465`,
+        );
+      } else {
+        ftlpCodeLast = tbc.Script.fromString(
+          `OP_PUSHDATA1 0x6a 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff OP_DROP OP_RETURN 0x15 0x${hash} 0x05 0x02436f6465`,
+        );
+      }
     }
+
     const ftlpCode = ftlpCodePre.add(ftlpCodeLast);
     return ftlpCode;
   }

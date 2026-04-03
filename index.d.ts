@@ -564,6 +564,7 @@ declare module "tbc-contract" {
     ft_a_partialhash: string;
     ft_a_contractTxid: string;
     poolnft_code: string;
+    pool_version: number;
     contractTxid: string;
     network: "testnet" | "mainnet" | string;
     service_fee_rate: number;
@@ -733,6 +734,7 @@ declare module "tbc-contract" {
       lpPlan: 1 | 2,
       ftVersion: 1 | 2,
       tag?: string,
+      isCoin?: boolean,
     ): Script;
     getPoolNftCodeWithLock(
       txid: string,
@@ -743,17 +745,20 @@ declare module "tbc-contract" {
       pubKeyLock: string[],
       ftVersion: 1 | 2,
       tag?: string,
+      isCoin?: boolean,
     ): Script;
     getFtlpCode(
       poolNftCodeHash: string,
       address: string,
       tapeSize: number,
+      isCoin: boolean,
       ftVersion?: 1 | 2,
     ): Script;
     getFtlpCodeWithLockTime(
       poolNftCodeHash: string,
       address: string,
       tapeSize: number,
+      isCoin: boolean,
       ftVersion?: 1 | 2,
     ): Script;
   }
@@ -994,8 +999,8 @@ declare module "tbc-contract" {
       preTX: Transaction,
       preTxVout: number,
     ): Script;
-    getSellOrderCode(isCoin: boolean): Script;
-    getBuyOrderCode(isCoin: boolean): Script;
+    getSellOrderCode(isCoin: boolean, taxAddress: string): Script;
+    getBuyOrderCode(isCoin: boolean, taxAddress: string): Script;
     buildOrderData(): Script;
     static updateSaleVolume(codeScript: string, newSaleVolume: bigint): Script;
     static getOrderData(codeScript: string): {
