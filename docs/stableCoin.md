@@ -122,19 +122,21 @@ async function main() {
       await API.broadcastTXraw(transferTXRaw, network);
     }
 
-    // BatchTransfer（批量转移稳定币到多个地址）
+    // BatchTransfer（批量转移稳定币到多个地址，每笔交易最多5人，超过自动链式拆分，支持重复地址）
     {
-      const receiveAddressAmount = new Map<string, number | string>(); // 大数应使用 string
-      receiveAddressAmount.set(addressA, 500);
-      receiveAddressAmount.set(addressB, 700);
+      const receivers: { address: string, amount: number | string }[] = [ // 大数应使用 string
+        { address: addressA, amount: 500 },
+        { address: addressB, amount: 700 },
+        // ... 最多可添加任意数量，每5人一笔交易
+      ];
       const totalAmount = 500 + 700;
 
       const Coin = new stableCoin(coinContractTxid);
       const CoinInfo = await API.fetchCoinInfo(Coin.contractTxid, network); // 获取稳定币信息
       Coin.initialize(CoinInfo.coinInfo);
 
-      const times = receiveAddressAmount.size;
-      const transferFee = 0.005 * times;
+      const batchCount = Math.ceil(receivers.length / 5);
+      const transferFee = 0.005 * batchCount;
       const utxo = await API.fetchUTXO(privateKeyA, transferFee, network);
       const totalAmountBN = parseDecimalToBigInt(totalAmount, Coin.decimal);
 
@@ -161,7 +163,7 @@ async function main() {
 
       const transferTXs = Coin.batchTransfer(
         privateKeyA,
-        receiveAddressAmount,
+        receivers,
         coinutxos,
         utxo,
         preTXs,

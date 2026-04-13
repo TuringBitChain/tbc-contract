@@ -88,18 +88,20 @@ async function main() {
       await API.broadcastTXraw(transferTX, network);
     }
 
-    //BatchTransfer
+    //BatchTransfer 每笔交易最多转给5个人，超过5人自动拆分为多笔链式交易；支持重复地址
     {
-      const receiveAddressAmount = new Map<string, number | string>();//大数应使用string
-      receiveAddressAmount.set(addressA, 500);
-      receiveAddressAmount.set(addressB, 700);
+      const receivers: { address: string, amount: number | string }[] = [//大数应使用string
+        { address: addressA, amount: 500 },
+        { address: addressB, amount: 700 },
+        // ... 最多可添加任意数量，每5人一笔交易
+      ];
       const sum = 500 + 700;
       const transferTokenAmount = sum;
       const Token = new FT(ftContractTxid);
       const TokenInfo = await API.fetchFtInfo(Token.contractTxid, network); //获取FT信息
       Token.initialize(TokenInfo);
-      const times = receiveAddressAmount.size;
-      const transferFee = 0.005 * times;
+      const batchCount = Math.ceil(receivers.length / 5);
+      const transferFee = 0.005 * batchCount;
       const utxo = await API.fetchUTXO(privateKeyA, transferFee, network);
       const transferTokenAmountBN = parseDecimalToBigInt(
         transferTokenAmount,
@@ -132,7 +134,7 @@ async function main() {
       }
       const transferTXs = Token.batchTransfer(
         privateKeyA,
-        receiveAddressAmount,
+        receivers,
         ftutxos,
         utxo,
         preTXs,

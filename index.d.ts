@@ -354,7 +354,7 @@ declare module "tbc-contract" {
     ): string;
     batchTransfer(
       privateKey_from: PrivateKey,
-      receiveAddressAmount: Map<string, number | string>,
+      receivers: { address: string, amount: number | string }[],
       ftutxo: Transaction.IUnspentOutput[],
       utxo: Transaction.IUnspentOutput,
       preTX: Transaction[],
@@ -423,6 +423,10 @@ declare module "tbc-contract" {
       tapeAmountSet: bigint[],
       ftInputIndex?: number,
     ): { amountHex: string; changeHex: string };
+    static buildMultiTapeAmounts(
+      outputAmounts: bigint[],
+      tapeAmountSetIn: bigint[],
+    ): string[];
     static getBalanceFromTape(tape: string): bigint;
   }
 
@@ -1120,7 +1124,7 @@ declare module "tbc-contract" {
     ): string;
     batchTransfer(
       privateKey_from: PrivateKey,
-      receiveAddressAmount: Map<string, number | string>,
+      receivers: { address: string, amount: number | string }[],
       ftutxo: Transaction.IUnspentOutput[],
       utxo: Transaction.IUnspentOutput,
       preTX: Transaction[],

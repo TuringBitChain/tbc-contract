@@ -414,6 +414,7 @@ class stableCoin extends FT {
   }
 
   /**
+   * @deprecated Please use batchTransfer instead.
    * Batch transfers FT from one address to multiple addresses and returns unchecked transaction raw data.
    *
    * @param {tbc.PrivateKey} privateKey_from - The private key used to sign the transaction.
@@ -424,7 +425,7 @@ class stableCoin extends FT {
    * @param {string[]} prepreTxData - List of previous transaction data.
    * @returns {Array<{ txraw: string }>} Returns an array containing unchecked transaction raw data.
    */
-  batchTransfer(
+  batchTransfer_old(
     privateKey_from: tbc.PrivateKey,
     receiveAddressAmount: Map<string, number | string>,
     ftutxo: tbc.Transaction.IUnspentOutput[],
@@ -443,7 +444,7 @@ class stableCoin extends FT {
     let i = 0;
     for (const [address_to, amount] of receiveAddressAmount) {
       if (i === 0) {
-        tx = this._batchTransfer(
+        tx = this._batchTransfer_old(
           privateKey,
           address_to,
           amount,
@@ -462,7 +463,7 @@ class stableCoin extends FT {
         prepretxdata = "57" + prepretxdata;
         prepreTxData = [prepretxdata];
       } else {
-        tx = this._batchTransfer(
+        tx = this._batchTransfer_old(
           privateKey,
           address_to,
           amount,
@@ -483,7 +484,7 @@ class stableCoin extends FT {
     return txsraw;
   }
 
-  _batchTransfer(
+  _batchTransfer_old(
     privateKey_from: tbc.PrivateKey,
     address_to: string,
     amount: number | string,
@@ -620,6 +621,179 @@ class stableCoin extends FT {
     return tx;
   }
 
+  /**
+   * Batch transfers stableCoin to multiple recipients, with up to 5 recipients per transaction.
+   * Creates chained transactions where each tx's FT change feeds into the next.
+   * Supports duplicate addresses.
+   *
+   * @param {tbc.PrivateKey} privateKey_from - The private key used to sign the transaction.
+   * @param {Array<{ address: string, amount: number | string }>} receivers - Array of receiving addresses and amounts.
+   * @param {tbc.Transaction.IUnspentOutput[]} ftutxo - List of FT UTXOs used to create the transaction.
+   * @param {tbc.Transaction.IUnspentOutput} utxo - Unspent output used to create the transaction.
+   * @param {tbc.Transaction[]} preTX - List of previous transactions.
+   * @param {string[]} prepreTxData - List of previous transaction data.
+   * @returns {Array<{ txraw: string }>} Returns an array containing unchecked transaction raw data.
+   */
+  batchTransfer(
+    privateKey_from: tbc.PrivateKey,
+    receivers: { address: string, amount: number | string }[],
+    ftutxo: tbc.Transaction.IUnspentOutput[],
+    utxo: tbc.Transaction.IUnspentOutput,
+    preTX: tbc.Transaction[],
+    prepreTxData: string[],
+  ): Array<{ txraw: string }> {
+    const privateKey = privateKey_from;
+    const txsraw: Array<{ txraw: string }> = [];
+    let ftutxoBalance = 0n;
+    for (const u of ftutxo) {
+      ftutxoBalance += BigInt(u.ftBalance!);
+    }
+    // Group receivers into batches of 5
+    const batches: { address: string, amount: number | string }[][] = [];
+    for (let i = 0; i < receivers.length; i += 5) {
+      batches.push(receivers.slice(i, i + 5));
+    }
+    let tx: tbc.Transaction;
+    let prevBatchSize = 0;
+    for (let b = 0; b < batches.length; b++) {
+      const batch = batches[b];
+      if (b === 0) {
+        tx = this._batchTransfer(
+          privateKey, batch, preTX, prepreTxData, txsraw, ftutxoBalance, ftutxo, utxo,
+        );
+        let prepretxdata = "";
+        for (let j = 0; j < preTX.length; j++) {
+          prepretxdata = getPrePreTxdata(preTX[j], tx.inputs[j].outputIndex) + prepretxdata;
+        }
+        prepretxdata = "57" + prepretxdata;
+        prepreTxData = [prepretxdata];
+      } else {
+        tx = this._batchTransfer(
+          privateKey, batch, preTX, prepreTxData, txsraw, ftutxoBalance,
+          undefined, undefined, prevBatchSize,
+        );
+        prepreTxData = ["57" + getPrePreTxdata(preTX[0], tx.inputs[0].outputIndex)];
+      }
+      preTX = [tx];
+      prevBatchSize = batch.length;
+      for (const receiver of batch) {
+        ftutxoBalance -= parseDecimalToBigInt(receiver.amount, this.decimal);
+      }
+    }
+    return txsraw;
+  }
+
+  _batchTransfer(
+    privateKey_from: tbc.PrivateKey,
+    receivers: { address: string, amount: number | string }[],
+    preTX: tbc.Transaction[],
+    prepreTxData: string[],
+    txsraw: Array<{ txraw: string }>,
+    ftutxoBalance: bigint,
+    ftutxo?: tbc.Transaction.IUnspentOutput[],
+    utxo?: tbc.Transaction.IUnspentOutput,
+    prevBatchSize?: number,
+  ): tbc.Transaction {
+    const privateKey = privateKey_from;
+    const address_from = privateKey.toAddress().toString();
+    const code = this.codeScript;
+    const tape = this.tapeScript;
+    const decimal = this.decimal;
+    const isCoin = 1;
+    const tapeAmountSetIn: bigint[] = [];
+    const tapeAmountSum = ftutxoBalance;
+    let lockTimeMax = 0;
+    // Parse and validate each receiver's amount
+    const receiverAmounts: bigint[] = [];
+    let totalAmount = BigInt(0);
+    for (const receiver of receivers) {
+      if (
+        (typeof receiver.amount === "string" && parseFloat(receiver.amount) < 0) ||
+        (typeof receiver.amount === "number" && receiver.amount < 0)
+      ) {
+        throw new Error("Invalid amount input");
+      }
+      const amountbn = parseDecimalToBigInt(receiver.amount, decimal);
+      receiverAmounts.push(amountbn);
+      totalAmount += amountbn;
+    }
+    // FT change output index from previous tx (prev tx had prevBatchSize receivers)
+    const ftChangeIndex = prevBatchSize! * 2;
+    const tbcChangeIndex = prevBatchSize! * 2 + 2;
+    if (ftutxo) {
+      for (let i = 0; i < ftutxo.length; i++) {
+        tapeAmountSetIn.push(ftutxo[i].ftBalance!);
+        lockTimeMax = Math.max(
+          lockTimeMax,
+          stableCoin.getLockTimeFromTape(
+            preTX[i].outputs[ftutxo[i].outputIndex + 1].script,
+          ),
+        );
+      }
+    } else {
+      tapeAmountSetIn.push(tapeAmountSum);
+      lockTimeMax = stableCoin.getLockTimeFromTape(preTX[0].outputs[ftChangeIndex + 1].script);
+    }
+    // Build tape hex for each receiver and change
+    const tapeHexes = FT.buildMultiTapeAmounts(receiverAmounts, tapeAmountSetIn);
+    // Construct the transaction
+    const tx = new tbc.Transaction();
+    ftutxo ? tx.from(ftutxo) : tx.addInputFromPrevTx(preTX[0], ftChangeIndex);
+    utxo ? tx.from(utxo) : tx.addInputFromPrevTx(preTX[0], tbcChangeIndex);
+    // Add outputs for each receiver (code + tape pair)
+    for (let i = 0; i < receivers.length; i++) {
+      const codeScript = FT.buildFTtransferCode(code, receivers[i].address);
+      tx.addOutput(new tbc.Transaction.Output({
+        script: codeScript,
+        satoshis: 500,
+      }));
+      const tapeScript = FT.buildFTtransferTape(tape, tapeHexes[i]);
+      tx.addOutput(new tbc.Transaction.Output({
+        script: tapeScript,
+        satoshis: 0,
+      }));
+    }
+    // Add FT change output if there's remaining balance
+    if (totalAmount < tapeAmountSum) {
+      const changeCodeScript = FT.buildFTtransferCode(code, address_from);
+      tx.addOutput(new tbc.Transaction.Output({
+        script: changeCodeScript,
+        satoshis: 500,
+      }));
+      const changeTapeScript = FT.buildFTtransferTape(tape, tapeHexes[receivers.length]);
+      tx.addOutput(new tbc.Transaction.Output({
+        script: changeTapeScript,
+        satoshis: 0,
+      }));
+    }
+    tx.feePerKb(80);
+    tx.change(address_from);
+    // Set unlock scripts
+    if (ftutxo) {
+      for (let i = 0; i < ftutxo.length; i++) {
+        tx.setInputSequence(i, 4294967294);
+        tx.setInputScript({ inputIndex: i }, (tx) => {
+          return this.getFTunlock(
+            privateKey, tx, preTX[i], prepreTxData[i], i, ftutxo[i].outputIndex, isCoin,
+          );
+        });
+      }
+    } else {
+      tx.setInputSequence(0, 4294967294);
+      tx.setInputScript({ inputIndex: 0 }, (tx) => {
+        return this.getFTunlock(
+          privateKey, tx, preTX[0], prepreTxData[0], 0, ftChangeIndex, isCoin,
+        );
+      });
+    }
+    tx.sign(privateKey);
+    tx.setLockTime(lockTimeMax);
+    tx.seal();
+    const txraw = tx.uncheckedSerialize();
+    txsraw.push({ txraw: txraw });
+    return tx;
+  }
+
   mergeCoin(
     privateKey_from: tbc.PrivateKey,
     ftutxo: tbc.Transaction.IUnspentOutput[],
@@ -666,7 +840,7 @@ class stableCoin extends FT {
 
     const utxoTX = preTXs.pop();
     const nonEmpty = preTXs.length;
-    const newutxo = buildUTXO(utxoTX, 2, false);
+    const newutxo = buildUTXO(utxoTX!, 2, false);
     for (const txraw of txsraw) {
       const tx = new tbc.Transaction(txraw.txraw);
       preTXs.push(tx);
@@ -707,7 +881,7 @@ class stableCoin extends FT {
     if (ftutxos.length === 0) {
       throw new Error("No FT UTXO available");
     } else if (ftutxos.length === 1) {
-      return null;
+      return null as any;
     }
     const tapeAmountSetIn: bigint[] = [];
     let tapeAmountSum = BigInt(0);
