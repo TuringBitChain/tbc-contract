@@ -892,7 +892,7 @@ class poolNFT {
       )
     );
 
-    lpTapeAmountSetIn.push(fttxo_lp.ftBalance);
+    lpTapeAmountSetIn.push(fttxo_lp.ftBalance!);
     // Fetch FT UTXO for the transfer
     const ftutxo_codeScript = FT.buildFTtransferCode(
       FTA.codeScript,
@@ -935,7 +935,7 @@ class poolNFT {
     // } else if (fttxo_c.satoshis < Number(changeDate.tbc_amount_difference)) {
     //     throw new Error('PoolFtUTXO tbc_amount is insufficient, please merge UTXOs');
     // }
-    tapeAmountSetIn.push(fttxo_c.ftBalance);
+    tapeAmountSetIn.push(fttxo_c.ftBalance!);
     // Calculate the total available balance
     let tapeAmountSum = BigInt(0);
     for (let i = 0; i < tapeAmountSetIn.length; i++) {

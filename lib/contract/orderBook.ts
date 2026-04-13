@@ -24,16 +24,16 @@ const coin_partial_offset = 1984;
 const utxoFee = 0.01;
 
 class OrderBook {
-  type: "buy" | "sell";
-  hold_address: string;
-  sale_volume: bigint;
-  fee_rate: bigint;
-  unit_price: bigint;
-  sale_volume_number: number;
-  fee_rate_number: number;
-  unit_price_number: number;
-  ft_a_contract_partialhash: string;
-  ft_a_contract_id: string;
+  type!: "buy" | "sell";
+  hold_address!: string;
+  sale_volume!: bigint;
+  fee_rate!: bigint;
+  unit_price!: bigint;
+  sale_volume_number!: number;
+  fee_rate_number!: number;
+  unit_price_number!: number;
+  ft_a_contract_partialhash!: string;
+  ft_a_contract_id!: string;
 
   contract_version: number;
   private buy_code_dust = 300;

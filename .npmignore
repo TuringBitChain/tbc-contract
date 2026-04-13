@@ -9,4 +9,5 @@ lib/**/*.ts
 *.txt
 obfuscate.js
 .DS_Store
-.claude
+.claude/
+.vscode/

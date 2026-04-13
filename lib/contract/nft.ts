@@ -658,7 +658,7 @@ class NFT {
       const jsonString = Buffer.from(hex, "hex").toString("utf8");
       return JSON.parse(jsonString);
     } catch (error) {
-      throw new Error(`Failed to decode NFT data from hex: ${error.message}`);
+      throw new Error(`Failed to decode NFT data from hex: ${(error as Error).message}`);
     }
   }
 
@@ -667,7 +667,7 @@ class NFT {
       const jsonString = JSON.stringify(data);
       return Buffer.from(jsonString).toString("hex");
     } catch (error) {
-      throw new Error(`Failed to encode NFT data to hex: ${error.message}`);
+      throw new Error(`Failed to encode NFT data to hex: ${(error as Error).message}`);
     }
   }
 

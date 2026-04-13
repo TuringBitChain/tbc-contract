@@ -41,10 +41,10 @@ class poolNFT2 {
   network: "testnet" | "mainnet" | string;
   service_fee_rate: number;
   service_provider: string;
-  lp_plan: number;
-  with_lock: boolean;
-  with_lock_time: boolean;
-  private tbc_amount_full: bigint;
+  lp_plan!: number;
+  with_lock!: boolean;
+  with_lock_time!: boolean;
+  private tbc_amount_full!: bigint;
   private ft_a_number: number;
   private poolnft_code_dust = 1000;
   private precision = BigInt(1000000);
@@ -93,9 +93,9 @@ class poolNFT2 {
     this.pool_version = poolNFTInfo.pool_version;
     this.tbc_amount_full = BigInt(poolNFTInfo.currentContractSatoshi);
     const extraInfo = await this.getPoolNftExtraInfo();
-    this.lp_plan = extraInfo.lpPlan;
-    this.with_lock = extraInfo.withLock;
-    this.with_lock_time = extraInfo.withLockTime;
+    this.lp_plan = extraInfo.lpPlan ?? 1;
+    this.with_lock = extraInfo.withLock ?? false;
+    this.with_lock_time = extraInfo.withLockTime ?? false;
   }
 
   /**
@@ -1134,7 +1134,7 @@ class poolNFT2 {
       ),
     );
 
-    lpTapeAmountSetIn.push(fttxo_lp.ftBalance);
+    lpTapeAmountSetIn.push(fttxo_lp.ftBalance!);
     const ftutxo_codeScript = FT.buildFTtransferCode(
       FTA.codeScript,
       poolnft_codehash160,
@@ -1178,7 +1178,7 @@ class poolNFT2 {
           this.network,
         ),
       );
-      tapeAmountSetIn.push(fttxo_c[i].ftBalance);
+      tapeAmountSetIn.push(fttxo_c[i].ftBalance!);
       tapeAmountSum += BigInt(tapeAmountSetIn[i]);
     }
 
@@ -1201,7 +1201,7 @@ class poolNFT2 {
     const contractTX = await API.fetchTXraw(poolnft.txId, this.network);
     // Construct the transaction
     const tx = new tbc.Transaction().from(poolnft).from(fttxo_lp).from(fttxo_c);
-    if (this.with_lock_time && isNeedUnlock) tx.addInputFromPrevTx(unlockTX, 2);
+    if (this.with_lock_time && isNeedUnlock) tx.addInputFromPrevTx(unlockTX!, 2);
     else tx.from(utxo);
     //poolNft
     tx.addOutput(
@@ -1524,7 +1524,7 @@ class poolNFT2 {
           this.network,
         ),
       );
-      tapeAmountSetIn.push(fttxo_c[i].ftBalance);
+      tapeAmountSetIn.push(fttxo_c[i].ftBalance!);
       tapeAmountSum += BigInt(new BN(tapeAmountSetIn[i].toString()).toString());
     }
     // Build the amount and change hex strings for the tape
@@ -2237,7 +2237,7 @@ class poolNFT2 {
       let ftlp: tbc.Transaction.IUnspentOutput | null = null;
 
       for (const utxo of ftUtxoList) {
-        if (utxo.ftBalance >= amount && (await checkLockTime(utxo))) {
+        if (utxo.ftBalance! >= amount && (await checkLockTime(utxo))) {
           ftlp = utxo;
           break;
         }
@@ -2253,7 +2253,7 @@ class poolNFT2 {
 
         const ftlpBalance = validUtxos
           .filter(({ isValid }) => isValid)
-          .reduce((sum, { utxo }) => sum + BigInt(utxo.ftBalance), BigInt(0));
+          .reduce((sum, { utxo }) => sum + BigInt(utxo.ftBalance!), BigInt(0));
 
         if (ftlpBalance < amount) {
           throw new Error("Insufficient FT-LP amount");
@@ -2279,7 +2279,7 @@ class poolNFT2 {
       const ftUtxoList = await this.fetchFtlpUTXOList(address);
       let ftlpBalance = BigInt(0);
       for (let i = 0; i < ftUtxoList.length; i++) {
-        ftlpBalance += BigInt(ftUtxoList[i].ftBalance);
+        ftlpBalance += BigInt(ftUtxoList[i].ftBalance!);
       }
       return ftlpBalance;
     } catch (error: any) {
@@ -2365,7 +2365,7 @@ class poolNFT2 {
       });
     const ftUtxoList = response.data.utxos;
     const ftUtxoArray: tbc.Transaction.IUnspentOutput[] = ftUtxoList.map(
-      (data) => ({
+      (data: any) => ({
         txId: data.txid,
         outputIndex: data.index,
         script: ftlpCode.toString("hex"),
@@ -2430,7 +2430,7 @@ class poolNFT2 {
                   "Freeze before UTC time:",
                   new Date(lockTime * 1000).toISOString(),
                 );
-              return { ftBalance: lpBalance, lockTime };
+              return { ftBalance: lpBalance!, lockTime };
             }),
           );
           return results;
@@ -2833,7 +2833,7 @@ class poolNFT2 {
             ftutxo_codeScript,
             this.network,
           );
-      ftutxolist.sort((a, b) => (b.ftBalance > a.ftBalance ? 1 : -1));
+      ftutxolist.sort((a: any, b: any) => (b.ftBalance > a.ftBalance ? 1 : -1));
 
       let ftutxos = ftutxolist.slice(0, 4);
       let txsraw: Array<{ txraw: string }> = [];
@@ -3670,13 +3670,6 @@ class poolNFT2 {
         privateKey.toAddress().toString(),
         changeData.ft_lp_difference,
       );
-      // fttxo_lp = {
-      //     txId: "8d946b6459eed3c98fa50c286b5d6d223217cdf8c73e99dc4f8ae9ab51753f69",
-      //     outputIndex: 4,
-      //     satoshis: 500,
-      //     script: "",
-      //     ftBalance: 3000000n
-      // };
     } catch (error: any) {
       throw new Error(error.message);
     }
@@ -3689,7 +3682,7 @@ class poolNFT2 {
       ),
     );
 
-    lpTapeAmountSetIn.push(fttxo_lp.ftBalance);
+    lpTapeAmountSetIn.push(fttxo_lp.ftBalance!);
     const ftutxo_codeScript = FT.buildFTtransferCode(
       FTA.codeScript,
       poolnft_codehash160,
@@ -3733,7 +3726,7 @@ class poolNFT2 {
           this.network,
         ),
       );
-      tapeAmountSetIn.push(fttxo_c[i].ftBalance);
+      tapeAmountSetIn.push(fttxo_c[i].ftBalance!);
       tapeAmountSum += BigInt(tapeAmountSetIn[i]);
     }
 
@@ -3944,7 +3937,7 @@ class poolNFT2 {
     privateKey_from: tbc.PrivateKey,
     utxo: tbc.Transaction.IUnspentOutput,
     lock_time?: number,
-  ): Promise<string> | null {
+  ): Promise<string | null> {
     const FTA = new FT(this.ft_a_contractTxid);
     let FTAInfo;
     try {
@@ -4612,10 +4605,10 @@ class poolNFT2 {
   }
 
   async getPoolNftExtraInfo(): Promise<{
-    serviceFeeRate: number;
-    lpPlan: number;
-    withLock: boolean;
-    withLockTime: boolean;
+    serviceFeeRate: number | null;
+    lpPlan: number | null;
+    withLock: boolean | null;
+    withLockTime: boolean | null;
   }> {
     const poolnftTapeScript = await this.fetchPoolNftTape();
     const extraInfo = {

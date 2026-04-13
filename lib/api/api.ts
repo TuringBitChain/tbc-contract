@@ -346,12 +346,12 @@ class API {
       );
       let ftutxo = ftutxolist[0];
       for (let i = 0; i < ftutxolist.length; i++) {
-        if (ftutxolist[i].ftBalance >= amount) {
+        if (ftutxolist[i].ftBalance! >= amount) {
           ftutxo = ftutxolist[i];
           break;
         }
       }
-      if (ftutxo.ftBalance < amount) {
+      if (ftutxo.ftBalance! < amount) {
         const totalBalance = await API.getFTbalance(
           contractTxid,
           addressOrHash,
@@ -394,7 +394,7 @@ class API {
         codeScript,
         network
       );
-      ftutxolist.sort((a, b) => (b.ftBalance > a.ftBalance ? 1 : -1));
+      ftutxolist.sort((a, b) => (b.ftBalance! > a.ftBalance! ? 1 : -1));
       let sumBalance = BigInt(0);
       let ftutxos: tbc.Transaction.IUnspentOutput[] = [];
       if (!amount) {
@@ -403,7 +403,7 @@ class API {
         }
       } else {
         for (let i = 0; i < ftutxolist.length && i < 5; i++) {
-          sumBalance += BigInt(ftutxolist[i].ftBalance);
+          sumBalance += BigInt(ftutxolist[i].ftBalance!);
           ftutxos.push(ftutxolist[i]);
           if (sumBalance >= amount) break;
         }
@@ -456,11 +456,11 @@ class API {
         codeScript,
         network
       );
-      ftutxolist.sort((a, b) => (b.ftBalance > a.ftBalance ? 1 : -1));
+      ftutxolist.sort((a, b) => (b.ftBalance! > a.ftBalance! ? 1 : -1));
       let sumBalance = BigInt(0);
       let ftutxos: tbc.Transaction.IUnspentOutput[] = [];
       for (let i = 0; i < ftutxolist.length && i < number; i++) {
-        sumBalance += BigInt(ftutxolist[i].ftBalance);
+        sumBalance += BigInt(ftutxolist[i].ftBalance!);
         ftutxos.push(ftutxolist[i]);
         if (sumBalance >= amount && i >= 1) break;
       }
@@ -881,7 +881,7 @@ class API {
         .toBuffer()
         .toString("hex");
 
-      return utxoList.map((utxo) => ({
+      return utxoList.map((utxo: any) => ({
         txId: utxo.txid,
         outputIndex: utxo.index,
         script: scriptPubKey,
@@ -968,13 +968,13 @@ class API {
       const data = await response.json();
       const utxoList = data.data.utxos;
       if (tx_hash) {
-        const filteredUTXOs = utxoList.filter((item) => item.txid === tx_hash);
+        const filteredUTXOs = utxoList.filter((item: any) => item.txid === tx_hash);
 
         if (filteredUTXOs.length === 0) {
           throw new Error("No matching UTXO found.");
         }
 
-        const min_vout_utxo = filteredUTXOs.reduce((prev, current) =>
+        const min_vout_utxo = filteredUTXOs.reduce((prev: any, current: any) =>
           prev.index < current.index ? prev : current
         );
 
@@ -1030,15 +1030,15 @@ class API {
       }
       const data = await response.json();
       const utxoList = data.data.utxos;
-      const filteredUTXOs = utxoList.filter((item) => item.txid === tx_hash);
+      const filteredUTXOs = utxoList.filter((item: any) => item.txid === tx_hash);
 
       if (filteredUTXOs.length === 0) {
         throw new Error("The collection supply has been exhausted.");
       }
 
-      const sortedUTXOs = filteredUTXOs.sort((a, b) => a.index - b.index);
+      const sortedUTXOs = filteredUTXOs.sort((a: any, b: any) => a.index - b.index);
 
-      return sortedUTXOs.map((utxo) => ({
+      return sortedUTXOs.map((utxo: any) => ({
         txId: utxo.txid,
         outputIndex: utxo.index,
         script: script,
@@ -1241,7 +1241,7 @@ class API {
       if (utxoList.length === 0) {
         throw new Error("The balance in the account is zero.");
       }
-      const umtxos = utxoList.map((utxo) => {
+      const umtxos = utxoList.map((utxo: any) => {
         return {
           txId: utxo.txid,
           outputIndex: utxo.index,
@@ -1426,7 +1426,7 @@ class API {
         });
       }
       const ftBalanceArray: bigint[] = ftutxos.map((item) =>
-        BigInt(item.ftBalance)
+        BigInt(item.ftBalance!)
       );
 
       const totalBalance = ftBalanceArray.reduce(
