@@ -588,7 +588,7 @@ declare module "tbc-contract" {
       utxo: Transaction.IUnspentOutput,
       tag: string,
       serviceFeeRate?: number,
-      lpPlan?: 1 | 2,
+      lpPlan?: 1 | 2 | 3 | 4 | 5,
       withLockTime?: boolean,
     ): Promise<string[]>;
     createPoolNftWithLock(
@@ -599,7 +599,7 @@ declare module "tbc-contract" {
       lpCostTBC: number,
       pubKeyLock: string[],
       serviceFeeRate?: number,
-      lpPlan?: 1 | 2,
+      lpPlan?: 1 | 2 | 3 | 4 | 5,
       withLockTime?: boolean,
     ): Promise<string[]>;
     initPoolNFT(
@@ -650,14 +650,14 @@ declare module "tbc-contract" {
       address_to: string,
       utxo: Transaction.IUnspentOutput,
       amount_tbc: number | string,
-      lpPlan?: 1 | 2,
+      lpPlan?: 1 | 2 | 3 | 4 | 5,
     ): Promise<string>;
     swaptoTBC_baseToken(
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
       amount_token: number | string,
-      lpPlan?: 1 | 2,
+      lpPlan?: 1 | 2 | 3 | 4 | 5,
     ): Promise<string>;
     swaptoTBC_baseToken_local(
       privateKey_from: PrivateKey,
@@ -666,7 +666,7 @@ declare module "tbc-contract" {
       ftPreTX: Transaction[],
       ftPrePreTxData: string[],
       amount_token: number | string,
-      lpPlan?: 1 | 2,
+      lpPlan?: 1 | 2 | 3 | 4 | 5,
       utxo?: Transaction.IUnspentOutput,
     ): Promise<string>;
     fetchPoolNftInfo(contractTxid: string): Promise<PoolNFTInfo>;
@@ -735,7 +735,7 @@ declare module "tbc-contract" {
     getPoolNftCode(
       txid: string,
       vout: number,
-      lpPlan: 1 | 2,
+      lpPlan: 1 | 2 | 3 | 4 | 5,
       ftVersion: 1 | 2,
       tag?: string,
       isCoin?: boolean,
@@ -743,7 +743,7 @@ declare module "tbc-contract" {
     getPoolNftCodeWithLock(
       txid: string,
       vout: number,
-      lpPlan: 1 | 2,
+      lpPlan: 1 | 2 | 3 | 4 | 5,
       lpCostAddress: Address | string,
       lpCostTBC: number,
       pubKeyLock: string[],
@@ -889,7 +889,7 @@ declare module "tbc-contract" {
     static fetchTBCLockTime(utxo: Transaction.IUnspentOutput): number;
   }
 
-  export class OrderBook {
+  export class orderBook {
     type: "buy" | "sell";
     hold_address: string;
     sale_volume: bigint;

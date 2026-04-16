@@ -19,7 +19,7 @@ const addressB = "1FhSD1YezTXbdRGWzNbNvUj6qeKQ6gZDMq";
 const coinName = "USD Test";
 const coinSymbol = "USDT";
 const coinDecimal = 6;
-const coinSupply = 100000000; // 精度6，总供应量上限1万亿
+const coinSupply = 1000000000; // 精度6，初次供应量10亿
 const coinContractTxid = ""; // createCoin 后获得
 
 async function main() {

@@ -28,6 +28,19 @@ const ft_v2_partial_offset = 1856;
 const coin_length = 2012;
 const coin_partial_offset = 1984;
 
+const SERVICE_FEE_ADDRESS: { [key: number]: string } = {
+  1: "13oCEJaqyyiC8iRrfup6PDL2GKZ3xQrsZL",
+  2: "1Fa6Uy64Ub4qNdB896zX2pNMx4a8zMhtCy",
+  3: "125fTLNsraQxTYqT4EeQNF2ggzcqicveKL",
+  4: "19DetoaaohQkjFVJ6oGXd83xhZYQSbpE1g",
+  5: "15EKrhuD8Yf3SfhjAgbizYqfnBbKh9ZMZ7",
+};
+const getServiceFeeAddress = (lpPlan: number): string => {
+  const addr = SERVICE_FEE_ADDRESS[lpPlan];
+  if (!addr) throw new Error(`Invalid lpPlan: ${lpPlan}`);
+  return addr;
+};
+
 class poolNFT2 {
   ft_lp_amount: bigint;
   ft_a_amount: bigint;
@@ -57,7 +70,7 @@ class poolNFT2 {
     this.ft_a_amount = BigInt(0);
     this.tbc_amount = BigInt(0);
     this.ft_a_number = 0;
-    this.service_fee_rate = 25; //万分之25
+    this.service_fee_rate = 35; //万分之25
     this.service_provider = "";
     this.ft_a_contractTxid = "";
     this.ft_lp_partialhash = "";
@@ -124,7 +137,7 @@ class poolNFT2 {
     utxo: tbc.Transaction.IUnspentOutput,
     tag: string,
     serviceFeeRate?: number,
-    lpPlan?: 1 | 2,
+    lpPlan?: 1 | 2 | 3 | 4 | 5,
     withLockTime?: boolean,
   ): Promise<string[]> {
     const privateKey = privateKey_from;
@@ -273,7 +286,7 @@ class poolNFT2 {
     lpCostTBC: number,
     pubKeyLock: string[],
     serviceFeeRate?: number,
-    lpPlan?: 1 | 2,
+    lpPlan?: 1 | 2 | 3 | 4 | 5,
     withLockTime?: boolean,
   ): Promise<string[]> {
     const privateKey = privateKey_from;
@@ -1422,7 +1435,7 @@ class poolNFT2 {
     address_to: string,
     utxo: tbc.Transaction.IUnspentOutput,
     amount_tbc: number | string,
-    lpPlan?: 1 | 2,
+    lpPlan?: 1 | 2 | 3 | 4 | 5,
   ): Promise<string> {
     const privateKey = privateKey_from;
     const FTA = new FT(this.ft_a_contractTxid);
@@ -1438,8 +1451,8 @@ class poolNFT2 {
     const ftVersion =
       FTA.codeScript.length / 2 === ft_v2_length || isCoin ? 2 : 1;
     lpPlan =
-      this.lp_plan === 1 || this.lp_plan === 2
-        ? (this.lp_plan as 1 | 2)
+      this.lp_plan >= 1 && this.lp_plan <= 5
+        ? (this.lp_plan as 1 | 2 | 3 | 4 | 5)
         : lpPlan || 1;
     if (Number(amount_tbc) <= 0) {
       throw new Error("Invalid TBC amount input");
@@ -1451,7 +1464,7 @@ class poolNFT2 {
     const ft_a_amount = this.ft_a_amount;
     const amount_tbcbn = parseDecimalToBigInt(amount_tbc, 6);
     const serviceFee =
-      (amount_tbcbn * BigInt(this.service_fee_rate + 10)) / BigInt(10000);
+      (amount_tbcbn * BigInt(this.service_fee_rate)) / BigInt(10000);
     const serviceFeeLP =
       (amount_tbcbn * BigInt(lpPlan === 1 ? this.service_fee_rate : 5)) /
       BigInt(10000);
@@ -1570,12 +1583,7 @@ class poolNFT2 {
     );
     // P2PKH_ServiceFee
     if (serviceFeeA >= BigInt(10)) {
-      tx.to(
-        lpPlan === 1
-          ? "13oCEJaqyyiC8iRrfup6PDL2GKZ3xQrsZL"
-          : "1Fa6Uy64Ub4qNdB896zX2pNMx4a8zMhtCy",
-        Number(serviceFeeA),
-      );
+      tx.to(getServiceFeeAddress(lpPlan), Number(serviceFeeA));
     }
     // FTAbyC_Change
     if (ft_a_amount_decrement < tapeAmountSum) {
@@ -1674,7 +1682,7 @@ class poolNFT2 {
     address_to: string,
     utxo: tbc.Transaction.IUnspentOutput,
     amount_token: number | string,
-    lpPlan?: 1 | 2,
+    lpPlan?: 1 | 2 | 3 | 4 | 5,
   ): Promise<string> {
     const privateKey = privateKey_from;
     const FTA = new FT(this.ft_a_contractTxid);
@@ -1688,8 +1696,8 @@ class poolNFT2 {
     FTA.initialize(FTAInfo);
     const isCoin = FTA.codeScript.length / 2 === coin_length;
     lpPlan =
-      this.lp_plan === 1 || this.lp_plan === 2
-        ? (this.lp_plan as 1 | 2)
+      this.lp_plan >= 1 && this.lp_plan <= 5
+        ? (this.lp_plan as 1 | 2 | 3 | 4 | 5)
         : lpPlan || 1;
     const amount_ftbn = parseDecimalToBigInt(amount_token, FTA.decimal);
     if (Number(amount_token) <= 0) {
@@ -1719,7 +1727,7 @@ class poolNFT2 {
     // console.log(`tbc_amount: ${this.tbc_amount}`);
     const tbc_amount_decrement = BigInt(tbc_amount) - BigInt(this.tbc_amount);
     const serviceFee =
-      (tbc_amount_decrement * BigInt(this.service_fee_rate + 10)) /
+      (tbc_amount_decrement * BigInt(this.service_fee_rate)) /
       BigInt(10000);
     const serviceFeeLP =
       (tbc_amount_decrement *
@@ -1818,12 +1826,7 @@ class poolNFT2 {
     );
     // P2PKH_ServiceFee
     if (serviceFeeA >= BigInt(10)) {
-      tx.to(
-        lpPlan === 1
-          ? "13oCEJaqyyiC8iRrfup6PDL2GKZ3xQrsZL"
-          : "1Fa6Uy64Ub4qNdB896zX2pNMx4a8zMhtCy",
-        Number(serviceFeeA),
-      );
+      tx.to(getServiceFeeAddress(lpPlan), Number(serviceFeeA));
     }
     // FTAbyA_change
     if (amount_ftbn < fttxo_a.ftBalance!) {
@@ -1915,7 +1918,7 @@ class poolNFT2 {
     ftPreTX: tbc.Transaction[],
     ftPrePreTxData: string[],
     amount_token: number | string,
-    lpPlan?: 1 | 2,
+    lpPlan?: 1 | 2 | 3 | 4 | 5,
     utxo?: tbc.Transaction.IUnspentOutput,
   ): Promise<string> {
     const privateKey = privateKey_from;
@@ -1931,8 +1934,8 @@ class poolNFT2 {
     FTA.initialize(FTAInfo);
     const isCoin = FTA.codeScript.length / 2 === coin_length;
     lpPlan =
-      this.lp_plan === 1 || this.lp_plan === 2
-        ? (this.lp_plan as 1 | 2)
+      this.lp_plan >= 1 && this.lp_plan <= 5
+        ? (this.lp_plan as 1 | 2 | 3 | 4 | 5)
         : lpPlan || 1;
     const amount_ftbn = parseDecimalToBigInt(amount_token, FTA.decimal);
     if (Number(amount_token) <= 0) {
@@ -2020,12 +2023,7 @@ class poolNFT2 {
     );
     // P2PKH_ServiceFee
     if (serviceFeeA >= BigInt(10)) {
-      tx.to(
-        lpPlan === 1
-          ? "13oCEJaqyyiC8iRrfup6PDL2GKZ3xQrsZL"
-          : "1Fa6Uy64Ub4qNdB896zX2pNMx4a8zMhtCy",
-        Number(serviceFeeA),
-      );
+      tx.to(getServiceFeeAddress(lpPlan), Number(serviceFeeA));
     }
     // FTAbyA_change
     if (amount_ftbn < fttxo_a.ftBalance!) {
@@ -4558,7 +4556,7 @@ class poolNFT2 {
   }
 
   private getPoolNftTape(
-    lpPlan: 1 | 2,
+    lpPlan: 1 | 2 | 3 | 4 | 5,
     withLock?: boolean,
     withLockTime?: boolean,
   ): tbc.Script {
@@ -4631,7 +4629,7 @@ class poolNFT2 {
   getPoolNftCode(
     txid: string,
     vout: number,
-    lpPlan: 1 | 2,
+    lpPlan: 1 | 2 | 3 | 4 | 5,
     ftVersion: 1 | 2,
     tag?: string,
     isCoin?: boolean,
@@ -4642,9 +4640,7 @@ class poolNFT2 {
     const utxoHex = writer.toBuffer().toString("hex");
     const tagWriter = new tbc.encoding.BufferWriter();
     const pumpPublicKeyHash = tbc.Address.fromString(
-      lpPlan === 1
-        ? "13oCEJaqyyiC8iRrfup6PDL2GKZ3xQrsZL"
-        : "1Fa6Uy64Ub4qNdB896zX2pNMx4a8zMhtCy",
+      getServiceFeeAddress(lpPlan),
     ).hashBuffer.toString("hex");
     const ftCodeSize = isCoin ? "dc07" : ftVersion === 1 ? "1c06" : "5c07";
     const tagValue = tag || "NULL";
@@ -4660,7 +4656,7 @@ class poolNFT2 {
   getPoolNftCodeWithLock(
     txid: string,
     vout: number,
-    lpPlan: 1 | 2,
+    lpPlan: 1 | 2 | 3 | 4 | 5,
     lpCostAddress: tbc.Address | string,
     lpCostTBC: number,
     pubKeyLock: string[],
@@ -4701,9 +4697,7 @@ class poolNFT2 {
 
     const tagWriter = new tbc.encoding.BufferWriter();
     const pumpPublicKeyHash = tbc.Address.fromString(
-      lpPlan === 1
-        ? "13oCEJaqyyiC8iRrfup6PDL2GKZ3xQrsZL"
-        : "1Fa6Uy64Ub4qNdB896zX2pNMx4a8zMhtCy",
+      getServiceFeeAddress(lpPlan),
     ).hashBuffer.toString("hex");
     const ftCodeSize = isCoin ? "dc07" : ftVersion === 1 ? "1c06" : "5c07";
     const tagValue = tag || "NULL";
