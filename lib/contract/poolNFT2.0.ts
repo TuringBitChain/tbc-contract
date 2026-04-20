@@ -1961,7 +1961,7 @@ class poolNFT2 {
     );
     const tbc_amount_decrement = BigInt(tbc_amount) - BigInt(this.tbc_amount);
     const serviceFee =
-      (tbc_amount_decrement * BigInt(this.service_fee_rate + 10)) /
+      (tbc_amount_decrement * BigInt(this.service_fee_rate)) /
       BigInt(10000);
     const serviceFeeLP =
       (tbc_amount_decrement *

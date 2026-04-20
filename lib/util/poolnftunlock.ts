@@ -1,5 +1,20 @@
 import * as tbc from 'tbc-lib-js';
 const partial_sha256 = require('tbc-lib-js/lib/util/partial-sha256');
+
+const SERVICE_FEE_ADDRESS: { [key: number]: string } = {
+    1: "13oCEJaqyyiC8iRrfup6PDL2GKZ3xQrsZL",
+    2: "1Fa6Uy64Ub4qNdB896zX2pNMx4a8zMhtCy",
+    3: "125fTLNsraQxTYqT4EeQNF2ggzcqicveKL",
+    4: "19DetoaaohQkjFVJ6oGXd83xhZYQSbpE1g",
+    5: "15EKrhuD8Yf3SfhjAgbizYqfnBbKh9ZMZ7",
+};
+const SERVICE_FEE_PKH_SET = new Set(
+    Object.values(SERVICE_FEE_ADDRESS).map(addr => tbc.Address.fromString(addr).hashBuffer.toString('hex'))
+);
+function isServiceFeePkh(pubKeyHash: string): boolean {
+    return SERVICE_FEE_PKH_SET.has(pubKeyHash);
+}
+
 const version = 10;
 const vliolength = '10'; // Version + nLockTime + inputCount + outputCount (16 bytes)
 const amountlength = '08'; // Length of the amount field (8 bytes)
@@ -1230,7 +1245,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                     if (tx.outputs.length == 5) {
                         const lockingscript = tx.outputs[4].script.toBuffer();
                         const pubKeyHash = lockingscript.subarray(3, 23).toString('hex');
-                        if (pubKeyHash !== "1eacc275e83741a10d19f139e191d1fe360055e8" && pubKeyHash !== "9fd4106333baf69c11d5b174046f92c9ac963aab") {
+                        if (!isServiceFeePkh(pubKeyHash)) {
                             writer.write(Buffer.from('00', 'hex'));
                             writer.write(Buffer.from('00', 'hex'));
                             const size = getSize(lockingscript.length); // size小端序
@@ -1261,7 +1276,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                     } else if (tx.outputs.length == 6) {
                         let lockingscript = tx.outputs[4].script.toBuffer();
                         const pubKeyHash = lockingscript.subarray(3, 23).toString('hex');
-                        if (pubKeyHash !== "1eacc275e83741a10d19f139e191d1fe360055e8" && pubKeyHash !== "9fd4106333baf69c11d5b174046f92c9ac963aab") {
+                        if (!isServiceFeePkh(pubKeyHash)) {
                             writer.write(Buffer.from('00', 'hex'));
                             const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
                             const size = getSize(lockingscript.length); // size小端序
@@ -1308,7 +1323,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                     } else if (tx.outputs.length == 7) {
                         let lockingscript = tx.outputs[4].script.toBuffer();
                         const pubKeyHash = lockingscript.subarray(3, 23).toString('hex');
-                        if (pubKeyHash !== "1eacc275e83741a10d19f139e191d1fe360055e8" && pubKeyHash !== "9fd4106333baf69c11d5b174046f92c9ac963aab") {
+                        if (!isServiceFeePkh(pubKeyHash)) {
                             writer.write(Buffer.from('00', 'hex'));
                             let offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
                             let size = getSize(lockingscript.length); // size小端序
@@ -1463,7 +1478,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                         case 6:
                             lockingscript = tx.outputs[5].script.toBuffer();
                             pubKeyHash = lockingscript.subarray(3, 23).toString('hex');
-                            if (pubKeyHash !== "1eacc275e83741a10d19f139e191d1fe360055e8" && pubKeyHash !== "9fd4106333baf69c11d5b174046f92c9ac963aab") {
+                            if (!isServiceFeePkh(pubKeyHash)) {
                                 writer.write(Buffer.from('00', 'hex'));
                                 writer.write(Buffer.from('00', 'hex'));
                                 const size = getSize(lockingscript.length); // size小端序
@@ -1495,7 +1510,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                         case 7:
                             lockingscript = tx.outputs[5].script.toBuffer();
                             pubKeyHash = lockingscript.subarray(3, 23).toString('hex');
-                            if (pubKeyHash !== "1eacc275e83741a10d19f139e191d1fe360055e8" && pubKeyHash !== "9fd4106333baf69c11d5b174046f92c9ac963aab") {
+                            if (!isServiceFeePkh(pubKeyHash)) {
                                 writer.write(Buffer.from('00', 'hex'));
                                 const offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
                                 const size = getSize(lockingscript.length); // size小端序
@@ -1543,7 +1558,7 @@ export function getCurrentTxOutputsDataforPool2(tx: tbc.Transaction, option: num
                         case 8:
                             lockingscript = tx.outputs[5].script.toBuffer();
                             pubKeyHash = lockingscript.subarray(3, 23).toString('hex');
-                            if (pubKeyHash !== "1eacc275e83741a10d19f139e191d1fe360055e8" && pubKeyHash !== "9fd4106333baf69c11d5b174046f92c9ac963aab") {
+                            if (!isServiceFeePkh(pubKeyHash)) {
                                 writer.write(Buffer.from('00', 'hex'));
                                 let offset = lockingscript.length === ft_v1_length ? ft_v1_partial_offset : lockingscript.length === coin_length ? coin_partial_offset : ft_v2_partial_offset;
                                 let size = getSize(lockingscript.length); // size小端序
