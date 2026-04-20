@@ -9,7 +9,7 @@ const ftContractTxid = "";
 const poolNftContractId = "";
 
 const fee = 0.01;   //可能的交易手续费，根据需要取值
-const serviceRate = 25; //swap手续费率，默认千分之二点五
+const serviceRate = 35; //swap手续费率，默认千分之三点五
 const lpPlan = 2;  //lp手续费方案, 方案1: LP 0.25%  swap服务商 0.09%  协议0.01%; 方案2: LP 0.05%  swap服务商 0.29%  协议0.01%
 const tag = "tbc"; //池子标签，用于区分创建者
 const isLockTime = true; //是否具备锁仓功能
