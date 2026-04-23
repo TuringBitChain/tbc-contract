@@ -1,12 +1,98 @@
 import * as tbc from "tbc-lib-js";
 import { getPrePreTxdata, getSize } from "../util/ftunlock";
 import {
+  getCurrentTxdata as nftGetCurrentTxdata,
+  getPreTxdata as nftGetPreTxdata,
+  getPrePreTxdata as nftGetPrePreTxdata,
+} from "../util/nftunlock";
+import {
   buildUTXO,
   buildFtPrePreTxData,
   parseDecimalToBigInt,
 } from "../util/util";
 const FT = require("./ft");
 const NFT = require("./nft");
+
+const SIGHASH_ALL_FORKID =
+  (tbc.crypto.Signature as any).SIGHASH_ALL |
+  (tbc.crypto.Signature as any).SIGHASH_FORKID;
+
+/** Sighash to be signed externally by the MuSig2 admin ceremony. */
+export interface AdminSighash {
+  inputIndex: number;
+  sighash: Buffer; // 32 bytes BIP340 msg
+}
+
+/** Returned by prepare* admin methods. `finalize(sigs)` produces the final tx raw. */
+export interface AdminPrepared<R> {
+  tx: tbc.Transaction;
+  sighashes: AdminSighash[];
+  finalize: (schnorrSigs64: Buffer[]) => R;
+}
+
+function computeInputSighash(
+  tx: tbc.Transaction,
+  inputIndex: number,
+): Buffer {
+  const preimageHex = tx.getPreimage(inputIndex, SIGHASH_ALL_FORKID);
+  return tbc.crypto.Hash.sha256sha256(Buffer.from(preimageHex, "hex"));
+}
+
+function encodeSchnorrSig65Hex(sig64: Buffer): string {
+  if (!Buffer.isBuffer(sig64) || sig64.length !== 64) {
+    throw new Error("Schnorr signature must be 64 bytes");
+  }
+  return Buffer.concat([sig64, Buffer.from([SIGHASH_ALL_FORKID])]).toString(
+    "hex",
+  );
+}
+
+function hash160Hex(buf: Buffer): string {
+  return tbc.crypto.Hash.sha256ripemd160(buf).toString("hex");
+}
+
+/**
+ * A fixed-length 64-byte all-zero placeholder used as a stand-in Schnorr
+ * signature while we pre-seed admin unlock scripts. Its byte length matches a
+ * real BIP340 signature, so every size-dependent computation (fee estimate,
+ * hashOutputs) that reads the in-memory tx produces the same result before
+ * and after we swap in real signatures.
+ */
+const DUMMY_SCHNORR_SIG64 = Buffer.alloc(64);
+
+/**
+ * Pre-install dummy-signature unlock scripts on admin-signed inputs so
+ * `_estimateSize` reflects the final broadcast size, then freeze the fee so
+ * subsequent `_updateChangeOutput` calls — including the one inside
+ * `tx.seal()` — cannot mutate the change output.
+ *
+ * Why this is load-bearing: tbc-lib-js recomputes the change output in
+ * `seal()` via `_estimateFee = _estimateSize * feePerKb / 1000`. If admin
+ * inputs are still empty at sighash time, the estimated fee is too low and
+ * the initial change is too large; `seal()` then shrinks it. The Schnorr
+ * MuSig signature was produced over the *old* hashOutputs, so the node
+ * recomputes a different sighash and rejects with NULLFAIL. Freezing the fee
+ * with `tx.fee()` converts `getFee()` to a constant and makes `seal()` a
+ * no-op for the change output.
+ */
+function preseedAdminInputsAndFreezeFee(
+  tx: tbc.Transaction,
+  feePrivateKey: tbc.PrivateKey,
+  adminUnlockBuilders: Array<{
+    inputIndex: number;
+    buildWithSig: (sig64: Buffer, t: tbc.Transaction) => tbc.Script;
+  }>,
+): void {
+  for (const { inputIndex, buildWithSig } of adminUnlockBuilders) {
+    tx.setInputScript({ inputIndex }, (t: tbc.Transaction) =>
+      buildWithSig(DUMMY_SCHNORR_SIG64, t),
+    );
+  }
+  tx.sign(feePrivateKey);
+  const t = tx as any;
+  t.fee(t.getFee());
+  tx.sign(feePrivateKey);
+}
 
 class stableCoin extends FT {
   /**
@@ -16,15 +102,28 @@ class stableCoin extends FT {
    * @param utxo - The UTXO to spend.
    * @returns The raw transaction hex string array.
    */
+  /**
+   * Creates a new stableCoin. Produces a coinNft-creation tx (ECDSA-signed
+   * by the fee funder upfront) and a mint tx that requires two Schnorr
+   * MuSig2 admin signatures (inputs 0 and 1). Call `finalize(sigs)` once the
+   * external MuSig ceremony has produced the 64-byte Schnorr sigs for those
+   * sighashes.
+   *
+   * @param aggPubkey32 - 32-byte x-only MuSig2 aggregate admin pubkey.
+   * @param feePrivateKey - ECDSA key funding the txs and signing fee inputs.
+   */
   createCoin(
-    privateKey_admin: tbc.PrivateKey,
+    aggPubkey32: Buffer,
+    feePrivateKey: tbc.PrivateKey,
     address_to: string,
     utxo: tbc.Transaction.IUnspentOutput,
     utxoTX: tbc.Transaction,
     mintMessage?: string,
-  ): string[] {
-    const privateKey = privateKey_admin;
-    const adminAddress = privateKey.toAddress().toString();
+  ): AdminPrepared<string[]> {
+    if (!Buffer.isBuffer(aggPubkey32) || aggPubkey32.length !== 32) {
+      throw new Error("aggPubkey32 must be 32 bytes (x-only)");
+    }
+    const adminPubHash = hash160Hex(aggPubkey32);
     const name = this.name;
     const symbol = this.symbol;
     const decimal = this.decimal;
@@ -57,7 +156,12 @@ class stableCoin extends FT {
       coinDecimal: decimal,
       coinTotalSupply: "0",
     };
-    const coinNftTX = stableCoin.buildCoinNftTX(privateKey, utxo, data);
+    const coinNftTX = stableCoin.buildCoinNftTX(
+      feePrivateKey,
+      adminPubHash,
+      utxo,
+      data,
+    );
     const coinNftTXRaw = coinNftTX.uncheckedSerialize();
     data.coinTotalSupply = totalSupply.toString();
     const coinNftOutputs = stableCoin.buildCoinNftOutput(
@@ -71,14 +175,16 @@ class stableCoin extends FT {
       coinNftTX.outputs[0].script.toBuffer(),
     ).toString("hex");
     const codeScript = stableCoin.getCoinMintCode(
-      adminAddress,
+      adminPubHash,
       address_to,
       originCodeHash,
       tapeSize,
     );
     this.codeScript = codeScript.toBuffer().toString("hex");
     this.tapeScript = tapeScript.toBuffer().toString("hex");
-    // Construct the transaction
+    // Construct the mint transaction.
+    // Inputs: 0=coinNft code (admin MuSig), 1=coinNft hold (admin MuSig),
+    //         2=coinNft change back to fee funder (ECDSA).
     const tx = new tbc.Transaction()
       .addInputFromPrevTx(coinNftTX, 0)
       .addInputFromPrevTx(coinNftTX, 1)
@@ -108,65 +214,98 @@ class stableCoin extends FT {
         }),
       );
     }
-    tx.feePerKb(80)
-      .change(privateKey.toAddress())
-      .setInputScript(
-        {
-          inputIndex: 0,
-          privateKey,
-        },
-        (tx) => {
-          return coinNft.buildUnlockScript(
-            privateKey,
-            tx,
+    tx.feePerKb(80).change(feePrivateKey.toAddress());
+
+    // Pre-seed dummy Schnorr unlocks so the final byte layout is locked in
+    // before we compute sighashes; then freeze the fee so seal() cannot
+    // shift the change output and invalidate those sighashes.
+    preseedAdminInputsAndFreezeFee(tx, feePrivateKey, [
+      {
+        inputIndex: 0,
+        buildWithSig: (sig64, t) =>
+          coinNft.buildUnlockScriptSchnorr(
+            sig64,
+            aggPubkey32,
+            t,
             coinNftTX,
             utxoTX,
             0,
-          );
-        },
-      )
-      .setInputScript(
-        {
-          inputIndex: 1,
-          privateKey,
-        },
-        (tx) => {
-          const sig = tx.getSignature(1);
-          const publickey = privateKey.toPublicKey().toBuffer().toString("hex");
-          return tbc.Script.fromASM(`${sig} ${publickey}`);
-        },
-      )
-      .sign(privateKey);
-    tx.seal();
-    // console.log(tx.verify());
-    const coinMintRaw = tx.uncheckedSerialize();
-    this.contractTxid = tx.hash;
-    const txraw: string[] = [];
-    txraw.push(coinNftTXRaw);
-    txraw.push(coinMintRaw);
-    return txraw;
+          ),
+      },
+      {
+        inputIndex: 1,
+        buildWithSig: (sig64) =>
+          tbc.Script.fromASM(
+            `${encodeSchnorrSig65Hex(sig64)} ${aggPubkey32.toString("hex")}`,
+          ),
+      },
+    ]);
+
+    const sighashes: AdminSighash[] = [
+      { inputIndex: 0, sighash: computeInputSighash(tx, 0) },
+      { inputIndex: 1, sighash: computeInputSighash(tx, 1) },
+    ];
+
+    const self = this;
+    const finalize = (schnorrSigs64: Buffer[]): string[] => {
+      if (!Array.isArray(schnorrSigs64) || schnorrSigs64.length !== 2) {
+        throw new Error("createCoin.finalize: expected 2 Schnorr sigs");
+      }
+      tx.setInputScript(
+        { inputIndex: 0 },
+        (t: tbc.Transaction) =>
+          coinNft.buildUnlockScriptSchnorr(
+            schnorrSigs64[0],
+            aggPubkey32,
+            t,
+            coinNftTX,
+            utxoTX,
+            0,
+          ),
+      ).setInputScript({ inputIndex: 1 }, () =>
+        tbc.Script.fromASM(
+          `${encodeSchnorrSig65Hex(schnorrSigs64[1])} ${aggPubkey32.toString("hex")}`,
+        ),
+      );
+      // Fee input was signed at preseed; seal() re-signs via tx._privateKey.
+      tx.seal();
+      self.contractTxid = tx.hash;
+      return [coinNftTXRaw, tx.uncheckedSerialize()];
+    };
+
+    return { tx, sighashes, finalize };
   }
 
+  /**
+   * Mints additional stableCoin supply. Returns the mint tx pending admin
+   * MuSig2 signatures on inputs 0 (nft code) and 1 (nft hold). Fee input
+   * (index 2) is signed with ECDSA using `feePrivateKey` inside `finalize`.
+   *
+   * @param aggPubkey32 - 32-byte x-only MuSig2 aggregate admin pubkey.
+   * @param feePrivateKey - ECDSA key funding the fee input and change.
+   */
   mintCoin(
-    privateKey_admin: tbc.PrivateKey,
+    aggPubkey32: Buffer,
+    feePrivateKey: tbc.PrivateKey,
     address_to: string,
     mintAmount: number | string,
     utxo: tbc.Transaction.IUnspentOutput,
     nftPreTX: tbc.Transaction,
     nftPrePreTX: tbc.Transaction,
     mintMessage?: string,
-  ): string {
-    const privateKey = privateKey_admin;
-    const adminAddress = privateKey.toAddress().toString();
+  ): AdminPrepared<string> {
+    if (!Buffer.isBuffer(aggPubkey32) || aggPubkey32.length !== 32) {
+      throw new Error("aggPubkey32 must be 32 bytes (x-only)");
+    }
+    const adminPubHash = hash160Hex(aggPubkey32);
     const name = this.name;
     const symbol = this.symbol;
     const decimal = this.decimal;
-    const totalSupply = BigInt(this.totalSupply); 
+    const totalSupply = BigInt(this.totalSupply);
     const newMintAmount = parseDecimalToBigInt(mintAmount, decimal);
     const newTotalSupply = totalSupply + newMintAmount;
     const coinNftTX = nftPreTX;
 
-    // Prepare the amount in BN format and write it into a buffer
     const amountbn = new tbc.crypto.BN(newMintAmount.toString());
     const amountwriter = new tbc.encoding.BufferWriter();
     amountwriter.writeUInt64LEBN(amountbn);
@@ -175,12 +314,10 @@ class stableCoin extends FT {
     }
     const tapeAmount = amountwriter.toBuffer().toString("hex");
 
-    // Convert name, symbol, and decimal to hex
     const nameHex = Buffer.from(name, "utf8").toString("hex");
     const symbolHex = Buffer.from(symbol, "utf8").toString("hex");
     const decimalHex = decimal.toString(16).padStart(2, "0");
     const lockTimeHex = "00000000";
-    // Build the tape script
     const tapeScript = tbc.Script.fromASM(
       `OP_FALSE OP_RETURN ${tapeAmount} ${decimalHex} ${nameHex} ${symbolHex} ${lockTimeHex} 4654617065`,
     );
@@ -195,19 +332,20 @@ class stableCoin extends FT {
       ),
     );
 
-    // Build the code script for minting coin
     const originCodeHash = tbc.crypto.Hash.sha256(
       coinNftTX.outputs[0].script.toBuffer(),
     ).toString("hex");
     const codeScript = stableCoin.getCoinMintCode(
-      adminAddress,
+      adminPubHash,
       address_to,
       originCodeHash,
       tapeSize,
     );
     this.codeScript = codeScript.toBuffer().toString("hex");
     this.tapeScript = tapeScript.toBuffer().toString("hex");
-    // Construct the transaction
+
+    // Inputs: 0=nft code (admin MuSig), 1=nft hold (admin MuSig),
+    //         2=fee utxo (ECDSA).
     const tx = new tbc.Transaction()
       .addInputFromPrevTx(coinNftTX, 0)
       .addInputFromPrevTx(coinNftTX, 1)
@@ -237,39 +375,60 @@ class stableCoin extends FT {
         }),
       );
     }
-    tx.feePerKb(80)
-      .change(privateKey.toAddress())
-      .setInputScript(
-        {
-          inputIndex: 0,
-          privateKey,
-        },
-        (tx) => {
-          return coinNft.buildUnlockScript(
-            privateKey,
-            tx,
+    tx.feePerKb(80).change(feePrivateKey.toAddress());
+
+    preseedAdminInputsAndFreezeFee(tx, feePrivateKey, [
+      {
+        inputIndex: 0,
+        buildWithSig: (sig64, t) =>
+          coinNft.buildUnlockScriptSchnorr(
+            sig64,
+            aggPubkey32,
+            t,
             nftPreTX,
             nftPrePreTX,
             0,
-          );
-        },
-      )
-      .setInputScript(
-        {
-          inputIndex: 1,
-          privateKey,
-        },
-        (tx) => {
-          const sig = tx.getSignature(1);
-          const publickey = privateKey.toPublicKey().toBuffer().toString("hex");
-          return tbc.Script.fromASM(`${sig} ${publickey}`);
-        },
-      )
-      .sign(privateKey);
-    tx.seal();
-    // console.log(tx.verify());
-    const coinMintRaw = tx.uncheckedSerialize();
-    return coinMintRaw;
+          ),
+      },
+      {
+        inputIndex: 1,
+        buildWithSig: (sig64) =>
+          tbc.Script.fromASM(
+            `${encodeSchnorrSig65Hex(sig64)} ${aggPubkey32.toString("hex")}`,
+          ),
+      },
+    ]);
+
+    const sighashes: AdminSighash[] = [
+      { inputIndex: 0, sighash: computeInputSighash(tx, 0) },
+      { inputIndex: 1, sighash: computeInputSighash(tx, 1) },
+    ];
+
+    const finalize = (schnorrSigs64: Buffer[]): string => {
+      if (!Array.isArray(schnorrSigs64) || schnorrSigs64.length !== 2) {
+        throw new Error("mintCoin.finalize: expected 2 Schnorr sigs");
+      }
+      tx.setInputScript(
+        { inputIndex: 0 },
+        (t: tbc.Transaction) =>
+          coinNft.buildUnlockScriptSchnorr(
+            schnorrSigs64[0],
+            aggPubkey32,
+            t,
+            nftPreTX,
+            nftPrePreTX,
+            0,
+          ),
+      ).setInputScript({ inputIndex: 1 }, () =>
+        tbc.Script.fromASM(
+          `${encodeSchnorrSig65Hex(schnorrSigs64[1])} ${aggPubkey32.toString("hex")}`,
+        ),
+      );
+      tx.seal();
+      return tx.uncheckedSerialize();
+    };
+
+    return { tx, sighashes, finalize };
   }
 
   /**
@@ -952,24 +1111,39 @@ class stableCoin extends FT {
     return tx;
   }
 
+  /**
+   * Freezes a set of stableCoin FT UTXOs under a lockTime. Admin inputs
+   * (the FT UTXOs) are gated by Schnorr MuSig2 and must be signed externally
+   * via the returned sighashes. The fee input is ECDSA-signed by
+   * `feePrivateKey` inside `finalize`.
+   *
+   * @param aggPubkey32 - 32-byte x-only MuSig2 aggregate admin pubkey.
+   * @param feePrivateKey - ECDSA key funding the tx and signing the fee input.
+   */
   freezeCoinUTXO(
-    privateKey_admin: tbc.PrivateKey,
+    aggPubkey32: Buffer,
+    feePrivateKey: tbc.PrivateKey,
     lock_time: number,
     ftutxo: tbc.Transaction.IUnspentOutput[],
     utxo: tbc.Transaction.IUnspentOutput,
     preTX: tbc.Transaction[],
     prepreTxData: string[],
-  ): string {
-    const privateKey = privateKey_admin;
+  ): AdminPrepared<string> {
+    if (!Buffer.isBuffer(aggPubkey32) || aggPubkey32.length !== 32) {
+      throw new Error("aggPubkey32 must be 32 bytes (x-only)");
+    }
     const controlData = stableCoin.getAddressFromCode(ftutxo[0].script);
     const address =
       controlData.type === "address"
         ? tbc.Address.fromHex("00" + controlData.address).toString()
         : controlData.address;
-    const isCoin = 1;
+    const isCoin = true;
     const ftutxos = ftutxo;
     if (ftutxos.length === 0) {
       throw new Error("No FT UTXO available");
+    }
+    if (ftutxos.length > 5) {
+      throw new Error("Too many FT UTXOs (max 5)");
     }
     const tapeAmountSetIn: bigint[] = [];
     let tapeAmountSum = BigInt(0);
@@ -1014,57 +1188,98 @@ class stableCoin extends FT {
       }),
     );
     tx.feePerKb(80);
-    tx.change(privateKey.toAddress());
-    for (let i = 0; i < ftutxos.length && i < 5; i++) {
+    tx.change(feePrivateKey.toAddress());
+    for (let i = 0; i < ftutxos.length; i++) {
       tx.setInputSequence(i, 4294967294);
-      tx.setInputScript(
-        {
-          inputIndex: i,
-        },
-        (tx) => {
-          const unlockingScript = this.getFTunlock(
-            privateKey,
-            tx,
-            preTX[i],
-            prepreTxData[i],
-            i,
-            ftutxos[i].outputIndex,
-            isCoin,
-          );
-          return unlockingScript;
-        },
-      );
     }
-    tx.sign(privateKey);
     tx.setLockTime(lockTimeMax);
-    tx.seal();
-    // console.log(tx.toObject());
-    // console.log(tx.verify());
-    const txraw = tx.uncheckedSerialize();
-    return txraw;
+
+    const xOnlyHex = aggPubkey32.toString("hex");
+    const adminBuilders = ftutxos.map((_, i) => ({
+      inputIndex: i,
+      buildWithSig: (sig64: Buffer, t: tbc.Transaction) =>
+        FT.getFTunlock(
+          encodeSchnorrSig65Hex(sig64),
+          xOnlyHex,
+          t,
+          preTX[i],
+          prepreTxData[i],
+          i,
+          ftutxos[i].outputIndex,
+          isCoin,
+        ),
+    }));
+    preseedAdminInputsAndFreezeFee(tx, feePrivateKey, adminBuilders);
+
+    const sighashes: AdminSighash[] = [];
+    for (let i = 0; i < ftutxos.length; i++) {
+      sighashes.push({ inputIndex: i, sighash: computeInputSighash(tx, i) });
+    }
+
+    const finalize = (schnorrSigs64: Buffer[]): string => {
+      if (!Array.isArray(schnorrSigs64) || schnorrSigs64.length !== ftutxos.length) {
+        throw new Error(
+          `freezeCoinUTXO.finalize: expected ${ftutxos.length} Schnorr sigs, got ${schnorrSigs64?.length}`,
+        );
+      }
+      for (let i = 0; i < ftutxos.length; i++) {
+        const sig65Hex = encodeSchnorrSig65Hex(schnorrSigs64[i]);
+        const idx = i;
+        tx.setInputScript({ inputIndex: idx }, (t: tbc.Transaction) =>
+          FT.getFTunlock(
+            sig65Hex,
+            xOnlyHex,
+            t,
+            preTX[idx],
+            prepreTxData[idx],
+            idx,
+            ftutxos[idx].outputIndex,
+            isCoin,
+          ),
+        );
+      }
+      tx.seal();
+      return tx.uncheckedSerialize();
+    };
+
+    return { tx, sighashes, finalize };
   }
 
+  /**
+   * Unfreezes a set of frozen stableCoin FT UTXOs. Admin inputs
+   * (the FT UTXOs) are gated by Schnorr MuSig2 and must be signed externally
+   * via the returned sighashes. The fee input is ECDSA-signed by
+   * `feePrivateKey` inside `finalize`.
+   *
+   * @param aggPubkey32 - 32-byte x-only MuSig2 aggregate admin pubkey.
+   * @param feePrivateKey - ECDSA key funding the tx and signing the fee input.
+   */
   unfreezeCoinUTXO(
-    privateKey_admin: tbc.PrivateKey,
+    aggPubkey32: Buffer,
+    feePrivateKey: tbc.PrivateKey,
     ftutxo: tbc.Transaction.IUnspentOutput[],
     utxo: tbc.Transaction.IUnspentOutput,
     preTX: tbc.Transaction[],
     prepreTxData: string[],
-  ): string {
-    const privateKey = privateKey_admin;
+  ): AdminPrepared<string> {
+    if (!Buffer.isBuffer(aggPubkey32) || aggPubkey32.length !== 32) {
+      throw new Error("aggPubkey32 must be 32 bytes (x-only)");
+    }
     const controlData = stableCoin.getAddressFromCode(ftutxo[0].script);
     const address =
       controlData.type === "address"
         ? tbc.Address.fromHex("00" + controlData.address).toString()
         : controlData.address;
-    const isCoin = 1;
+    const isCoin = true;
     const ftutxos = ftutxo;
     if (ftutxos.length === 0) {
       throw new Error("No FT UTXO available");
     }
+    if (ftutxos.length > 5) {
+      throw new Error("Too many FT UTXOs (max 5)");
+    }
     const tapeAmountSetIn: bigint[] = [];
     let tapeAmountSum = BigInt(0);
-    let lockTimeMax = 0;
     for (let i = 0; i < ftutxo.length; i++) {
       tapeAmountSetIn.push(ftutxo[i].ftBalance!);
       tapeAmountSum += BigInt(tapeAmountSetIn[i]);
@@ -1099,34 +1314,61 @@ class stableCoin extends FT {
       }),
     );
     tx.feePerKb(80);
-    tx.change(privateKey.toAddress());
-    for (let i = 0; i < ftutxos.length && i < 5; i++) {
+    tx.change(feePrivateKey.toAddress());
+    for (let i = 0; i < ftutxos.length; i++) {
       tx.setInputSequence(i, 4294967294);
-      tx.setInputScript(
-        {
-          inputIndex: i,
-        },
-        (tx) => {
-          const unlockingScript = this.getFTunlock(
-            privateKey,
-            tx,
-            preTX[i],
-            prepreTxData[i],
-            i,
-            ftutxos[i].outputIndex,
-            isCoin,
-          );
-          return unlockingScript;
-        },
-      );
     }
-    tx.sign(privateKey);
-    tx.setLockTime(lockTimeMax);
-    tx.seal();
-    // console.log(tx.toObject());
-    // console.log(tx.verify());
-    const txraw = tx.uncheckedSerialize();
-    return txraw;
+    tx.setLockTime(0);
+
+    const xOnlyHex = aggPubkey32.toString("hex");
+    const adminBuilders = ftutxos.map((_, i) => ({
+      inputIndex: i,
+      buildWithSig: (sig64: Buffer, t: tbc.Transaction) =>
+        FT.getFTunlock(
+          encodeSchnorrSig65Hex(sig64),
+          xOnlyHex,
+          t,
+          preTX[i],
+          prepreTxData[i],
+          i,
+          ftutxos[i].outputIndex,
+          isCoin,
+        ),
+    }));
+    preseedAdminInputsAndFreezeFee(tx, feePrivateKey, adminBuilders);
+
+    const sighashes: AdminSighash[] = [];
+    for (let i = 0; i < ftutxos.length; i++) {
+      sighashes.push({ inputIndex: i, sighash: computeInputSighash(tx, i) });
+    }
+
+    const finalize = (schnorrSigs64: Buffer[]): string => {
+      if (!Array.isArray(schnorrSigs64) || schnorrSigs64.length !== ftutxos.length) {
+        throw new Error(
+          `unfreezeCoinUTXO.finalize: expected ${ftutxos.length} Schnorr sigs, got ${schnorrSigs64?.length}`,
+        );
+      }
+      for (let i = 0; i < ftutxos.length; i++) {
+        const sig65Hex = encodeSchnorrSig65Hex(schnorrSigs64[i]);
+        const idx = i;
+        tx.setInputScript({ inputIndex: idx }, (t: tbc.Transaction) =>
+          FT.getFTunlock(
+            sig65Hex,
+            xOnlyHex,
+            t,
+            preTX[idx],
+            prepreTxData[idx],
+            idx,
+            ftutxos[idx].outputIndex,
+            isCoin,
+          ),
+        );
+      }
+      tx.seal();
+      return tx.uncheckedSerialize();
+    };
+
+    return { tx, sighashes, finalize };
   }
 
   /**
@@ -1286,14 +1528,24 @@ class stableCoin extends FT {
     ];
   }
 
+  /**
+   * Build the coinNft creation transaction.
+   * Funded and ECDSA-signed by `feePrivateKey`. The hold-script output is
+   * sent to HASH160(adminPubHashHex) so that the later mint tx can be
+   * unlocked by the Schnorr MuSig aggregate key.
+   */
   static buildCoinNftTX(
-    privateKey_admin: tbc.PrivateKey,
+    feePrivateKey: tbc.PrivateKey,
+    adminPubHashHex: string,
     utxo: tbc.Transaction.IUnspentOutput,
     data: coinNftData,
   ): tbc.Transaction {
-    const address = privateKey_admin.toAddress().toString();
+    const feeAddress = feePrivateKey.toAddress().toString();
     const nftCodeScript = coinNft.getCoinNftCode(utxo.txId, utxo.outputIndex);
-    const nftHoldScript = coinNft.getHoldScript(address, data.nftName);
+    const nftHoldScript = coinNft.getHoldScriptFromHash(
+      adminPubHashHex,
+      data.nftName,
+    );
     const nftTapeScript = coinNft.getTapeScript(data);
     const outputs = stableCoin.buildCoinNftOutput(
       nftCodeScript,
@@ -1305,25 +1557,32 @@ class stableCoin extends FT {
       .addOutput(outputs[0])
       .addOutput(outputs[1])
       .addOutput(outputs[2])
-      .change(address);
+      .change(feeAddress);
     const txSize = tx.getEstimateSize();
     if (txSize < 1000) {
       tx.fee(80);
     } else {
       tx.feePerKb(80);
     }
-    tx.sign(privateKey_admin).seal();
+    tx.sign(feePrivateKey).seal();
     return tx;
   }
 
+  /**
+   * Build the FT mint code script for stableCoin.
+   * @param adminPubHashHex - HASH160 of the admin identity (20 bytes as hex).
+   *   For Schnorr MuSig admin: HASH160(xOnly aggregate pubkey 32 bytes).
+   * @param receiveAddress - Initial recipient address for the mint.
+   * @param codeHash - sha256 of the coinNft code script (32 bytes as hex).
+   * @param tapeSize - Length of the tape script in bytes.
+   */
   static getCoinMintCode(
-    adminAddress: string,
+    adminPubHashHex: string,
     receiveAddress: string,
     codeHash: string,
     tapeSize: number,
   ): tbc.Script {
-    const adminPubHash =
-      tbc.Address.fromString(adminAddress).hashBuffer.toString("hex");
+    const adminPubHash = adminPubHashHex;
     const publicKeyHash =
       tbc.Address.fromString(receiveAddress).hashBuffer.toString("hex");
     const hash = publicKeyHash + "00";
@@ -1438,6 +1697,57 @@ class coinNft extends NFT {
       `${preScript.toASM()} OP_RETURN ${flagHex}`,
     );
     return script;
+  }
+
+  /**
+   * Hold script variant that takes a raw 20-byte pubkey hash (hex).
+   * Used when the admin identity is a Schnorr MuSig aggregate key rather than
+   * a conventional address.
+   */
+  static getHoldScriptFromHash(pubKeyHashHex: string, flag: string): tbc.Script {
+    if (!/^[0-9a-fA-F]{40}$/.test(pubKeyHashHex)) {
+      throw new Error("pubKeyHashHex must be 20 bytes (40 hex chars)");
+    }
+    const flagHex = Buffer.from(`For Coin ${flag} NHold`, "utf8").toString(
+      "hex",
+    );
+    return tbc.Script.fromASM(
+      `OP_DUP OP_HASH160 ${pubKeyHashHex} OP_EQUALVERIFY OP_CHECKSIG OP_RETURN ${flagHex}`,
+    );
+  }
+
+  /**
+   * Schnorr-flavored variant of NFT.buildUnlockScript.
+   * Produces the unlock script for an input spending an nft code output when
+   * the authorizing signature is a BIP340 Schnorr signature over the SIGHASH
+   * digest. The on-chain OP_CHECKSIG dispatches on sig length (64 → Schnorr)
+   * and pubkey length (32 → x-only), so HASH160(xOnlyPubkey32) is what must
+   * match the embedded admin pubkey hash.
+   *
+   * @param schnorrSig64 - 64-byte BIP340 signature
+   * @param xOnlyPubkey32 - 32-byte x-only aggregate pubkey
+   */
+  static buildUnlockScriptSchnorr(
+    schnorrSig64: Buffer,
+    xOnlyPubkey32: Buffer,
+    currentTX: tbc.Transaction,
+    preTX: tbc.Transaction,
+    prepreTxData: tbc.Transaction,
+    currentUnlockIndex: number,
+  ): tbc.Script {
+    if (!Buffer.isBuffer(xOnlyPubkey32) || xOnlyPubkey32.length !== 32) {
+      throw new Error("xOnlyPubkey32 must be 32 bytes");
+    }
+    const currenttxdata = nftGetCurrentTxdata(currentTX);
+    const prepretxdata = nftGetPrePreTxdata(prepreTxData);
+    const pretxdata = nftGetPreTxdata(preTX);
+    const sig65Hex = encodeSchnorrSig65Hex(schnorrSig64);
+    // length-prefixed push (65 bytes → 0x41, 32 bytes → 0x20)
+    const sig = "41" + sig65Hex;
+    const publicKey = "20" + xOnlyPubkey32.toString("hex");
+    return new tbc.Script(
+      sig + publicKey + currenttxdata + prepretxdata + pretxdata,
+    );
   }
 
   static getTapeScript(data: coinNftData): tbc.Script {

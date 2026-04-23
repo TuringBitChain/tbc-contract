@@ -3,6 +3,7 @@ changelog/
 .github/
 docs/
 test.*
+test/
 lib/**/*.d.ts
 lib/**/*.ts
 *.log
@@ -11,3 +12,4 @@ obfuscate.js
 .DS_Store
 .claude/
 .vscode/
+CLAUDE.md

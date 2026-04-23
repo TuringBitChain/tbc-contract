@@ -70,7 +70,7 @@ class poolNFT2 {
     this.ft_a_amount = BigInt(0);
     this.tbc_amount = BigInt(0);
     this.ft_a_number = 0;
-    this.service_fee_rate = 35; //万分之25
+    this.service_fee_rate = 35; //万分之35
     this.service_provider = "";
     this.ft_a_contractTxid = "";
     this.ft_lp_partialhash = "";
@@ -1466,7 +1466,7 @@ class poolNFT2 {
     const serviceFee =
       (amount_tbcbn * BigInt(this.service_fee_rate)) / BigInt(10000);
     const serviceFeeLP =
-      (amount_tbcbn * BigInt(lpPlan === 1 ? this.service_fee_rate : 5)) /
+      (amount_tbcbn * BigInt(lpPlan === 1 ? this.service_fee_rate - 10 : 5)) /
       BigInt(10000);
     const serviceFeeA = serviceFee - serviceFeeLP;
     const amount_tbcbn_swap = amount_tbcbn - serviceFee;
@@ -1731,7 +1731,7 @@ class poolNFT2 {
       BigInt(10000);
     const serviceFeeLP =
       (tbc_amount_decrement *
-        BigInt(lpPlan === 1 ? this.service_fee_rate : 5)) /
+        BigInt(lpPlan === 1 ? this.service_fee_rate - 10 : 5)) /
       BigInt(10000);
     const serviceFeeA = serviceFee - serviceFeeLP;
     const tbc_amount_decrement_swap = tbc_amount_decrement - serviceFee;
@@ -1965,7 +1965,7 @@ class poolNFT2 {
       BigInt(10000);
     const serviceFeeLP =
       (tbc_amount_decrement *
-        BigInt(lpPlan === 1 ? this.service_fee_rate : 5)) /
+        BigInt(lpPlan === 1 ? this.service_fee_rate - 10 : 5)) /
       BigInt(10000);
     const serviceFeeA = serviceFee - serviceFeeLP;
     const tbc_amount_decrement_swap = tbc_amount_decrement - serviceFee;

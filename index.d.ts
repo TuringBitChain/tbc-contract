@@ -1090,6 +1090,26 @@ declare module "tbc-contract" {
     coinTotalSupply: string;
   }
 
+  /**
+   * A sighash that must be signed externally by the MuSig2 admin ceremony.
+   * `sighash` is the 32-byte BIP340 message (sha256sha256(preimage)).
+   */
+  export interface AdminSighash {
+    inputIndex: number;
+    sighash: Buffer;
+  }
+
+  /**
+   * Returned by admin-gated `stableCoin` methods. Callers run an external
+   * MuSig2 ceremony to produce one 64-byte Schnorr signature per entry in
+   * `sighashes`, then call `finalize(sigs)` to get the serialized tx(s).
+   */
+  export interface AdminPrepared<R> {
+    tx: Transaction;
+    sighashes: AdminSighash[];
+    finalize: (schnorrSigs64: Buffer[]) => R;
+  }
+
   export class stableCoin extends FT {
     constructor(
       txidOrParams:
@@ -1097,21 +1117,23 @@ declare module "tbc-contract" {
         | { name: string; symbol: string; amount: number; decimal: number },
     );
     createCoin(
-      privateKey_admin: PrivateKey,
+      aggPubkey32: Buffer,
+      feePrivateKey: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
       utxoTX: Transaction,
       mintMessage?: string,
-    ): string[];
+    ): AdminPrepared<string[]>;
     mintCoin(
-      privateKey_admin: PrivateKey,
+      aggPubkey32: Buffer,
+      feePrivateKey: PrivateKey,
       address_to: string,
       mintAmount: number | string,
       utxo: Transaction.IUnspentOutput,
       nftPreTX: Transaction,
       nftPrePreTX: Transaction,
       mintMessage?: string,
-    ): string;
+    ): AdminPrepared<string>;
     transfer(
       privateKey_from: PrivateKey,
       address_to: string,
@@ -1139,32 +1161,35 @@ declare module "tbc-contract" {
       localTX: Transaction[],
     ): Array<{ txraw: string }>;
     freezeCoinUTXO(
-      privateKey_admin: PrivateKey,
+      aggPubkey32: Buffer,
+      feePrivateKey: PrivateKey,
       lock_time: number,
       ftutxo: Transaction.IUnspentOutput[],
       utxo: Transaction.IUnspentOutput,
       preTX: Transaction[],
       prepreTxData: string[],
-    ): string;
+    ): AdminPrepared<string>;
     unfreezeCoinUTXO(
-      privateKey_admin: PrivateKey,
+      aggPubkey32: Buffer,
+      feePrivateKey: PrivateKey,
       ftutxo: Transaction.IUnspentOutput[],
       utxo: Transaction.IUnspentOutput,
       preTX: Transaction[],
       prepreTxData: string[],
-    ): string;
+    ): AdminPrepared<string>;
     static buildCoinNftOutput(
       nftCodeScript: Script,
       nftHoldScript: Script,
       data: CoinNftData,
     ): Transaction.Output[];
     static buildCoinNftTX(
-      privateKey_admin: PrivateKey,
+      feePrivateKey: PrivateKey,
+      adminPubHashHex: string,
       utxo: Transaction.IUnspentOutput,
       data: CoinNftData,
     ): Transaction;
     static getCoinMintCode(
-      adminAddress: string,
+      adminPubHashHex: string,
       receiveAddress: string,
       codeHash: string,
       tapeSize: number,
