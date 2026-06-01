@@ -1080,6 +1080,95 @@ declare module "tbc-contract" {
       privateKey: string,
       timelock: number,
     ): string;
+
+    export function deployHTLCToken(
+      sender: string,
+      receiver: string,
+      hashlock: string,
+      timelock: number,
+      ftAmount: number | string,
+      ftutxos: Transaction.IUnspentOutput[],
+      utxo: Transaction.IUnspentOutput,
+      preTX: Transaction[],
+      prepreTxData: string[],
+    ): string;
+
+    export function fillSigDeployHTLCToken(
+      deployRaw: string,
+      sigs: string[],
+      publicKey: string,
+      preTX: Transaction[],
+      prepreTxData: string[],
+    ): string;
+
+    export function withdrawHTLCToken(
+      receiver: string,
+      htlcutxo: Transaction.IUnspentOutput,
+      ftutxo: Transaction.IUnspentOutput,
+      deployTX: Transaction,
+      utxo: Transaction.IUnspentOutput,
+    ): string;
+
+    export function fillSigWithdrawHTLCToken(
+      withdrawRaw: string,
+      sigs: string[],
+      publicKey: string,
+      secret: string,
+      deployTX: Transaction,
+      prepreTxData: string,
+    ): string;
+
+    export function refundHTLCToken(
+      sender: string,
+      htlcutxo: Transaction.IUnspentOutput,
+      ftutxo: Transaction.IUnspentOutput,
+      deployTX: Transaction,
+      utxo: Transaction.IUnspentOutput,
+      timelock: number,
+    ): string;
+
+    export function fillSigRefundHTLCToken(
+      refundRaw: string,
+      sigs: string[],
+      publicKey: string,
+      deployTX: Transaction,
+      prepreTxData: string,
+    ): string;
+
+    export function deployHTLCTokenWithSign(
+      sender: string,
+      receiver: string,
+      hashlock: string,
+      timelock: number,
+      ftAmount: number | string,
+      ftutxos: Transaction.IUnspentOutput[],
+      utxo: Transaction.IUnspentOutput,
+      preTX: Transaction[],
+      prepreTxData: string[],
+      privateKey: string,
+    ): string;
+
+    export function withdrawHTLCTokenWithSign(
+      privateKey: string,
+      receiver: string,
+      htlcutxo: Transaction.IUnspentOutput,
+      ftutxo: Transaction.IUnspentOutput,
+      deployTX: Transaction,
+      prepreTxData: string,
+      utxo: Transaction.IUnspentOutput,
+      secret: string,
+    ): string;
+
+    export function refundHTLCTokenWithSign(
+      privateKey: string,
+      sender: string,
+      htlcutxo: Transaction.IUnspentOutput,
+      ftutxo: Transaction.IUnspentOutput,
+      deployTX: Transaction,
+      prepreTxData: string,
+      utxo: Transaction.IUnspentOutput,
+      timelock: number,
+    ): string;
   }
 
   interface coinNftData {
