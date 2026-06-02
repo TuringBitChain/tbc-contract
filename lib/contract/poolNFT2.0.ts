@@ -16,6 +16,7 @@ import {
   isLock,
   safeJSONParse,
   parseDecimalToBigInt,
+  fillCharLengthInFT,
 } from "../util/util";
 const API = require("../api/api");
 const FT = require("./ft");
@@ -27,6 +28,18 @@ const ft_v2_length = 1884;
 const ft_v2_partial_offset = 1856;
 const coin_length = 2012;
 const coin_partial_offset = 1984;
+
+type FTVersion = 1 | 2 | 3;
+
+const getFTVersion = (codeScript: string, isCoin: boolean): FTVersion => {
+  const baseVersion =
+    codeScript.length / 2 === ft_v2_length || isCoin ? 2 : 1;
+  if (baseVersion !== 2) return 1;
+
+  const fillCharLength = fillCharLengthInFT(codeScript);
+  console.log(fillCharLength);
+  return fillCharLength === 1 || fillCharLength === 2 ? 3 : 2;
+};
 
 const SERVICE_FEE_ADDRESS: { [key: number]: string } = {
   1: "13oCEJaqyyiC8iRrfup6PDL2GKZ3xQrsZL",
@@ -170,8 +183,7 @@ class poolNFT2 {
     }
     FTA.initialize(FTAInfo);
     const isCoin = FTA.codeScript.length / 2 === coin_length;
-    const ftVersion =
-      FTA.codeScript.length / 2 === ft_v2_length || isCoin ? 2 : 1;
+    const ftVersion = getFTVersion(FTA.codeScript, isCoin);
     this.poolnft_code = this.getPoolNftCode(
       txSource.hash,
       0,
@@ -204,7 +216,7 @@ class poolNFT2 {
           );
     const offset = isCoin
       ? coin_partial_offset
-      : ftVersion === 2
+      : (ftVersion === 2 || ftVersion === 3)
         ? ft_v2_partial_offset
         : ft_v1_partial_offset;
     this.ft_lp_partialhash = partial_sha256.calculate_partial_hash(
@@ -319,8 +331,7 @@ class poolNFT2 {
     }
     FTA.initialize(FTAInfo);
     const isCoin = FTA.codeScript.length / 2 === coin_length;
-    const ftVersion =
-      FTA.codeScript.length / 2 === ft_v2_length || isCoin ? 2 : 1;
+    const ftVersion = getFTVersion(FTA.codeScript, isCoin);
     this.poolnft_code = this.getPoolNftCodeWithLock(
       txSource.hash,
       0,
@@ -356,7 +367,7 @@ class poolNFT2 {
           );
     const offset = isCoin
       ? coin_partial_offset
-      : ftVersion === 2
+      : (ftVersion === 2 || ftVersion === 3)
         ? ft_v2_partial_offset
         : ft_v1_partial_offset;
     this.ft_lp_partialhash = partial_sha256.calculate_partial_hash(
@@ -452,8 +463,8 @@ class poolNFT2 {
     }
     FTA.initialize(FTAInfo);
     const isCoin = FTA.codeScript.length / 2 === coin_length;
-    const ftVersion =
-      FTA.codeScript.length / 2 === ft_v2_length || isCoin ? 2 : 1;
+    const ftVersion = getFTVersion(FTA.codeScript, isCoin);
+    console.log(ftVersion);
     let amount_lpbn = BigInt(0);
     if (Number(tbc_amount) > 0 && Number(ft_a) > 0) {
       amount_lpbn = parseDecimalToBigInt(tbc_amount, 6);
@@ -767,8 +778,7 @@ class poolNFT2 {
     }
     FTA.initialize(FTAInfo);
     const isCoin = FTA.codeScript.length / 2 === coin_length;
-    const ftVersion =
-      FTA.codeScript.length / 2 === ft_v2_length || isCoin ? 2 : 1;
+    const ftVersion = getFTVersion(FTA.codeScript, isCoin);
     const amount_tbcbn = parseDecimalToBigInt(amount_tbc, 6);
     const changeData = this.updatePoolNFT(amount_tbc, FTA.decimal, 2);
     const poolnft_codehash = tbc.crypto.Hash.sha256(
@@ -1094,8 +1104,7 @@ class poolNFT2 {
     }
     FTA.initialize(FTAInfo);
     const isCoin = FTA.codeScript.length / 2 === coin_length;
-    const ftVersion =
-      FTA.codeScript.length / 2 === ft_v2_length || isCoin ? 2 : 1;
+    const ftVersion = getFTVersion(FTA.codeScript, isCoin);
     const amount_lpbn = parseDecimalToBigInt(amount_lp, 6);
     if (this.ft_lp_amount < amount_lpbn) {
       throw new Error("Invalid FT-LP amount input");
@@ -1448,8 +1457,7 @@ class poolNFT2 {
     }
     FTA.initialize(FTAInfo);
     const isCoin = FTA.codeScript.length / 2 === coin_length;
-    const ftVersion =
-      FTA.codeScript.length / 2 === ft_v2_length || isCoin ? 2 : 1;
+    const ftVersion = getFTVersion(FTA.codeScript, isCoin);
     lpPlan =
       this.lp_plan >= 1 && this.lp_plan <= 5
         ? (this.lp_plan as 1 | 2 | 3 | 4 | 5)
@@ -2320,8 +2328,7 @@ class poolNFT2 {
     }
     FTA.initialize(FTAInfo);
     const isCoin = FTA.codeScript.length / 2 === coin_length;
-    const ftVersion =
-      FTA.codeScript.length / 2 === ft_v2_length || isCoin ? 2 : 1;
+    const ftVersion = getFTVersion(FTA.codeScript, isCoin);
     const ftlpCode =
       (this.with_lock_time ?? false)
         ? this.getFtlpCodeWithLockTime(
@@ -3038,8 +3045,7 @@ class poolNFT2 {
       );
       const contractTX = poolnftPreTX;
       const isCoin = ftutxos[0].script.length / 2 === coin_length;
-      const ftVersion =
-        ftutxos[0].script.length / 2 === ft_v2_length || isCoin ? 2 : 1;
+      const ftVersion = getFTVersion(ftutxos[0].script, isCoin);
       for (let i = 0; i < ftutxos.length; i++) {
         if (isCoin) tx.setInputSequence(i + 1, 4294967294);
         tx.setInputScript(
@@ -4630,7 +4636,7 @@ class poolNFT2 {
     txid: string,
     vout: number,
     lpPlan: 1 | 2 | 3 | 4 | 5,
-    ftVersion: 1 | 2,
+    ftVersion: FTVersion,
     tag?: string,
     isCoin?: boolean,
   ): tbc.Script {
@@ -4660,7 +4666,7 @@ class poolNFT2 {
     lpCostAddress: tbc.Address | string,
     lpCostTBC: number,
     pubKeyLock: string[],
-    ftVersion: 1 | 2,
+    ftVersion: FTVersion,
     tag?: string,
     isCoin?: boolean,
   ): tbc.Script {
@@ -4752,7 +4758,7 @@ class poolNFT2 {
     address: any,
     tapeSize: number,
     isCoin: boolean,
-    ftVersion?: 1 | 2,
+    ftVersion?: FTVersion,
   ): tbc.Script {
     const codeHash = poolNftCodeHash;
     const publicKeyHash =
@@ -4769,7 +4775,7 @@ class poolNFT2 {
         `OP_PUSHDATA2 0x0210 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff OP_DROP OP_RETURN 0x15 0x${hash} 0x05 0x02436f6465`,
       );
     } else {
-      if (ftVersion === 2) {
+      if (ftVersion === 2 || ftVersion === 3) {
         ftlpCodeLast = tbc.Script.fromString(
           `OP_PUSHDATA2 0x0190 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff OP_DROP OP_RETURN 0x15 0x${hash} 0x05 0x02436f6465`,
         );
@@ -4789,7 +4795,7 @@ class poolNFT2 {
     address: any,
     tapeSize: number,
     isCoin: boolean,
-    ftVersion?: 1 | 2,
+    ftVersion?: FTVersion,
   ): tbc.Script {
     const codeHash = poolNftCodeHash;
     const publicKeyHash =
@@ -4806,7 +4812,7 @@ class poolNFT2 {
         `OP_PUSHDATA2 0x01f8 0x${"ff".repeat(0x01f8)} OP_DROP OP_RETURN 0x15 0x${hash} 0x05 0x02436f6465`,
       );
     } else {
-      if (ftVersion === 2) {
+      if (ftVersion === 2 || ftVersion === 3) {
         ftlpCodeLast = tbc.Script.fromString(
           `OP_PUSHDATA2 0x0178 0x${"ff".repeat(0x0178)} OP_DROP OP_RETURN 0x15 0x${hash} 0x05 0x02436f6465`,
         );

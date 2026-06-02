@@ -36,3 +36,4 @@ contract.isLock = require("./lib/util/util").isLock;
 contract.fetchTBCLockTime = require("./lib/util/util").fetchTBCLockTime;
 contract.safeJSONParse = require("./lib/util/util").safeJSONParse;
 contract.parseDecimalToBigInt = require("./lib/util/util").parseDecimalToBigInt;
+contract.fillCharLengthInFT = require("./lib/util/util").fillCharLengthInFT;

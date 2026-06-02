@@ -9,6 +9,7 @@ import {
   fetchInBatches,
   _isValidSHA256Hash,
   _isValidHexString,
+  fillCharLengthInFT,
 } from "../util/util";
 const API = require("../api/api");
 const FT = require("./ft");
@@ -22,6 +23,17 @@ const ft_v2_partial_offset = 1856;
 const coin_length = 2012;
 const coin_partial_offset = 1984;
 const utxoFee = 0.01;
+
+type FTVersion = 1 | 2 | 3;
+const getFTVersion = (codeScript: string, isCoin: boolean): FTVersion => {
+  const baseVersion =
+    codeScript.length / 2 === ft_v2_length || isCoin ? 2 : 1;
+  if (baseVersion !== 2) return 1;
+
+  const fillCharLength = fillCharLengthInFT(codeScript);
+  console.log(fillCharLength);
+  return fillCharLength === 1 || fillCharLength === 2 ? 3 : 2;
+};
 
 class OrderBook {
   type!: "buy" | "sell";
@@ -353,6 +365,7 @@ class OrderBook {
 
     const tx = new tbc.Transaction(buyOrderTxRaw);
     const isCoin = tx.outputs[0].script.toBuffer().length === coin_length;
+    const ftVersion = getFTVersion(tx.outputs[0].script.toHex(), isCoin);
     tx.setInputScript(
       {
         inputIndex: 0,
@@ -375,7 +388,8 @@ class OrderBook {
           buyPreTX,
           1,
           tx.inputs[1].outputIndex,
-          2,
+          ftVersion,
+          isCoin,
         );
         return unlockingScript;
       },
@@ -597,6 +611,7 @@ class OrderBook {
     );
 
     const isCoin = ftutxo.script.length / 2 === coin_length;
+    const ftVersion = getFTVersion(ftutxo.script, isCoin);
     if (isCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
       {
@@ -611,7 +626,7 @@ class OrderBook {
           buyPreTX,
           1,
           ftutxo.outputIndex,
-          2,
+          ftVersion,
           isCoin,
         );
         return unlockingScript;
@@ -923,6 +938,7 @@ class OrderBook {
 
     const buyData = OrderBook.getOrderData(buyutxo.script);
     const isCoin = ftutxo.script.length / 2 === coin_length;
+    const ftVersion = getFTVersion(ftutxo.script, isCoin);
     const tx = new tbc.Transaction();
     tx.from(buyutxo).from(ftutxo).from(utxos);
 
@@ -984,7 +1000,7 @@ class OrderBook {
           buyPreTX,
           1,
           ftutxo.outputIndex,
-          2,
+          ftVersion,
           isCoin,
         );
         return unlockingScript;
@@ -1203,6 +1219,7 @@ class OrderBook {
     );
 
     const isCoin = ftutxo.script.length / 2 === coin_length;
+    const ftVersion = getFTVersion(ftutxo.script, isCoin);
     if (isCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
       {
@@ -1217,7 +1234,7 @@ class OrderBook {
           buyPreTX,
           1,
           ftutxo.outputIndex,
-          2,
+          ftVersion,
           isCoin,
         );
         return unlockingScript;

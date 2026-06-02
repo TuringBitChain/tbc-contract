@@ -175,3 +175,16 @@ export function _isValidHexString(param: string): boolean {
   if (param.length === 0) return false;
   return /^[0-9a-f]+$/.test(param);
 }
+
+export function fillCharLengthInFT(codeScript: string): number {
+    const code = tbc.Script.fromHex(codeScript);
+    console.log(code.chunks[code.chunks.length - 5]);
+    const opcodenum = code.chunks[code.chunks.length - 5].opcodenum;
+    if (opcodenum === 95) {
+        return 1;
+    } else if (opcodenum === 2) {
+        return 2;
+    } else {
+        return opcodenum;
+    }
+}

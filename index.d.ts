@@ -385,8 +385,9 @@ declare module "tbc-contract" {
       contractTX: Transaction,
       currentUnlockIndex: number,
       preTxVout: number,
-      ftVersion?: 1 | 2,
+      ftVersion?: 1 | 2 | 3,
       isCoin?: boolean,
+      isContractTXs?: boolean,
     ): Script;
     static getFTunlock(
       sigs: string,
@@ -407,8 +408,9 @@ declare module "tbc-contract" {
       contractTX: Transaction,
       currentUnlockIndex: number,
       preTxVout: number,
-      ftVersion?: 1 | 2,
+      ftVersion?: 1 | 2 | 3,
       isCoin?: boolean,
+      isContractTXs?: boolean,
     ): Script;
     getFTmintCode(
       txid: string,
@@ -736,7 +738,7 @@ declare module "tbc-contract" {
       txid: string,
       vout: number,
       lpPlan: 1 | 2 | 3 | 4 | 5,
-      ftVersion: 1 | 2,
+      ftVersion: 1 | 2 | 3,
       tag?: string,
       isCoin?: boolean,
     ): Script;
@@ -747,7 +749,7 @@ declare module "tbc-contract" {
       lpCostAddress: Address | string,
       lpCostTBC: number,
       pubKeyLock: string[],
-      ftVersion: 1 | 2,
+      ftVersion: 1 | 2 | 3,
       tag?: string,
       isCoin?: boolean,
     ): Script;
@@ -756,14 +758,14 @@ declare module "tbc-contract" {
       address: string,
       tapeSize: number,
       isCoin: boolean,
-      ftVersion?: 1 | 2,
+      ftVersion?: 1 | 2 | 3,
     ): Script;
     getFtlpCodeWithLockTime(
       poolNftCodeHash: string,
       address: string,
       tapeSize: number,
       isCoin: boolean,
-      ftVersion?: 1 | 2,
+      ftVersion?: 1 | 2 | 3,
     ): Script;
   }
 
@@ -1315,6 +1317,13 @@ declare module "tbc-contract" {
     context: string,
   ): Promise<R[]>;
 
+  export function fetchWithRetry<T>(
+    fn: () => Promise<T>,
+    retries?: number,
+    delay?: number,
+    context?: string,
+  ): Promise<T>;
+
   export function getFtBalanceFromTape(tape: string): bigint;
   export function getOpCode(number: number): string;
   export function getLpCostAddress(poolCode: string): string;
@@ -1326,4 +1335,5 @@ declare module "tbc-contract" {
     amount: number | bigint | string,
     decimal: number,
   ): bigint;
+  export function fillCharLengthInFT(codeScript: string): number;
 }
