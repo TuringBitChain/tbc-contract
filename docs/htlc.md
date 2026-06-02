@@ -4,6 +4,8 @@ import * as crypto from "crypto";
 import {
   API,
   HTLC,
+  FT,
+  parseDecimalToBigInt,
 } from "tbc-contract";
 
 const network = "testnet";
@@ -149,6 +151,244 @@ async function main() {
       const txid = await API.broadcastTXraw(signedTXRaw, network);
       console.log("退款成功，TXID:", txid);
     }
+
+
+    // ==================== Token 版 HTLC（FT / StableCoin） ====================
+
+    const tokenContractTxid = ""; // FT 或 StableCoin 合约 txid
+    const tokenAmount = "1000"; // 锁定 token 数量，建议大数使用 string
+    const tokenFee = 0.01; // Token HTLC 需要额外 TBC UTXO 支付手续费
+
+    // DeployHTLCToken（部署 Token HTLC，带私钥签名）
+    // 输出结构：0 为 HTLC 脚本，1 为锁到 HTLC hash160 的 FT Code，2 为对应 FT Tape。
+    {
+      const Token = new FT(tokenContractTxid);
+      const tokenInfo = await API.fetchFtInfo(Token.contractTxid, network);
+      Token.initialize(tokenInfo);
+
+      const ftAmountBN = parseDecimalToBigInt(tokenAmount, Token.decimal);
+      const ftCodeScript = FT.buildFTtransferCode(Token.codeScript, addressSender)
+        .toBuffer()
+        .toString("hex");
+      const ftutxos = await API.fetchFtUTXOs(
+        Token.contractTxid,
+        addressSender,
+        ftCodeScript,
+        network,
+        ftAmountBN,
+      );
+      const preTXs: tbc.Transaction[] = [];
+      const prepreTxDatas: string[] = [];
+      for (let i = 0; i < ftutxos.length; i++) {
+        preTXs.push(await API.fetchTXraw(ftutxos[i].txId, network));
+        prepreTxDatas.push(
+          await API.fetchFtPrePreTxData(preTXs[i], ftutxos[i].outputIndex, network),
+        );
+      }
+
+      const utxo = await API.fetchUTXO(privateKey_sender, tokenFee, network);
+      const deployTokenTXRaw = HTLC.deployHTLCTokenWithSign(
+        addressSender,
+        addressReceiver,
+        hashlock,
+        timelock,
+        tokenAmount,
+        ftutxos,
+        utxo,
+        preTXs,
+        prepreTxDatas,
+        privateKey_sender.toString(),
+      );
+      const txid = await API.broadcastTXraw(deployTokenTXRaw, network);
+      console.log("Token HTLC 合约部署成功，TXID:", txid);
+    }
+
+    // WithdrawHTLCToken（接收方提取 Token，带私钥签名）
+    {
+      const deployTokenTxid = ""; // deployHTLCToken 返回的 txid
+      const deployTX = await API.fetchTXraw(deployTokenTxid, network);
+      const htlcutxo = {
+        txId: deployTokenTxid,
+        outputIndex: 0,
+        script: deployTX.outputs[0].script.toHex(),
+        satoshis: deployTX.outputs[0].satoshis,
+      };
+      const ftutxo = {
+        txId: deployTokenTxid,
+        outputIndex: 1,
+        script: deployTX.outputs[1].script.toHex(),
+        satoshis: deployTX.outputs[1].satoshis,
+      };
+      const prepreTxData = await API.fetchFtPrePreTxData(
+        deployTX,
+        ftutxo.outputIndex,
+        network,
+      );
+      const utxo = await API.fetchUTXO(privateKey_receiver, tokenFee, network);
+      const withdrawTokenTXRaw = HTLC.withdrawHTLCTokenWithSign(
+        privateKey_receiver.toString(),
+        addressReceiver,
+        htlcutxo,
+        ftutxo,
+        deployTX,
+        prepreTxData,
+        utxo,
+        secret,
+      );
+      const txid = await API.broadcastTXraw(withdrawTokenTXRaw, network);
+      console.log("Token 提取成功，TXID:", txid);
+    }
+
+    // RefundHTLCToken（发送方取回 Token，带私钥签名）
+    // 超过 timelock 后可执行；StableCoin 会同时满足自身 lockTime。
+    {
+      const deployTokenTxid = ""; // deployHTLCToken 返回的 txid
+      const deployTX = await API.fetchTXraw(deployTokenTxid, network);
+      const htlcutxo = {
+        txId: deployTokenTxid,
+        outputIndex: 0,
+        script: deployTX.outputs[0].script.toHex(),
+        satoshis: deployTX.outputs[0].satoshis,
+      };
+      const ftutxo = {
+        txId: deployTokenTxid,
+        outputIndex: 1,
+        script: deployTX.outputs[1].script.toHex(),
+        satoshis: deployTX.outputs[1].satoshis,
+      };
+      const prepreTxData = await API.fetchFtPrePreTxData(
+        deployTX,
+        ftutxo.outputIndex,
+        network,
+      );
+      const utxo = await API.fetchUTXO(privateKey_sender, tokenFee, network);
+      const refundTokenTXRaw = HTLC.refundHTLCTokenWithSign(
+        privateKey_sender.toString(),
+        addressSender,
+        htlcutxo,
+        ftutxo,
+        deployTX,
+        prepreTxData,
+        utxo,
+        timelock,
+      );
+      const txid = await API.broadcastTXraw(refundTokenTXRaw, network);
+      console.log("Token 退款成功，TXID:", txid);
+    }
+
+    // Token 版不带私钥签名的用法（前端构建交易、钱包外部签名场景）
+    // sigs 顺序：deploy 为 [每个 FT 输入签名..., 手续费 UTXO 签名]；withdraw/refund 为 [HTLC 签名, FT Code 签名, 手续费 UTXO 签名]。
+    {
+      const Token = new FT(tokenContractTxid);
+      const tokenInfo = await API.fetchFtInfo(Token.contractTxid, network);
+      Token.initialize(tokenInfo);
+      const ftAmountBN = parseDecimalToBigInt(tokenAmount, Token.decimal);
+      const ftCodeScript = FT.buildFTtransferCode(Token.codeScript, addressSender)
+        .toBuffer()
+        .toString("hex");
+      const ftutxos = await API.fetchFtUTXOs(
+        Token.contractTxid,
+        addressSender,
+        ftCodeScript,
+        network,
+        ftAmountBN,
+      );
+      const preTXs: tbc.Transaction[] = [];
+      const prepreTxDatas: string[] = [];
+      for (let i = 0; i < ftutxos.length; i++) {
+        preTXs.push(await API.fetchTXraw(ftutxos[i].txId, network));
+        prepreTxDatas.push(
+          await API.fetchFtPrePreTxData(preTXs[i], ftutxos[i].outputIndex, network),
+        );
+      }
+
+      const utxo = await API.fetchUTXO(privateKey_sender, tokenFee, network);
+      const deployRaw = HTLC.deployHTLCToken(
+        addressSender,
+        addressReceiver,
+        hashlock,
+        timelock,
+        tokenAmount,
+        ftutxos,
+        utxo,
+        preTXs,
+        prepreTxDatas,
+      );
+      const deploySigs: string[] = []; // 外部钱包按输入顺序签名后填入
+      const deployPublicKey = privateKey_sender.toPublicKey().toHex();
+      const signedDeployRaw = HTLC.fillSigDeployHTLCToken(
+        deployRaw,
+        deploySigs,
+        deployPublicKey,
+        preTXs,
+        prepreTxDatas,
+      );
+      console.log("Token HTLC 已填入部署签名:", signedDeployRaw);
+    }
+
+    // Token withdraw/refund 不带私钥签名时，先构建 raw，再用 fillSig* 填入外部签名。
+    {
+      const deployTokenTxid = "";
+      const deployTX = await API.fetchTXraw(deployTokenTxid, network);
+      const htlcutxo = {
+        txId: deployTokenTxid,
+        outputIndex: 0,
+        script: deployTX.outputs[0].script.toHex(),
+        satoshis: deployTX.outputs[0].satoshis,
+      };
+      const ftutxo = {
+        txId: deployTokenTxid,
+        outputIndex: 1,
+        script: deployTX.outputs[1].script.toHex(),
+        satoshis: deployTX.outputs[1].satoshis,
+      };
+      const prepreTxData = await API.fetchFtPrePreTxData(
+        deployTX,
+        ftutxo.outputIndex,
+        network,
+      );
+
+      const receiverFeeUtxo = await API.fetchUTXO(privateKey_receiver, tokenFee, network);
+      const withdrawRaw = HTLC.withdrawHTLCToken(
+        addressReceiver,
+        htlcutxo,
+        ftutxo,
+        deployTX,
+        receiverFeeUtxo,
+      );
+      const withdrawSigs: string[] = []; // [HTLC, FTCode, tbcFee]
+      const receiverPublicKey = privateKey_receiver.toPublicKey().toHex();
+      const signedWithdrawRaw = HTLC.fillSigWithdrawHTLCToken(
+        withdrawRaw,
+        withdrawSigs,
+        receiverPublicKey,
+        secret,
+        deployTX,
+        prepreTxData,
+      );
+      console.log("Token HTLC 已填入提取签名:", signedWithdrawRaw);
+
+      const senderFeeUtxo = await API.fetchUTXO(privateKey_sender, tokenFee, network);
+      const refundRaw = HTLC.refundHTLCToken(
+        addressSender,
+        htlcutxo,
+        ftutxo,
+        deployTX,
+        senderFeeUtxo,
+        timelock,
+      );
+      const refundSigs: string[] = []; // [HTLC, FTCode, tbcFee]
+      const senderPublicKey = privateKey_sender.toPublicKey().toHex();
+      const signedRefundRaw = HTLC.fillSigRefundHTLCToken(
+        refundRaw,
+        refundSigs,
+        senderPublicKey,
+        deployTX,
+        prepreTxData,
+      );
+      console.log("Token HTLC 已填入退款签名:", signedRefundRaw);
+    }
+
   } catch (error: any) {
     console.error("Error:", error);
   }
