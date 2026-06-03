@@ -37,7 +37,6 @@ const getFTVersion = (codeScript: string, isCoin: boolean): FTVersion => {
   if (baseVersion !== 2) return 1;
 
   const fillCharLength = fillCharLengthInFT(codeScript);
-  console.log(fillCharLength);
   return fillCharLength === 1 || fillCharLength === 2 ? 3 : 2;
 };
 
@@ -464,7 +463,6 @@ class poolNFT2 {
     FTA.initialize(FTAInfo);
     const isCoin = FTA.codeScript.length / 2 === coin_length;
     const ftVersion = getFTVersion(FTA.codeScript, isCoin);
-    console.log(ftVersion);
     let amount_lpbn = BigInt(0);
     if (Number(tbc_amount) > 0 && Number(ft_a) > 0) {
       amount_lpbn = parseDecimalToBigInt(tbc_amount, 6);
