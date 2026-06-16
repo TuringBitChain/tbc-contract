@@ -1,10 +1,21 @@
 import * as tbc from "tbc-lib-js";
-import { parseDecimalToBigInt } from "../util/util";
+import { fillCharLengthInFT, parseDecimalToBigInt } from "../util/util";
 const FT = require("./ft");
 const ft_v1_length = 1564;
 const ft_v1_partial_offset = 1536;
 const ft_v2_length = 1884;
 const ft_v2_partial_offset = 1856;
+
+type FTVersion = 1 | 2 | 3;
+
+const getFTVersion = (codeScript: string): FTVersion => {
+  const baseVersion = codeScript.length / 2 === ft_v2_length ? 2 : 1;
+  if (baseVersion !== 2) return 1;
+
+  const fillCharLength = fillCharLengthInFT(codeScript);
+  return fillCharLength === 1 || fillCharLength === 2 ? 3 : 2;
+};
+
 interface MultiSigTxRaw {
   txraw: string;
   amounts: number[];
@@ -565,7 +576,7 @@ class MultiSig {
       );
     }
 
-    const ftVersion = ftutxos[0].script.length / 2 === ft_v2_length? 2 : 1;
+    const ftVersion = getFTVersion(ftutxos[0].script);
     for (let i = 0; i < ftutxos.length; i++) {
       tx.setInputScript(
         {
