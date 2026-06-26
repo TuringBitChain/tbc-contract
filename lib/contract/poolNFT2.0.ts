@@ -539,9 +539,8 @@ class poolNFT2 {
       tapeAmountSetIn,
       1,
     );
-    const poolnftTapeScript = await this.updatePoolNftTape();
-    // const poolnftTapeScript = this.getPoolNftTape(1, false, false);
     const poolnft = await this.fetchPoolNftUTXO(this.contractTxid);
+    const poolnftTapeScript = await this.updatePoolNftTape(poolnft.txId);
     const tx = new tbc.Transaction()
       .from(poolnft)
       .from(fttxo_a)
@@ -852,7 +851,7 @@ class poolNFT2 {
         satoshis: poolnft.satoshis + Number(changeData.tbc_amount_difference),
       }),
     );
-    const poolnftTapeScript = await this.updatePoolNftTape();
+    const poolnftTapeScript = await this.updatePoolNftTape(poolnft.txId);
     tx.addOutput(
       new tbc.Transaction.Output({
         script: poolnftTapeScript,
@@ -1231,7 +1230,7 @@ class poolNFT2 {
           poolnft.satoshis - Number(changeData.tbc_amount_full_difference),
       }),
     );
-    const poolnftTapeScript = await this.updatePoolNftTape();
+    const poolnftTapeScript = await this.updatePoolNftTape(poolnft.txId);
     tx.addOutput(
       new tbc.Transaction.Output({
         script: poolnftTapeScript,
@@ -1565,7 +1564,7 @@ class poolNFT2 {
         satoshis: poolnft.satoshis + Number(amount_tbcbn_swap_lp),
       }),
     );
-    const poolnftTapeScript = await this.updatePoolNftTape();
+    const poolnftTapeScript = await this.updatePoolNftTape(poolnft.txId);
     tx.addOutput(
       new tbc.Transaction.Output({
         script: poolnftTapeScript,
@@ -1804,7 +1803,7 @@ class poolNFT2 {
         satoshis: poolnft.satoshis - Number(tbc_amount_decrement_swap_lp),
       }),
     );
-    const poolnftTapeScript = await this.updatePoolNftTape();
+    const poolnftTapeScript = await this.updatePoolNftTape(poolnft.txId);
     tx.addOutput(
       new tbc.Transaction.Output({
         script: poolnftTapeScript,
@@ -2001,7 +2000,7 @@ class poolNFT2 {
         satoshis: poolnft.satoshis - Number(tbc_amount_decrement_swap_lp),
       }),
     );
-    const poolnftTapeScript = await this.updatePoolNftTape();
+    const poolnftTapeScript = await this.updatePoolNftTape(poolnft.txId);
     tx.addOutput(
       new tbc.Transaction.Output({
         script: poolnftTapeScript,
@@ -2990,7 +2989,7 @@ class poolNFT2 {
           satoshis: poolnft.satoshis,
         }),
       );
-      const poolnftTapeScript = await this.updatePoolNftTape();
+      const poolnftTapeScript = await this.updatePoolNftTape(poolnft.txId);
       tx.addOutput(
         new tbc.Transaction.Output({
           script: poolnftTapeScript,
@@ -3202,8 +3201,8 @@ class poolNFT2 {
       tapeAmountSetIn,
       1,
     );
-    const poolnftTapeScript = await this.updatePoolNftTape();
     const poolnft = await this.fetchPoolNftUTXO(this.contractTxid);
+    const poolnftTapeScript = await this.updatePoolNftTape(poolnft.txId);
     const tx = new tbc.Transaction()
       .from(poolnft)
       .from(fttxo_a)
@@ -3465,7 +3464,7 @@ class poolNFT2 {
         satoshis: poolnft.satoshis + Number(changeData.tbc_amount_difference),
       }),
     );
-    const poolnftTapeScript = await this.updatePoolNftTape();
+    const poolnftTapeScript = await this.updatePoolNftTape(poolnft.txId);
     tx.addOutput(
       new tbc.Transaction.Output({
         script: poolnftTapeScript,
@@ -3763,7 +3762,7 @@ class poolNFT2 {
           poolnft.satoshis - Number(changeData.tbc_amount_full_difference),
       }),
     );
-    const poolnftTapeScript = await this.updatePoolNftTape();
+    const poolnftTapeScript = await this.updatePoolNftTape(poolnft.txId);
     tx.addOutput(
       new tbc.Transaction.Output({
         script: poolnftTapeScript,
@@ -4587,8 +4586,8 @@ class poolNFT2 {
     return poolnftTapeScript;
   }
 
-  private async updatePoolNftTape(): Promise<tbc.Script> {
-    let poolnftTapeScriptTemp = await this.fetchPoolNftTape();
+  private async updatePoolNftTape(poolUtxoTxid: string): Promise<tbc.Script> {
+    let poolnftTapeScriptTemp = await this.fetchPoolNftTape(poolUtxoTxid);
     const writer = new tbc.encoding.BufferWriter();
     writer.writeUInt64LEBN(new tbc.crypto.BN(this.ft_lp_amount));
     writer.writeUInt64LEBN(new tbc.crypto.BN(this.ft_a_amount));
@@ -4599,9 +4598,13 @@ class poolNFT2 {
     return poolnftTapeScript;
   }
 
-  private async fetchPoolNftTape(): Promise<tbc.Script> {
+  private async fetchPoolNftTape(poolUtxoTxid: string | undefined): Promise<tbc.Script> {
+    if (!poolUtxoTxid) {
+      const poolnft = await this.fetchPoolNftUTXO(this.contractTxid);
+      poolUtxoTxid = poolnft.txId;
+    }
     const poolnftTapeScript = (
-      await API.fetchTXraw(this.contractTxid, this.network)
+      await API.fetchTXraw(poolUtxoTxid, this.network)
     ).outputs[1].script;
     return poolnftTapeScript;
   }
@@ -4612,7 +4615,7 @@ class poolNFT2 {
     withLock: boolean | null;
     withLockTime: boolean | null;
   }> {
-    const poolnftTapeScript = await this.fetchPoolNftTape();
+    const poolnftTapeScript = await this.fetchPoolNftTape(undefined);
     const extraInfo = {
       serviceFeeRate: poolnftTapeScript.chunks[5]?.buf
         ? parseInt(poolnftTapeScript.chunks[5].buf.toString("hex"), 16)

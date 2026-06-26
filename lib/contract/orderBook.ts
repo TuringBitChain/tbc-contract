@@ -1279,6 +1279,774 @@ class OrderBook {
     return txraw;
   }
 
+  private getTokenPartialHash(codeScript: string): string {
+    if (!_isValidHexString(codeScript))
+      throw new Error("Invalid FT code script hex string");
+    const ftScriptLen = codeScript.length / 2;
+    const partialOffset =
+      ftScriptLen === coin_length
+        ? coin_partial_offset
+        : ftScriptLen === ft_v1_length
+          ? ft_v1_partial_offset
+          : ft_v2_partial_offset;
+    return partial_sha256.calculate_partial_hash(
+      Buffer.from(codeScript, "hex").subarray(0, partialOffset),
+    );
+  }
+
+  buildTokenSellOrderTX(
+    holdAddress: string,
+    taxAddress: string,
+    saleVolume: bigint,
+    unitPrice: bigint,
+    feeRate: bigint,
+    ftaID: string,
+    ftbID: string,
+    ftaCodeScript: string,
+    ftbCodeScript: string,
+    utxos: tbc.Transaction.IUnspentOutput[],
+    ftutxos: tbc.Transaction.IUnspentOutput[],
+    preTXs: tbc.Transaction[],
+  ): string {
+    if (!tbc.Address.isValid(holdAddress) || !tbc.Address.isValid(taxAddress))
+      throw new Error("Invalid HoldAddress or TaxAddress");
+    if (!_isPositiveBigInt(saleVolume) || !_isPositiveBigInt(unitPrice))
+      throw new Error("SaleVolume and UnitPrice must be positive bigint");
+    if (_isNegativeBigInt(feeRate))
+      throw new Error("FeeRate must be non-negative bigint");
+    if (!_isValidSHA256Hash(ftaID) || !_isValidSHA256Hash(ftbID))
+      throw new Error("FTID must be a valid SHA256 hash string");
+    if (ftutxos.length === 0 || preTXs.length !== ftutxos.length)
+      throw new Error("FT UTXOs and preTXs length mismatch");
+
+    this.type = "sell";
+    this.hold_address = holdAddress;
+    this.sale_volume = saleVolume;
+    this.unit_price = unitPrice;
+    this.fee_rate = feeRate;
+    this.ft_a_contract_id = ftaID;
+    this.ft_b_contract_id = ftbID;
+    this.ft_a_contract_partialhash = this.getTokenPartialHash(ftaCodeScript);
+    this.ft_b_contract_partialhash = this.getTokenPartialHash(ftbCodeScript);
+
+    const tx = new tbc.Transaction();
+    tx.from(ftutxos).from(utxos);
+
+    const sellOrder = this.getTokenSellOrderCode(taxAddress);
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: sellOrder,
+        satoshis: this.buy_code_dust,
+      }),
+    );
+
+    const tapeAmountSetIn: bigint[] = [];
+    let tapeAmountSum = 0n;
+    for (let i = 0; i < ftutxos.length; i++) {
+      tapeAmountSetIn.push(ftutxos[i].ftBalance!);
+      tapeAmountSum += BigInt(tapeAmountSetIn[i]);
+    }
+    if (saleVolume > tapeAmountSum)
+      throw new Error("Sell order FT balance is insufficient");
+    const { amountHex, changeHex } = FT.buildTapeAmount(
+      saleVolume,
+      tapeAmountSetIn,
+    );
+    const ftCode = ftutxos[0].script;
+    const ftTape = preTXs[0].outputs[ftutxos[0].outputIndex + 1].script.toHex();
+    const sellOrderHash160 = tbc.crypto.Hash.sha256ripemd160(
+      tbc.crypto.Hash.sha256(sellOrder.toBuffer()),
+    ).toString("hex");
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: FT.buildFTtransferCode(ftCode, sellOrderHash160),
+        satoshis: ftutxos[0].satoshis,
+      }),
+    );
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: FT.buildFTtransferTape(ftTape, amountHex),
+        satoshis: 0,
+      }),
+    );
+
+    if (saleVolume < tapeAmountSum) {
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: FT.buildFTtransferCode(ftCode, holdAddress),
+          satoshis: ftutxos[0].satoshis,
+        }),
+      );
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: FT.buildFTtransferTape(ftTape, changeHex),
+          satoshis: 0,
+        }),
+      );
+    }
+
+    tx.change(holdAddress);
+    const txSize = tx.getEstimateSize() + ftutxos.length * 2000;
+    tx.fee(txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80));
+    return tx.uncheckedSerialize();
+  }
+
+  buildTokenBuyOrderTX(
+    holdAddress: string,
+    taxAddress: string,
+    saleVolume: bigint,
+    unitPrice: bigint,
+    feeRate: bigint,
+    ftaID: string,
+    ftbID: string,
+    ftaCodeScript: string,
+    ftbCodeScript: string,
+    utxos: tbc.Transaction.IUnspentOutput[],
+    ftutxos: tbc.Transaction.IUnspentOutput[],
+    preTXs: tbc.Transaction[],
+  ): string {
+    if (!tbc.Address.isValid(holdAddress) || !tbc.Address.isValid(taxAddress))
+      throw new Error("Invalid HoldAddress or TaxAddress");
+    if (!_isPositiveBigInt(saleVolume) || !_isPositiveBigInt(unitPrice))
+      throw new Error("SaleVolume and UnitPrice must be positive bigint");
+    if (_isNegativeBigInt(feeRate))
+      throw new Error("FeeRate must be non-negative bigint");
+    if (!_isValidSHA256Hash(ftaID) || !_isValidSHA256Hash(ftbID))
+      throw new Error("FTID must be a valid SHA256 hash string");
+    if (ftutxos.length === 0 || preTXs.length !== ftutxos.length)
+      throw new Error("FT UTXOs and preTXs length mismatch");
+
+    this.type = "buy";
+    this.hold_address = holdAddress;
+    this.sale_volume = saleVolume;
+    this.unit_price = unitPrice;
+    this.fee_rate = feeRate;
+    this.ft_a_contract_id = ftaID;
+    this.ft_b_contract_id = ftbID;
+    this.ft_a_contract_partialhash = this.getTokenPartialHash(ftaCodeScript);
+    this.ft_b_contract_partialhash = this.getTokenPartialHash(ftbCodeScript);
+
+    const tx = new tbc.Transaction();
+    tx.from(ftutxos).from(utxos);
+
+    const buyOrder = this.getTokenBuyOrderCode(taxAddress);
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: buyOrder,
+        satoshis: this.buy_code_dust,
+      }),
+    );
+
+    const ftAmount = (saleVolume * unitPrice) / this.precision;
+    if (ftAmount <= 0n) throw new Error("Buy order FT amount is too small");
+    const tapeAmountSetIn: bigint[] = [];
+    let tapeAmountSum = 0n;
+    for (let i = 0; i < ftutxos.length; i++) {
+      tapeAmountSetIn.push(ftutxos[i].ftBalance!);
+      tapeAmountSum += BigInt(tapeAmountSetIn[i]);
+    }
+    if (ftAmount > tapeAmountSum)
+      throw new Error("Buy order FT balance is insufficient");
+    const { amountHex, changeHex } = FT.buildTapeAmount(
+      ftAmount,
+      tapeAmountSetIn,
+    );
+    const ftCode = ftutxos[0].script;
+    const ftTape = preTXs[0].outputs[ftutxos[0].outputIndex + 1].script.toHex();
+    const buyOrderHash160 = tbc.crypto.Hash.sha256ripemd160(
+      tbc.crypto.Hash.sha256(buyOrder.toBuffer()),
+    ).toString("hex");
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: FT.buildFTtransferCode(ftCode, buyOrderHash160),
+        satoshis: ftutxos[0].satoshis,
+      }),
+    );
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: FT.buildFTtransferTape(ftTape, amountHex),
+        satoshis: 0,
+      }),
+    );
+
+    if (ftAmount < tapeAmountSum) {
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: FT.buildFTtransferCode(ftCode, holdAddress),
+          satoshis: ftutxos[0].satoshis,
+        }),
+      );
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: FT.buildFTtransferTape(ftTape, changeHex),
+          satoshis: 0,
+        }),
+      );
+    }
+
+    tx.change(holdAddress);
+    const txSize = tx.getEstimateSize() + ftutxos.length * 2000;
+    tx.fee(txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80));
+    return tx.uncheckedSerialize();
+  }
+
+  private fillSigsMakeTokenOrderTX(
+    tokenOrderTxRaw: string,
+    sigs: string[],
+    publicKey: string,
+    preTXs: tbc.Transaction[],
+    prepreTxData: string[],
+  ): string {
+    if (!_isValidHexString(tokenOrderTxRaw))
+      throw new Error("Invalid TokenOrderTxRaw hex string");
+    if (!tbc.PublicKey.isValid(publicKey)) throw new Error("Invalid PublicKey");
+    if (!Array.isArray(sigs) || sigs.some((sig) => !_isValidHexString(sig)))
+      throw new Error("Invalid Signatures array");
+    if (preTXs.length === 0 || preTXs.length !== prepreTxData.length)
+      throw new Error("PreTXs and PrePreTxData length mismatch");
+    if (prepreTxData.some((data) => !_isValidHexString(data)))
+      throw new Error("Invalid PrePreTxData array");
+
+    const tx = new tbc.Transaction(tokenOrderTxRaw);
+    if (sigs.length < tx.inputs.length)
+      throw new Error("Signatures length is less than inputs length");
+    const isCoin = tx.outputs[1].script.toBuffer().length === coin_length;
+    for (let i = 0; i < preTXs.length; i++) {
+      if (isCoin) tx.setInputSequence(i, 4294967294);
+      tx.setInputScript(
+        {
+          inputIndex: i,
+        },
+        (tx) =>
+          FT.getFTunlock(
+            sigs[i],
+            publicKey,
+            tx,
+            preTXs[i],
+            prepreTxData[i],
+            i,
+            tx.inputs[i].outputIndex,
+            isCoin,
+          ),
+      );
+    }
+
+    for (let i = preTXs.length; i < tx.inputs.length; i++) {
+      tx.setInputScript(
+        {
+          inputIndex: i,
+        },
+        tbc.Script.fromASM(`${sigs[i]} ${publicKey}`),
+      );
+    }
+
+    return tx.uncheckedSerialize();
+  }
+
+  fillSigsMakeTokenSellOrder(
+    sellOrderTxRaw: string,
+    sigs: string[],
+    publicKey: string,
+    preTXs: tbc.Transaction[],
+    prepreTxData: string[],
+  ): string {
+    return this.fillSigsMakeTokenOrderTX(
+      sellOrderTxRaw,
+      sigs,
+      publicKey,
+      preTXs,
+      prepreTxData,
+    );
+  }
+
+  fillSigsMakeTokenBuyOrder(
+    buyOrderTxRaw: string,
+    sigs: string[],
+    publicKey: string,
+    preTXs: tbc.Transaction[],
+    prepreTxData: string[],
+  ): string {
+    return this.fillSigsMakeTokenOrderTX(
+      buyOrderTxRaw,
+      sigs,
+      publicKey,
+      preTXs,
+      prepreTxData,
+    );
+  }
+
+  private buildCancelTokenOrderTX(
+    tokenOrderUtxo: tbc.Transaction.IUnspentOutput,
+    ftutxo: tbc.Transaction.IUnspentOutput,
+    ftPreTX: tbc.Transaction,
+    utxos: tbc.Transaction.IUnspentOutput[],
+  ): string {
+    const tokenOrderData = OrderBook.getTokenOrderData(tokenOrderUtxo.script);
+    const tx = new tbc.Transaction();
+    tx.from(tokenOrderUtxo).from(ftutxo).from(utxos);
+
+    const tapeAmountSetIn = [ftutxo.ftBalance!];
+    const tapeAmountSum = BigInt(tapeAmountSetIn[0]);
+    const { amountHex, changeHex } = FT.buildTapeAmount(
+      tapeAmountSum,
+      tapeAmountSetIn,
+      1,
+    );
+    if (changeHex !== zero_ft_tape_amount)
+      throw new Error("Change amount is not zero");
+
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: FT.buildFTtransferCode(ftutxo.script, tokenOrderData.holdAddress),
+        satoshis: ftutxo.satoshis,
+      }),
+    );
+    tx.addOutput(
+      new tbc.Transaction.Output({
+        script: FT.buildFTtransferTape(
+          ftPreTX.outputs[ftutxo.outputIndex + 1].script.toHex(),
+          amountHex,
+        ),
+        satoshis: 0,
+      }),
+    );
+    tx.change(tokenOrderData.holdAddress);
+    const txSize = tx.getEstimateSize() + 2000;
+    tx.fee(txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80));
+    return tx.uncheckedSerialize();
+  }
+
+  buildCancelTokenSellOrderTX(
+    sellutxo: tbc.Transaction.IUnspentOutput,
+    ftutxo: tbc.Transaction.IUnspentOutput,
+    ftPreTX: tbc.Transaction,
+    utxos: tbc.Transaction.IUnspentOutput[],
+  ): string {
+    return this.buildCancelTokenOrderTX(sellutxo, ftutxo, ftPreTX, utxos);
+  }
+
+  buildCancelTokenBuyOrderTX(
+    buyutxo: tbc.Transaction.IUnspentOutput,
+    ftutxo: tbc.Transaction.IUnspentOutput,
+    ftPreTX: tbc.Transaction,
+    utxos: tbc.Transaction.IUnspentOutput[],
+  ): string {
+    return this.buildCancelTokenOrderTX(buyutxo, ftutxo, ftPreTX, utxos);
+  }
+
+  private fillSigsCancelTokenOrderTX(
+    tokenOrderTxRaw: string,
+    sigs: string[],
+    publicKey: string,
+    tokenOrderPreTX: tbc.Transaction,
+    ftPreTX: tbc.Transaction,
+    ftPrePreTxData: string,
+  ): string {
+    if (!_isValidHexString(tokenOrderTxRaw))
+      throw new Error("Invalid TokenOrderTxRaw hex string");
+    if (!tbc.PublicKey.isValid(publicKey)) throw new Error("Invalid PublicKey");
+    if (!Array.isArray(sigs) || sigs.some((sig) => !_isValidHexString(sig)))
+      throw new Error("Invalid Signatures array");
+    if (!_isValidHexString(ftPrePreTxData))
+      throw new Error("Invalid FtPrePreTxData string");
+
+    const tx = new tbc.Transaction(tokenOrderTxRaw);
+    if (sigs.length < tx.inputs.length)
+      throw new Error("Signatures length is less than inputs length");
+    const isCoin = tx.outputs[0].script.toBuffer().length === coin_length;
+    const ftVersion = getFTVersion(tx.outputs[0].script.toHex(), isCoin);
+
+    tx.setInputScript(
+      {
+        inputIndex: 0,
+      },
+      tbc.Script.fromASM(`${sigs[0]} ${publicKey} OP_2`),
+    );
+
+    if (isCoin) tx.setInputSequence(1, 4294967294);
+    tx.setInputScript(
+      {
+        inputIndex: 1,
+      },
+      (tx) =>
+        FT.getFTunlockSwap(
+          sigs[1],
+          publicKey,
+          tx,
+          ftPreTX,
+          ftPrePreTxData,
+          tokenOrderPreTX,
+          1,
+          tx.inputs[1].outputIndex,
+          ftVersion,
+          isCoin,
+        ),
+    );
+
+    for (let i = 2; i < tx.inputs.length; i++) {
+      tx.setInputScript(
+        {
+          inputIndex: i,
+        },
+        tbc.Script.fromASM(`${sigs[i]} ${publicKey}`),
+      );
+    }
+
+    return tx.uncheckedSerialize();
+  }
+
+  fillSigsCancelTokenSellOrder(
+    cancelSellOrderTxRaw: string,
+    sigs: string[],
+    publicKey: string,
+    sellPreTX: tbc.Transaction,
+    ftPreTX: tbc.Transaction,
+    ftPrePreTxData: string,
+  ): string {
+    return this.fillSigsCancelTokenOrderTX(
+      cancelSellOrderTxRaw,
+      sigs,
+      publicKey,
+      sellPreTX,
+      ftPreTX,
+      ftPrePreTxData,
+    );
+  }
+
+  fillSigsCancelTokenBuyOrder(
+    cancelBuyOrderTxRaw: string,
+    sigs: string[],
+    publicKey: string,
+    buyPreTX: tbc.Transaction,
+    ftPreTX: tbc.Transaction,
+    ftPrePreTxData: string,
+  ): string {
+    return this.fillSigsCancelTokenOrderTX(
+      cancelBuyOrderTxRaw,
+      sigs,
+      publicKey,
+      buyPreTX,
+      ftPreTX,
+      ftPrePreTxData,
+    );
+  }
+
+  private buildMatchTokenOrderTransaction(
+    buyutxo: tbc.Transaction.IUnspentOutput,
+    buyPreTX: tbc.Transaction,
+    buyFtUtxo: tbc.Transaction.IUnspentOutput,
+    buyFtPreTX: tbc.Transaction,
+    sellutxo: tbc.Transaction.IUnspentOutput,
+    sellPreTX: tbc.Transaction,
+    sellFtUtxo: tbc.Transaction.IUnspentOutput,
+    sellFtPreTX: tbc.Transaction,
+    utxos: tbc.Transaction.IUnspentOutput[],
+    ftaFeeAddress: string,
+    ftbFeeAddress: string,
+  ) {
+    if (
+      !tbc.Address.isValid(ftaFeeAddress) ||
+      !tbc.Address.isValid(ftbFeeAddress)
+    )
+      throw new Error("Invalid fee address");
+    if (utxos.length === 0) throw new Error("TBC fee UTXOs required");
+
+    const buyData = OrderBook.getTokenOrderData(buyutxo.script);
+    const sellData = OrderBook.getTokenOrderData(sellutxo.script);
+    if (buyData.ftaID !== sellData.ftaID || buyData.ftbID !== sellData.ftbID)
+      throw new Error("Token order pair mismatch");
+    if (
+      buyData.ftaPartialHash !== sellData.ftaPartialHash ||
+      buyData.ftbPartialHash !== sellData.ftbPartialHash
+    )
+      throw new Error("Token order code hash mismatch");
+    if (buyData.unitPrice !== sellData.unitPrice)
+      throw new Error("Token order unitPrice mismatch");
+
+    const matchedAAmount =
+      buyData.saleVolume < sellData.saleVolume
+        ? buyData.saleVolume
+        : sellData.saleVolume;
+    const tokenATaxAmount = (matchedAAmount * buyData.feeRate) / this.precision;
+    const tokenABuyerAmount = matchedAAmount - tokenATaxAmount;
+    const newSellOrderAmount = sellData.saleVolume - matchedAAmount;
+
+    const tokenBPayAmount =
+      (matchedAAmount * sellData.unitPrice) / this.precision;
+    const tokenBTaxAmount =
+      (tokenBPayAmount * sellData.feeRate) / this.precision;
+    const tokenBSellerAmount = tokenBPayAmount - tokenBTaxAmount;
+    const newBuyOrderAmount = buyData.saleVolume - matchedAAmount;
+
+    if (tokenABuyerAmount <= 0n || tokenBSellerAmount <= 0n)
+      throw new Error("Matched amount is too small after fee");
+    if (BigInt(sellFtUtxo.ftBalance!) < matchedAAmount)
+      throw new Error("Sell order FT balance is insufficient");
+    if (BigInt(buyFtUtxo.ftBalance!) < tokenBPayAmount)
+      throw new Error("Buy order FT balance is insufficient");
+
+    const tx = new tbc.Transaction();
+    tx.from(buyutxo)
+      .from(buyFtUtxo)
+      .from(sellutxo)
+      .from(sellFtUtxo)
+      .from(utxos);
+
+    const addFTPair = (
+      codeScript: string,
+      tapeScript: string,
+      amountHex: string,
+      addressOrHash: string,
+      satoshis: number,
+    ) => {
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: FT.buildFTtransferCode(codeScript, addressOrHash),
+          satoshis,
+        }),
+      );
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: FT.buildFTtransferTape(tapeScript, amountHex),
+          satoshis: 0,
+        }),
+      );
+    };
+
+    const tokenATape =
+      sellFtPreTX.outputs[sellFtUtxo.outputIndex + 1].script.toHex();
+    const tokenBTape =
+      buyFtPreTX.outputs[buyFtUtxo.outputIndex + 1].script.toHex();
+    const tokenABalance = BigInt(sellFtUtxo.ftBalance!);
+    const tokenBBalance = BigInt(buyFtUtxo.ftBalance!);
+
+    const { amountHex: tokenABuyerAmountHex } = FT.buildTapeAmount(
+      tokenABuyerAmount,
+      [tokenABalance],
+      3,
+    );
+    const {
+      amountHex: tokenATaxAmountHex,
+      changeHex: tokenAChangeHex,
+    } = FT.buildTapeAmount(
+      tokenATaxAmount,
+      [tokenABalance - tokenABuyerAmount],
+      3,
+    );
+    const { amountHex: tokenBSellerAmountHex } = FT.buildTapeAmount(
+      tokenBSellerAmount,
+      [tokenBBalance],
+      1,
+    );
+    const {
+      amountHex: tokenBTaxAmountHex,
+      changeHex: tokenBChangeHex,
+    } = FT.buildTapeAmount(
+      tokenBTaxAmount,
+      [tokenBBalance - tokenBSellerAmount],
+      1,
+    );
+
+    addFTPair(
+      sellFtUtxo.script,
+      tokenATape,
+      tokenABuyerAmountHex,
+      buyData.holdAddress,
+      sellFtUtxo.satoshis,
+    );
+    addFTPair(
+      sellFtUtxo.script,
+      tokenATape,
+      tokenATaxAmountHex,
+      ftaFeeAddress,
+      sellFtUtxo.satoshis,
+    );
+    addFTPair(
+      buyFtUtxo.script,
+      tokenBTape,
+      tokenBSellerAmountHex,
+      sellData.holdAddress,
+      buyFtUtxo.satoshis,
+    );
+    addFTPair(
+      buyFtUtxo.script,
+      tokenBTape,
+      tokenBTaxAmountHex,
+      ftbFeeAddress,
+      buyFtUtxo.satoshis,
+    );
+
+    const feeChangeAddress = tbc.Script.fromHex(utxos[0].script)
+      .toAddress()
+      .toString();
+    const changeOutputIndex = tx.outputs.length;
+    tx.to(feeChangeAddress, 1);
+
+    if (newSellOrderAmount > 0n) {
+      if (tokenAChangeHex === zero_ft_tape_amount)
+        throw new Error("Sell order remains but TokenA change is zero");
+      const newSellOrderCodeScript = OrderBook.updateTokenSaleVolume(
+        sellutxo.script,
+        newSellOrderAmount,
+      );
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: newSellOrderCodeScript,
+          satoshis: this.buy_code_dust,
+        }),
+      );
+      addFTPair(
+        sellFtUtxo.script,
+        tokenATape,
+        tokenAChangeHex,
+        tbc.crypto.Hash.sha256ripemd160(
+          tbc.crypto.Hash.sha256(newSellOrderCodeScript.toBuffer()),
+        ).toString("hex"),
+        sellFtUtxo.satoshis,
+      );
+    } else if (newBuyOrderAmount > 0n) {
+      if (tokenBChangeHex === zero_ft_tape_amount)
+        throw new Error("Buy order remains but TokenB change is zero");
+      const newBuyOrderCodeScript = OrderBook.updateTokenSaleVolume(
+        buyutxo.script,
+        newBuyOrderAmount,
+      );
+      tx.addOutput(
+        new tbc.Transaction.Output({
+          script: newBuyOrderCodeScript,
+          satoshis: this.buy_code_dust,
+        }),
+      );
+      addFTPair(
+        buyFtUtxo.script,
+        tokenBTape,
+        tokenBChangeHex,
+        tbc.crypto.Hash.sha256ripemd160(
+          tbc.crypto.Hash.sha256(newBuyOrderCodeScript.toBuffer()),
+        ).toString("hex"),
+        buyFtUtxo.satoshis,
+      );
+    }
+
+    const inputSatoshis =
+      buyutxo.satoshis +
+      buyFtUtxo.satoshis +
+      sellutxo.satoshis +
+      sellFtUtxo.satoshis +
+      utxos.reduce((sum, utxo) => sum + utxo.satoshis, 0);
+    const outputSatoshisWithoutChange = tx.outputs.reduce(
+      (sum, output, index) =>
+        index === changeOutputIndex ? sum : sum + output.satoshis,
+      0,
+    );
+    const txSize = tx.getEstimateSize() + 2 * 1000 + 2 * 2000;
+    const fee = txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80);
+    const changeAmount = inputSatoshis - outputSatoshisWithoutChange - fee;
+    if (changeAmount < 24)
+      throw new Error("Insufficient TBC fee UTXO for token match order");
+    (tx.outputs[changeOutputIndex] as any).satoshis = changeAmount;
+
+    return { tx, buyData, sellData };
+  }
+
+  matchTokenOrder(
+    privateKey: tbc.PrivateKey,
+    buyutxo: tbc.Transaction.IUnspentOutput,
+    buyPreTX: tbc.Transaction,
+    buyFtUtxo: tbc.Transaction.IUnspentOutput,
+    buyFtPreTX: tbc.Transaction,
+    buyFtPrePreTxData: string,
+    sellutxo: tbc.Transaction.IUnspentOutput,
+    sellPreTX: tbc.Transaction,
+    sellFtUtxo: tbc.Transaction.IUnspentOutput,
+    sellFtPreTX: tbc.Transaction,
+    sellFtPrePreTxData: string,
+    utxos: tbc.Transaction.IUnspentOutput[],
+    ftaFeeAddress: string,
+    ftbFeeAddress: string,
+  ): string {
+    if (!_isValidHexString(buyFtPrePreTxData))
+      throw new Error("Invalid BuyFtPrePreTxData string");
+    if (!_isValidHexString(sellFtPrePreTxData))
+      throw new Error("Invalid SellFtPrePreTxData string");
+
+    const { tx, buyData, sellData } = this.buildMatchTokenOrderTransaction(
+      buyutxo,
+      buyPreTX,
+      buyFtUtxo,
+      buyFtPreTX,
+      sellutxo,
+      sellPreTX,
+      sellFtUtxo,
+      sellFtPreTX,
+      utxos,
+      ftaFeeAddress,
+      ftbFeeAddress,
+    );
+
+    tx.setInputScript(
+      {
+        inputIndex: 0,
+      },
+      (tx) => this.getTokenOrderUnlock(tx, buyPreTX, buyutxo.outputIndex),
+    );
+
+    const buyFtIsCoin = buyFtUtxo.script.length / 2 === coin_length;
+    const buyFtVersion = getFTVersion(buyFtUtxo.script, buyFtIsCoin);
+    if (buyFtIsCoin) tx.setInputSequence(1, 4294967294);
+    tx.setInputScript(
+      {
+        inputIndex: 1,
+      },
+      (tx) =>
+        new FT(buyData.ftbID).getFTunlockSwap(
+          privateKey,
+          tx,
+          buyFtPreTX,
+          buyFtPrePreTxData,
+          buyPreTX,
+          1,
+          buyFtUtxo.outputIndex,
+          buyFtVersion,
+          buyFtIsCoin,
+          true,
+        ),
+    );
+
+    tx.setInputScript(
+      {
+        inputIndex: 2,
+      },
+      (tx) => this.getTokenOrderUnlock(tx, sellPreTX, sellutxo.outputIndex),
+    );
+
+    const sellFtIsCoin = sellFtUtxo.script.length / 2 === coin_length;
+    const sellFtVersion = getFTVersion(sellFtUtxo.script, sellFtIsCoin);
+    if (sellFtIsCoin) tx.setInputSequence(3, 4294967294);
+    tx.setInputScript(
+      {
+        inputIndex: 3,
+      },
+      (tx) =>
+        new FT(sellData.ftaID).getFTunlockSwap(
+          privateKey,
+          tx,
+          sellFtPreTX,
+          sellFtPrePreTxData,
+          sellPreTX,
+          3,
+          sellFtUtxo.outputIndex,
+          sellFtVersion,
+          sellFtIsCoin,
+          true,
+        ),
+    );
+
+    tx.sign(privateKey);
+    tx.seal();
+    return tx.uncheckedSerialize();
+  }
+
   async makeTokenSellOrder_privateKeyOnline(
     privateKey: tbc.PrivateKey,
     taxAddress: string,

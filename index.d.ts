@@ -1002,6 +1002,92 @@ declare module "tbc-contract" {
       ftFeeAddress: string,
       tbcFeeAddress: string,
     ): Promise<string>;
+    buildTokenSellOrderTX(
+      holdAddress: string,
+      taxAddress: string,
+      saleVolume: bigint,
+      unitPrice: bigint,
+      feeRate: bigint,
+      ftaID: string,
+      ftbID: string,
+      ftaCodeScript: string,
+      ftbCodeScript: string,
+      utxos: Transaction.IUnspentOutput[],
+      ftutxos: Transaction.IUnspentOutput[],
+      preTXs: Transaction[],
+    ): string;
+    buildTokenBuyOrderTX(
+      holdAddress: string,
+      taxAddress: string,
+      saleVolume: bigint,
+      unitPrice: bigint,
+      feeRate: bigint,
+      ftaID: string,
+      ftbID: string,
+      ftaCodeScript: string,
+      ftbCodeScript: string,
+      utxos: Transaction.IUnspentOutput[],
+      ftutxos: Transaction.IUnspentOutput[],
+      preTXs: Transaction[],
+    ): string;
+    fillSigsMakeTokenSellOrder(
+      sellOrderTxRaw: string,
+      sigs: string[],
+      publicKey: string,
+      preTXs: Transaction[],
+      prepreTxData: string[],
+    ): string;
+    fillSigsMakeTokenBuyOrder(
+      buyOrderTxRaw: string,
+      sigs: string[],
+      publicKey: string,
+      preTXs: Transaction[],
+      prepreTxData: string[],
+    ): string;
+    buildCancelTokenSellOrderTX(
+      sellutxo: Transaction.IUnspentOutput,
+      ftutxo: Transaction.IUnspentOutput,
+      ftPreTX: Transaction,
+      utxos: Transaction.IUnspentOutput[],
+    ): string;
+    buildCancelTokenBuyOrderTX(
+      buyutxo: Transaction.IUnspentOutput,
+      ftutxo: Transaction.IUnspentOutput,
+      ftPreTX: Transaction,
+      utxos: Transaction.IUnspentOutput[],
+    ): string;
+    fillSigsCancelTokenSellOrder(
+      cancelSellOrderTxRaw: string,
+      sigs: string[],
+      publicKey: string,
+      sellPreTX: Transaction,
+      ftPreTX: Transaction,
+      ftPrePreTxData: string,
+    ): string;
+    fillSigsCancelTokenBuyOrder(
+      cancelBuyOrderTxRaw: string,
+      sigs: string[],
+      publicKey: string,
+      buyPreTX: Transaction,
+      ftPreTX: Transaction,
+      ftPrePreTxData: string,
+    ): string;
+    matchTokenOrder(
+      privateKey: PrivateKey,
+      buyutxo: Transaction.IUnspentOutput,
+      buyPreTX: Transaction,
+      buyFtUtxo: Transaction.IUnspentOutput,
+      buyFtPreTX: Transaction,
+      buyFtPrePreTxData: string,
+      sellutxo: Transaction.IUnspentOutput,
+      sellPreTX: Transaction,
+      sellFtUtxo: Transaction.IUnspentOutput,
+      sellFtPreTX: Transaction,
+      sellFtPrePreTxData: string,
+      utxos: Transaction.IUnspentOutput[],
+      ftaFeeAddress: string,
+      ftbFeeAddress: string,
+    ): string;
     makeTokenSellOrder_privateKeyOnline(
       privateKey: PrivateKey,
       taxAddress: string,
