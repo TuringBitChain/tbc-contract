@@ -11,10 +11,12 @@ const ftCodeLength = 1884;
 const coinCodeLength = 2012;
 const buyCodeLength = 960 + 114;
 const sellCodeLength = 832 + 114;
+const tokenOrderCodeLength = 1152 + 180;
 const ftPartialOffset = 1856;
 const coinPartialOffset = 1984;
 const buyPartialOffset = 960;
 const sellPartialOffset = 832;
+const tokenOrderPartialOffset = 1152;
 
 export function getPreTxdata(tx: tbc.Transaction, vout: number, contractOutputNumber: number): string {
     const writer = new tbc.encoding.BufferWriter();
@@ -61,6 +63,7 @@ export function getPreTxdata(tx: tbc.Transaction, vout: number, contractOutputNu
             let partialOffset = 0;
             if (len === buyCodeLength) partialOffset = buyPartialOffset;
             else if (len === sellCodeLength) partialOffset = sellPartialOffset;
+            else if (len === tokenOrderCodeLength) partialOffset = tokenOrderPartialOffset;
             // Special handling for the specific contract output being unlocked
             partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, partialOffset));
             suffixdata = lockingscript.subarray(partialOffset);
@@ -121,7 +124,7 @@ export function getPreTxdata(tx: tbc.Transaction, vout: number, contractOutputNu
     return `${pretxdata}`;
 }
 
-export function getCurrentTxOutputsData(tx: tbc.Transaction): string {
+export function getCurrentTxOutputsData(tx: tbc.Transaction, fixedOutputCount = 10): string {
     const writer = new tbc.encoding.BufferWriter();
 
     for (let i = 0; i < tx.outputs.length; i++) {
@@ -134,6 +137,7 @@ export function getCurrentTxOutputsData(tx: tbc.Transaction): string {
         else if (len === coinCodeLength) partialOffset = coinPartialOffset;
         else if (len === buyCodeLength) partialOffset = buyPartialOffset;
         else if (len === sellCodeLength) partialOffset = sellPartialOffset;
+        else if (len === tokenOrderCodeLength) partialOffset = tokenOrderPartialOffset;
 
         const isSpecial = partialOffset > 0;
         let partialhash: string;
@@ -177,7 +181,9 @@ export function getCurrentTxOutputsData(tx: tbc.Transaction): string {
         }
     }
     
-    const paddingCount = tx.outputs.length === 7 ? 10 : tx.outputs.length === 8 ? 6 : 0;
+    const missingOutputCount = fixedOutputCount - tx.outputs.length;
+    const paddingCount =
+        missingOutputCount > 0 ? missingOutputCount * 4 - 2 : 0;
     for (let i = 0; i < paddingCount; i++) {
         writer.write(Buffer.from("00", 'hex'));
     }

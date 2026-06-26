@@ -902,6 +902,8 @@ declare module "tbc-contract" {
     unit_price_number: number;
     ft_a_contract_partialhash: string;
     ft_a_contract_id: string;
+    ft_b_contract_partialhash: string;
+    ft_b_contract_id: string;
     contract_version: number;
 
     buildSellOrderTX(
@@ -1000,15 +1002,60 @@ declare module "tbc-contract" {
       ftFeeAddress: string,
       tbcFeeAddress: string,
     ): Promise<string>;
+    makeTokenSellOrder_privateKeyOnline(
+      privateKey: PrivateKey,
+      taxAddress: string,
+      saleVolume: bigint,
+      unitPrice: bigint,
+      feeRate: bigint,
+      ftaID: string,
+      ftbID: string,
+    ): Promise<string>;
+    cancelTokenSellOrder_privateKeyOnline(
+      privateKey: PrivateKey,
+      sellutxo: Transaction.IUnspentOutput,
+    ): Promise<string>;
+    makeTokenBuyOrder_privateKeyOnline(
+      privateKey: PrivateKey,
+      taxAddress: string,
+      saleVolume: bigint,
+      unitPrice: bigint,
+      feeRate: bigint,
+      ftaID: string,
+      ftbID: string,
+    ): Promise<string>;
+    cancelTokenBuyOrder_privateKeyOnline(
+      privateKey: PrivateKey,
+      buyutxo: Transaction.IUnspentOutput,
+    ): Promise<string>;
+    matchTokenOrderOnline(
+      privateKey: PrivateKey,
+      buyutxo: Transaction.IUnspentOutput,
+      sellutxo: Transaction.IUnspentOutput,
+      ftaFeeAddress: string,
+      ftbFeeAddress: string,
+    ): Promise<string>;
     getOrderUnlock(
+      currentTX: Transaction,
+      preTX: Transaction,
+      preTxVout: number,
+    ): Script;
+    getTokenOrderUnlock(
       currentTX: Transaction,
       preTX: Transaction,
       preTxVout: number,
     ): Script;
     getSellOrderCode(isCoin: boolean, taxAddress: string): Script;
     getBuyOrderCode(isCoin: boolean, taxAddress: string): Script;
+    getTokenSellOrderCode(taxAddress: string): Script;
+    getTokenBuyOrderCode(taxAddress: string): Script;
     buildOrderData(): Script;
+    buildTokenOrderData(): Script;
     static updateSaleVolume(codeScript: string, newSaleVolume: bigint): Script;
+    static updateTokenSaleVolume(
+      codeScript: string,
+      newSaleVolume: bigint,
+    ): Script;
     static getOrderData(codeScript: string): {
       holdAddress: string;
       saleVolume: bigint;
@@ -1016,6 +1063,16 @@ declare module "tbc-contract" {
       feeRate: bigint;
       unitPrice: bigint;
       ftID: string;
+    };
+    static getTokenOrderData(codeScript: string): {
+      holdAddress: string;
+      saleVolume: bigint;
+      ftaPartialHash: string;
+      ftbPartialHash: string;
+      feeRate: bigint;
+      unitPrice: bigint;
+      ftaID: string;
+      ftbID: string;
     };
   }
 
