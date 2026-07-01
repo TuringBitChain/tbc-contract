@@ -10,6 +10,7 @@ import {
   _isValidSHA256Hash,
   _isValidHexString,
   fillCharLengthInFT,
+  isCoinCodeScript,
 } from "../util/util";
 const API = require("../api/api");
 const FT = require("./ft");
@@ -30,15 +31,31 @@ const zero_ft_tape_amount =
   "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
 const utxoFee = 0.01;
 
-type FTVersion = 1 | 2 | 3;
+type FTVersion = 1 | 2 | 3 | 4;
 const getFTVersion = (codeScript: string, isCoin: boolean): FTVersion => {
+  const codeLength = codeScript.length / 2;
   const baseVersion =
-    codeScript.length / 2 === ft_v2_length || isCoin ? 2 : 1;
+    codeLength === ft_v2_length || codeLength === coin_length || isCoin ? 2 : 1;
   if (baseVersion !== 2) return 1;
 
   const fillCharLength = fillCharLengthInFT(codeScript);
-  console.log(fillCharLength);
+  if (!isCoin && codeLength === coin_length && fillCharLength === 28) return 4;
   return fillCharLength === 1 || fillCharLength === 2 ? 3 : 2;
+};
+
+const getFTPartialOffset = (codeScript: string): number => {
+  const ftScriptLen = codeScript.length / 2;
+  return ftScriptLen === coin_length
+    ? coin_partial_offset
+    : ftScriptLen === ft_v1_length
+      ? ft_v1_partial_offset
+      : ft_v2_partial_offset;
+};
+
+const getFTCodeSizeHex = (codeScript: string): string => {
+  return Buffer.from((codeScript.length / 2).toString(16).padStart(4, "0"), "hex")
+    .reverse()
+    .toString("hex");
 };
 
 class OrderBook {
@@ -88,9 +105,8 @@ class OrderBook {
     this.unit_price = unitPrice;
     this.fee_rate = feeRate;
     this.ft_a_contract_id = ftID;
-    const ftScriptLen = ftCodeScript.length / 2;
-    const isCoin = ftScriptLen === coin_length;
-    const partialOffset = isCoin ? coin_partial_offset : ft_v2_partial_offset;
+    const isCoin = isCoinCodeScript(ftCodeScript);
+    const partialOffset = getFTPartialOffset(ftCodeScript);
     this.ft_a_contract_partialhash = partial_sha256.calculate_partial_hash(
       Buffer.from(ftCodeScript, "hex").subarray(0, partialOffset),
     );
@@ -99,7 +115,11 @@ class OrderBook {
     tx.from(utxos);
     tx.addOutput(
       new tbc.Transaction.Output({
-        script: this.getSellOrderCode(isCoin, taxAddress),
+        script: this.getSellOrderCode(
+          isCoin,
+          taxAddress,
+          getFTCodeSizeHex(ftCodeScript),
+        ),
         satoshis: Number(saleVolume),
       }),
     );
@@ -177,9 +197,8 @@ class OrderBook {
     this.unit_price = unitPrice;
     this.fee_rate = feeRate;
     this.ft_a_contract_id = ftID;
-    const ftScriptLen = ftutxos[0].script.length / 2;
-    const isCoin = ftScriptLen === coin_length;
-    const partialOffset = isCoin ? coin_partial_offset : ft_v2_partial_offset;
+    const isCoin = isCoinCodeScript(ftutxos[0].script);
+    const partialOffset = getFTPartialOffset(ftutxos[0].script);
     this.ft_a_contract_partialhash = partial_sha256.calculate_partial_hash(
       Buffer.from(ftutxos[0].script, "hex").subarray(0, partialOffset),
     );
@@ -189,7 +208,11 @@ class OrderBook {
     tx.from(utxos);
 
     // Buy Order Output
-    const buyOrder = this.getBuyOrderCode(isCoin, taxAddress);
+    const buyOrder = this.getBuyOrderCode(
+      isCoin,
+      taxAddress,
+      getFTCodeSizeHex(ftutxos[0].script),
+    );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: buyOrder,
@@ -318,7 +341,7 @@ class OrderBook {
 
     const tx = new tbc.Transaction(buyOrderTxRaw);
 
-    const isCoin = tx.outputs[1].script.toBuffer().length === coin_length;
+    const isCoin = isCoinCodeScript(tx.outputs[1].script.toHex());
     for (let i = 0; i < preTXs.length; i++) {
       if (isCoin) tx.setInputSequence(i, 4294967294);
       tx.setInputScript(
@@ -370,7 +393,7 @@ class OrderBook {
       throw new Error("Invalid FtPrePreTxData string");
 
     const tx = new tbc.Transaction(buyOrderTxRaw);
-    const isCoin = tx.outputs[0].script.toBuffer().length === coin_length;
+    const isCoin = isCoinCodeScript(tx.outputs[0].script.toHex());
     const ftVersion = getFTVersion(tx.outputs[0].script.toHex(), isCoin);
     tx.setInputScript(
       {
@@ -616,7 +639,7 @@ class OrderBook {
       },
     );
 
-    const isCoin = ftutxo.script.length / 2 === coin_length;
+    const isCoin = isCoinCodeScript(ftutxo.script);
     const ftVersion = getFTVersion(ftutxo.script, isCoin);
     if (isCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
@@ -704,9 +727,8 @@ class OrderBook {
     this.unit_price = unitPrice;
     this.fee_rate = feeRate;
     this.ft_a_contract_id = ftID;
-    const ftScriptLen = TokenInfo.codeScript.length / 2;
-    const isCoin = ftScriptLen === coin_length;
-    const partialOffset = isCoin ? coin_partial_offset : ft_v2_partial_offset;
+    const isCoin = isCoinCodeScript(TokenInfo.codeScript);
+    const partialOffset = getFTPartialOffset(TokenInfo.codeScript);
     this.ft_a_contract_partialhash = partial_sha256.calculate_partial_hash(
       Buffer.from(TokenInfo.codeScript, "hex").subarray(0, partialOffset),
     );
@@ -715,7 +737,11 @@ class OrderBook {
     tx.from(utxos);
     tx.addOutput(
       new tbc.Transaction.Output({
-        script: this.getSellOrderCode(isCoin, taxAddress),
+        script: this.getSellOrderCode(
+          isCoin,
+          taxAddress,
+          getFTCodeSizeHex(TokenInfo.codeScript),
+        ),
         satoshis: Number(saleVolume),
       }),
     );
@@ -829,7 +855,7 @@ class OrderBook {
     this.unit_price = unitPrice;
     this.fee_rate = feeRate;
     this.ft_a_contract_id = ftID;
-    const partialOffset = isCoin ? coin_partial_offset : ft_v2_partial_offset;
+    const partialOffset = getFTPartialOffset(ftutxos[0].script);
     this.ft_a_contract_partialhash = partial_sha256.calculate_partial_hash(
       Buffer.from(ftutxos[0].script, "hex").subarray(0, partialOffset),
     );
@@ -839,7 +865,11 @@ class OrderBook {
     tx.from(utxos);
 
     // Buy Order Output
-    const buyOrder = this.getBuyOrderCode(isCoin, taxAddress);
+    const buyOrder = this.getBuyOrderCode(
+      isCoin,
+      taxAddress,
+      getFTCodeSizeHex(ftutxos[0].script),
+    );
     tx.addOutput(
       new tbc.Transaction.Output({
         script: buyOrder,
@@ -946,7 +976,7 @@ class OrderBook {
     const utxos = [await API.fetchUTXO(privateKey, utxoFee, network)];
 
     const buyData = OrderBook.getOrderData(buyutxo.script);
-    const isCoin = ftutxo.script.length / 2 === coin_length;
+    const isCoin = isCoinCodeScript(ftutxo.script);
     const ftVersion = getFTVersion(ftutxo.script, isCoin);
     const tx = new tbc.Transaction();
     tx.from(buyutxo).from(ftutxo).from(utxos);
@@ -1227,7 +1257,7 @@ class OrderBook {
       },
     );
 
-    const isCoin = ftutxo.script.length / 2 === coin_length;
+    const isCoin = isCoinCodeScript(ftutxo.script);
     const ftVersion = getFTVersion(ftutxo.script, isCoin);
     if (isCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
@@ -1510,7 +1540,7 @@ class OrderBook {
     const tx = new tbc.Transaction(tokenOrderTxRaw);
     if (sigs.length < tx.inputs.length)
       throw new Error("Signatures length is less than inputs length");
-    const isCoin = tx.outputs[1].script.toBuffer().length === coin_length;
+    const isCoin = isCoinCodeScript(tx.outputs[1].script.toHex());
     for (let i = 0; i < preTXs.length; i++) {
       if (isCoin) tx.setInputSequence(i, 4294967294);
       tx.setInputScript(
@@ -1653,7 +1683,7 @@ class OrderBook {
     const tx = new tbc.Transaction(tokenOrderTxRaw);
     if (sigs.length < tx.inputs.length)
       throw new Error("Signatures length is less than inputs length");
-    const isCoin = tx.outputs[0].script.toBuffer().length === coin_length;
+    const isCoin = isCoinCodeScript(tx.outputs[0].script.toHex());
     const ftVersion = getFTVersion(tx.outputs[0].script.toHex(), isCoin);
 
     tx.setInputScript(
@@ -1991,7 +2021,7 @@ class OrderBook {
       (tx) => this.getTokenOrderUnlock(tx, buyPreTX, buyutxo.outputIndex),
     );
 
-    const buyFtIsCoin = buyFtUtxo.script.length / 2 === coin_length;
+    const buyFtIsCoin = isCoinCodeScript(buyFtUtxo.script);
     const buyFtVersion = getFTVersion(buyFtUtxo.script, buyFtIsCoin);
     if (buyFtIsCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
@@ -2020,7 +2050,7 @@ class OrderBook {
       (tx) => this.getTokenOrderUnlock(tx, sellPreTX, sellutxo.outputIndex),
     );
 
-    const sellFtIsCoin = sellFtUtxo.script.length / 2 === coin_length;
+    const sellFtIsCoin = isCoinCodeScript(sellFtUtxo.script);
     const sellFtVersion = getFTVersion(sellFtUtxo.script, sellFtIsCoin);
     if (sellFtIsCoin) tx.setInputSequence(3, 4294967294);
     tx.setInputScript(
@@ -2088,15 +2118,13 @@ class OrderBook {
       .toBuffer()
       .toString("hex");
 
-    const ftScriptLenA = TokenInfoA.codeScript.length / 2;
-    const isCoinA = ftScriptLenA === coin_length;
-    const partialOffsetA = isCoinA ? coin_partial_offset : ft_v2_partial_offset;
+    const isCoinA = isCoinCodeScript(TokenInfoA.codeScript);
+    const partialOffsetA = getFTPartialOffset(TokenInfoA.codeScript);
     this.ft_a_contract_partialhash = partial_sha256.calculate_partial_hash(
       Buffer.from(TokenInfoA.codeScript, "hex").subarray(0, partialOffsetA),
     );
-    const ftScriptLenB = TokenInfoB.codeScript.length / 2;
-    const isCoinB = ftScriptLenB === coin_length;
-    const partialOffsetB = isCoinB ? coin_partial_offset : ft_v2_partial_offset;
+    const isCoinB = isCoinCodeScript(TokenInfoB.codeScript);
+    const partialOffsetB = getFTPartialOffset(TokenInfoB.codeScript);
     this.ft_b_contract_partialhash = partial_sha256.calculate_partial_hash(
       Buffer.from(TokenInfoB.codeScript, "hex").subarray(0, partialOffsetB),
     );
@@ -2246,7 +2274,7 @@ class OrderBook {
     const utxos = [await API.fetchUTXO(privateKey, utxoFee, network)];
 
     const sellData = OrderBook.getTokenOrderData(sellutxo.script);
-    const isCoin = ftutxo.script.length / 2 === coin_length;
+    const isCoin = isCoinCodeScript(ftutxo.script);
     const ftVersion = getFTVersion(ftutxo.script, isCoin);
     const tx = new tbc.Transaction();
     tx.from(sellutxo).from(ftutxo).from(utxos);
@@ -2362,15 +2390,13 @@ class OrderBook {
       .toBuffer()
       .toString("hex");
 
-    const ftScriptLenA = TokenInfoA.codeScript.length / 2;
-    const isCoinA = ftScriptLenA === coin_length;
-    const partialOffsetA = isCoinA ? coin_partial_offset : ft_v2_partial_offset;
+    const isCoinA = isCoinCodeScript(TokenInfoA.codeScript);
+    const partialOffsetA = getFTPartialOffset(TokenInfoA.codeScript);
     this.ft_a_contract_partialhash = partial_sha256.calculate_partial_hash(
       Buffer.from(TokenInfoA.codeScript, "hex").subarray(0, partialOffsetA),
     );
-    const ftScriptLenB = TokenInfoB.codeScript.length / 2;
-    const isCoinB = ftScriptLenB === coin_length;
-    const partialOffsetB = isCoinB ? coin_partial_offset : ft_v2_partial_offset;
+    const isCoinB = isCoinCodeScript(TokenInfoB.codeScript);
+    const partialOffsetB = getFTPartialOffset(TokenInfoB.codeScript);
     this.ft_b_contract_partialhash = partial_sha256.calculate_partial_hash(
       Buffer.from(TokenInfoB.codeScript, "hex").subarray(0, partialOffsetB),
     );
@@ -2524,7 +2550,7 @@ class OrderBook {
     const utxos = [await API.fetchUTXO(privateKey, utxoFee, network)];
 
     const buyData = OrderBook.getTokenOrderData(buyutxo.script);
-    const isCoin = ftutxo.script.length / 2 === coin_length;
+    const isCoin = isCoinCodeScript(ftutxo.script);
     const ftVersion = getFTVersion(ftutxo.script, isCoin);
     const tx = new tbc.Transaction();
     tx.from(buyutxo).from(ftutxo).from(utxos);
@@ -2826,7 +2852,7 @@ class OrderBook {
       (tx) => this.getTokenOrderUnlock(tx, buyPreTX, buyutxo.outputIndex),
     );
 
-    const buyFtIsCoin = buyFtUtxo.script.length / 2 === coin_length;
+    const buyFtIsCoin = isCoinCodeScript(buyFtUtxo.script);
     const buyFtVersion = getFTVersion(buyFtUtxo.script, buyFtIsCoin);
     if (buyFtIsCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
@@ -2855,7 +2881,7 @@ class OrderBook {
       (tx) => this.getTokenOrderUnlock(tx, sellPreTX, sellutxo.outputIndex),
     );
 
-    const sellFtIsCoin = sellFtUtxo.script.length / 2 === coin_length;
+    const sellFtIsCoin = isCoinCodeScript(sellFtUtxo.script);
     const sellFtVersion = getFTVersion(sellFtUtxo.script, sellFtIsCoin);
     if (sellFtIsCoin) tx.setInputSequence(3, 4294967294);
     tx.setInputScript(
@@ -2911,10 +2937,13 @@ class OrderBook {
     return unlockingScript;
   }
 
-  getSellOrderCode(isCoin: boolean, taxAddress: string): tbc.Script {
+  getSellOrderCode(
+    isCoin: boolean,
+    taxAddress: string,
+    ftCodeSize = isCoin ? "dc07" : "5c07",
+  ): tbc.Script {
     const address =
       "14" + new tbc.Address(this.hold_address).hashBuffer.toString("hex");
-    const ftCodeSize = isCoin ? "dc07" : "5c07";
     const taxAddressHex =
       "14" + tbc.Address.fromString(taxAddress).hashBuffer.toString("hex");
 
@@ -2927,10 +2956,13 @@ class OrderBook {
     return sellOrderCode.add(sellOrderData);
   }
 
-  getBuyOrderCode(isCoin: boolean, taxAddress: string): tbc.Script {
+  getBuyOrderCode(
+    isCoin: boolean,
+    taxAddress: string,
+    ftCodeSize = isCoin ? "dc07" : "5c07",
+  ): tbc.Script {
     const address =
       "14" + new tbc.Address(this.hold_address).hashBuffer.toString("hex");
-    const ftCodeSize = isCoin ? "dc07" : "5c07";
     const taxAddressHex =
       "14" + tbc.Address.fromString(taxAddress).hashBuffer.toString("hex");
 
@@ -3368,7 +3400,7 @@ class OrderBook {
   //   utxos: tbc.Transaction.IUnspentOutput[],
   // ) {
   //   const buyData = OrderBook.getOrderData(buyutxo.script);
-  //   const isCoin = ftutxo.script.length / 2 === coin_length;
+  //   const isCoin = isCoinCodeScript(ftutxo.script);
   //   const tx = new tbc.Transaction();
   //   tx.from(buyutxo).from(ftutxo).from(utxos);
 

@@ -5,14 +5,18 @@ const ft_v1_length = 1564;
 const ft_v1_partial_offset = 1536;
 const ft_v2_length = 1884;
 const ft_v2_partial_offset = 1856;
+const coin_length = 2012;
 
-type FTVersion = 1 | 2 | 3;
+type FTVersion = 1 | 2 | 3 | 4;
 
 const getFTVersion = (codeScript: string): FTVersion => {
-  const baseVersion = codeScript.length / 2 === ft_v2_length ? 2 : 1;
+  const codeLength = codeScript.length / 2;
+  const baseVersion =
+    codeLength === ft_v2_length || codeLength === coin_length ? 2 : 1;
   if (baseVersion !== 2) return 1;
 
   const fillCharLength = fillCharLengthInFT(codeScript);
+  if (codeLength === coin_length && fillCharLength === 28) return 4;
   return fillCharLength === 1 || fillCharLength === 2 ? 3 : 2;
 };
 

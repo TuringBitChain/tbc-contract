@@ -177,13 +177,22 @@ export function _isValidHexString(param: string): boolean {
 }
 
 export function fillCharLengthInFT(codeScript: string): number {
-    const code = tbc.Script.fromHex(codeScript);
-    const opcodenum = code.chunks[code.chunks.length - 5].opcodenum;
-    if (opcodenum === 95) {
+    const fillChunk = getFTFillChunk(codeScript);
+    if (fillChunk.opcodenum === 95) {
         return 1;
-    } else if (opcodenum === 2) {
-        return 2;
-    } else {
-        return opcodenum;
     }
+    if (fillChunk.buf) {
+        return fillChunk.buf.length;
+    }
+    return fillChunk.opcodenum;
+}
+
+export function isCoinCodeScript(codeScript: string): boolean {
+    const fillChunk = getFTFillChunk(codeScript);
+    return codeScript.length / 2 === 2012 && fillChunk.buf?.toString("hex") === "ffff";
+}
+
+function getFTFillChunk(codeScript: string): any {
+    const code = tbc.Script.fromHex(codeScript);
+    return code.chunks[code.chunks.length - 5];
 }

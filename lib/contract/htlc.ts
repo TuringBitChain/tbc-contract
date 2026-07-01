@@ -5,6 +5,7 @@ import {
   parseDecimalToBigInt,
   getFtBalanceFromTape,
   fillCharLengthInFT,
+  isCoinCodeScript,
 } from "../util/util";
 const FT = require("./ft");
 const stableCoin = require("./stableCoin");
@@ -12,15 +13,16 @@ const stableCoin = require("./stableCoin");
 const ft_v2_length = 1884;
 const coin_length = 2012;
 
-type FTVersion = 1 | 2 | 3;
+type FTVersion = 1 | 2 | 3 | 4;
 
 const getFTVersion = (codeScript: string, isCoin: boolean): FTVersion => {
+  const codeLength = codeScript.length / 2;
   const baseVersion =
-    codeScript.length / 2 === ft_v2_length || isCoin ? 2 : 1;
+    codeLength === ft_v2_length || codeLength === coin_length || isCoin ? 2 : 1;
   if (baseVersion !== 2) return 1;
 
   const fillCharLength = fillCharLengthInFT(codeScript);
-  console.log(fillCharLength);
+  if (!isCoin && codeLength === coin_length && fillCharLength === 28) return 4;
   return fillCharLength === 1 || fillCharLength === 2 ? 3 : 2;
 };
 // ==================== HTLC with TBC ====================
@@ -313,7 +315,7 @@ export function deployHTLCToken(
   ).toString("hex");
 
   const ftCodeLen = ftutxos[0].script.length / 2;
-  const isCoin = ftCodeLen === coin_length;
+  const isCoin = isCoinCodeScript(ftutxos[0].script);
   if (ftCodeLen !== ft_v2_length && ftCodeLen !== coin_length) {
     throw new Error(
       `Unsupported FT code length ${ftCodeLen}; expected ${ft_v2_length} or ${coin_length}`,
@@ -435,11 +437,9 @@ export function fillSigDeployHTLCToken(
   const tx = new tbc.Transaction(deployRaw);
   const ftInputCount = preTX.length;
 
-  // isCoin from the first FT input's parent — its outputs[outputIndex] is
-  // the FT Code being spent; its length distinguishes FT v2 from coin.
-  const ftCodeLen =
-    preTX[0].outputs[tx.inputs[0].outputIndex].script.toBuffer().length;
-  const isCoin = ftCodeLen === coin_length;
+  const ftCodeScript =
+    preTX[0].outputs[tx.inputs[0].outputIndex].script.toHex();
+  const isCoin = isCoinCodeScript(ftCodeScript);
 
   for (let i = 0; i < ftInputCount; i++) {
     tx.setInputScript({ inputIndex: i }, (currentTX) => {
@@ -477,7 +477,7 @@ export function withdrawHTLCToken(
   }
 
   const ftCodeLen = ftutxo.script.length / 2;
-  const isCoin = ftCodeLen === coin_length;
+  const isCoin = isCoinCodeScript(ftutxo.script);
   if (ftCodeLen !== ft_v2_length && ftCodeLen !== coin_length) {
     throw new Error(
       `Unsupported FT code length ${ftCodeLen}; expected ${ft_v2_length} or ${coin_length}`,
@@ -546,9 +546,9 @@ export function fillSigWithdrawHTLCToken(
 
   const tx = new tbc.Transaction(withdrawRaw);
 
-  // FT Code UTXO is at deployTX.outputs[1]; its length distinguishes coin/ft.
-  const isCoin = deployTX.outputs[1].script.toBuffer().length === coin_length;
-  const ftVersion = getFTVersion(deployTX.outputs[1].script.toHex(), isCoin);
+  const ftCodeScript = deployTX.outputs[1].script.toHex();
+  const isCoin = isCoinCodeScript(ftCodeScript);
+  const ftVersion = getFTVersion(ftCodeScript, isCoin);
   const ftCodeOutputIndex = tx.inputs[1].outputIndex;
 
   // [0] HTLC unlock
@@ -598,7 +598,7 @@ export function refundHTLCToken(
   }
 
   const ftCodeLen = ftutxo.script.length / 2;
-  const isCoin = ftCodeLen === coin_length;
+  const isCoin = isCoinCodeScript(ftutxo.script);
   if (ftCodeLen !== ft_v2_length && ftCodeLen !== coin_length) {
     throw new Error(
       `Unsupported FT code length ${ftCodeLen}; expected ${ft_v2_length} or ${coin_length}`,
@@ -670,8 +670,9 @@ export function fillSigRefundHTLCToken(
 
   const tx = new tbc.Transaction(refundRaw);
 
-  const isCoin = deployTX.outputs[1].script.toBuffer().length === coin_length;
-  const ftVersion = getFTVersion(deployTX.outputs[1].script.toHex(), isCoin);
+  const ftCodeScript = deployTX.outputs[1].script.toHex();
+  const isCoin = isCoinCodeScript(ftCodeScript);
+  const ftVersion = getFTVersion(ftCodeScript, isCoin);
   const ftCodeOutputIndex = tx.inputs[1].outputIndex;
 
   tx.setInputScript(
@@ -744,7 +745,7 @@ export function deployHTLCTokenWithSign(
   ).toString("hex");
 
   const ftCodeLen = ftutxos[0].script.length / 2;
-  const isCoin = ftCodeLen === coin_length;
+  const isCoin = isCoinCodeScript(ftutxos[0].script);
   if (ftCodeLen !== ft_v2_length && ftCodeLen !== coin_length) {
     throw new Error(
       `Unsupported FT code length ${ftCodeLen}; expected ${ft_v2_length} or ${coin_length}`,
@@ -885,8 +886,9 @@ export function withdrawHTLCTokenWithSign(
   }
 
   const ftCodeLen = ftutxo.script.length / 2;
-  const isCoin = ftCodeLen === coin_length;
-  const ftVersion = getFTVersion(deployTX.outputs[1].script.toHex(), isCoin);
+  const ftCodeScript = deployTX.outputs[1].script.toHex();
+  const isCoin = isCoinCodeScript(ftCodeScript);
+  const ftVersion = getFTVersion(ftCodeScript, isCoin);
   if (ftCodeLen !== ft_v2_length && ftCodeLen !== coin_length) {
     throw new Error(
       `Unsupported FT code length ${ftCodeLen}; expected ${ft_v2_length} or ${coin_length}`,
@@ -988,8 +990,9 @@ export function refundHTLCTokenWithSign(
   }
 
   const ftCodeLen = ftutxo.script.length / 2;
-  const isCoin = ftCodeLen === coin_length;
-  const ftVersion = getFTVersion(deployTX.outputs[1].script.toHex(), isCoin);
+  const ftCodeScript = deployTX.outputs[1].script.toHex();
+  const isCoin = isCoinCodeScript(ftCodeScript);
+  const ftVersion = getFTVersion(ftCodeScript, isCoin);
   if (ftCodeLen !== ft_v2_length && ftCodeLen !== coin_length) {
     throw new Error(
       `Unsupported FT code length ${ftCodeLen}; expected ${ft_v2_length} or ${coin_length}`,

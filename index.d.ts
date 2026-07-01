@@ -385,7 +385,7 @@ declare module "tbc-contract" {
       contractTX: Transaction,
       currentUnlockIndex: number,
       preTxVout: number,
-      ftVersion?: 1 | 2 | 3,
+      ftVersion?: 1 | 2 | 3 | 4,
       isCoin?: boolean,
       isContractTXs?: boolean,
     ): Script;
@@ -408,7 +408,7 @@ declare module "tbc-contract" {
       contractTX: Transaction,
       currentUnlockIndex: number,
       preTxVout: number,
-      ftVersion?: 1 | 2 | 3,
+      ftVersion?: 1 | 2 | 3 | 4,
       isCoin?: boolean,
       isContractTXs?: boolean,
     ): Script;
@@ -729,16 +729,16 @@ declare module "tbc-contract" {
       swapOption?: 1 | 2,
     ): Promise<Script>;
     getPoolNftExtraInfo(): Promise<{
-      serviceFeeRate: number;
-      lpPlan: number;
-      withLock: boolean;
-      withLockTime: boolean;
+      serviceFeeRate: number | null;
+      lpPlan: number | null;
+      withLock: boolean | null;
+      withLockTime: boolean | null;
     }>;
     getPoolNftCode(
       txid: string,
       vout: number,
       lpPlan: 1 | 2 | 3 | 4 | 5,
-      ftVersion: 1 | 2 | 3,
+      ftVersion: 1 | 2 | 3 | 4,
       tag?: string,
       isCoin?: boolean,
     ): Script;
@@ -749,7 +749,7 @@ declare module "tbc-contract" {
       lpCostAddress: Address | string,
       lpCostTBC: number,
       pubKeyLock: string[],
-      ftVersion: 1 | 2 | 3,
+      ftVersion: 1 | 2 | 3 | 4,
       tag?: string,
       isCoin?: boolean,
     ): Script;
@@ -758,14 +758,14 @@ declare module "tbc-contract" {
       address: string,
       tapeSize: number,
       isCoin: boolean,
-      ftVersion?: 1 | 2 | 3,
+      ftVersion?: 1 | 2 | 3 | 4,
     ): Script;
     getFtlpCodeWithLockTime(
       poolNftCodeHash: string,
       address: string,
       tapeSize: number,
       isCoin: boolean,
-      ftVersion?: 1 | 2 | 3,
+      ftVersion?: 1 | 2 | 3 | 4,
     ): Script;
   }
 
@@ -1131,8 +1131,16 @@ declare module "tbc-contract" {
       preTX: Transaction,
       preTxVout: number,
     ): Script;
-    getSellOrderCode(isCoin: boolean, taxAddress: string): Script;
-    getBuyOrderCode(isCoin: boolean, taxAddress: string): Script;
+    getSellOrderCode(
+      isCoin: boolean,
+      taxAddress: string,
+      ftCodeSize?: string,
+    ): Script;
+    getBuyOrderCode(
+      isCoin: boolean,
+      taxAddress: string,
+      ftCodeSize?: string,
+    ): Script;
     getTokenSellOrderCode(taxAddress: string): Script;
     getTokenBuyOrderCode(taxAddress: string): Script;
     buildOrderData(): Script;
@@ -1479,4 +1487,5 @@ declare module "tbc-contract" {
     decimal: number,
   ): bigint;
   export function fillCharLengthInFT(codeScript: string): number;
+  export function isCoinCodeScript(codeScript: string): boolean;
 }

@@ -3,7 +3,6 @@ import * as tbc from "tbc-lib-js"
 import * as contract from "tbc-contract"
 const network = "testnet"
 //const network = "mainnet"
-//签名数为1-6 公钥数为3-10 签名数小于等于公钥数 公钥数组按字母序排列 下为2/3多签示例
 
 //计算多签地址
 const multiSigAddress = contract.MultiSig.getMultiSigAddress(pubKeys, signatureCount, publicKeyCount);
