@@ -274,7 +274,26 @@ declare module "tbc-contract" {
       pre_tx: Transaction,
       pre_pre_tx: Transaction,
     ): string;
+    transferNFT_v1(
+      address_from: string,
+      address_to: string,
+      privateKey: PrivateKey,
+      utxos: Transaction.IUnspentOutput[],
+      pre_tx: Transaction,
+      pre_pre_tx: Transaction,
+      batch?: boolean,
+    ): string;
     transferNFTWithTBC(
+      address_from: string,
+      address_to_nft: string,
+      address_to_tbc: string,
+      privateKey: PrivateKey,
+      utxos: Transaction.IUnspentOutput[],
+      pre_tx: Transaction,
+      pre_pre_tx: Transaction,
+      tbc_amount: number,
+    ): string;
+    transferNFTWithTBC_v1(
       address_from: string,
       address_to_nft: string,
       address_to_tbc: string,
@@ -296,6 +315,8 @@ declare module "tbc-contract" {
     static getPreTxdata_v0(tx: Transaction): string;
     static getPrePreTxdata_v0(tx: Transaction): string;
     static buildCodeScript(tx_hash: string, outputIndex: number): Script;
+    static buildCodeScript_v1(tx_hash: string, outputIndex: number): Script;
+    static getNFTVersion(codeScript: string | Script): 0 | 1 | 2 | -1;
     static buildHoldScript(address: string): Script;
     static buildMintScript(address: string): Script;
     static buildTapeScript(data: CollectionData | NFTData): Script;
