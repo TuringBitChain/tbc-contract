@@ -583,6 +583,9 @@ declare module "tbc-contract" {
     ): Script;
   }
 
+  export type PoolLpPlan = 1 | 2 | 3 | 4 | 5;
+  export type PoolServiceFeeRate = 35 | 135 | 335 | 535;
+
   export class poolNFT2 {
     ft_lp_amount: bigint;
     ft_a_amount: bigint;
@@ -610,8 +613,8 @@ declare module "tbc-contract" {
       privateKey_from: PrivateKey,
       utxo: Transaction.IUnspentOutput,
       tag: string,
-      serviceFeeRate?: number,
-      lpPlan?: 1 | 2 | 3 | 4 | 5,
+      serviceFeeRate?: PoolServiceFeeRate,
+      lpPlan?: PoolLpPlan,
       withLockTime?: boolean,
     ): Promise<string[]>;
     createPoolNftWithLock(
@@ -621,8 +624,8 @@ declare module "tbc-contract" {
       lpCostAddress: Address | string,
       lpCostTBC: number,
       pubKeyLock: string[],
-      serviceFeeRate?: number,
-      lpPlan?: 1 | 2 | 3 | 4 | 5,
+      serviceFeeRate?: PoolServiceFeeRate,
+      lpPlan?: PoolLpPlan,
       withLockTime?: boolean,
     ): Promise<string[]>;
     initPoolNFT(

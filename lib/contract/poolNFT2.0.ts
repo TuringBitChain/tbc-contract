@@ -30,6 +30,7 @@ const coin_length = 2012;
 const coin_partial_offset = 1984;
 
 type FTVersion = 1 | 2 | 3 | 4;
+type PoolLpPlan = 1 | 2 | 3 | 4 | 5;
 
 const getFTVersion = (codeScript: string, isCoin: boolean): FTVersion => {
   const codeLength = codeScript.length / 2;
@@ -91,10 +92,49 @@ const SERVICE_FEE_ADDRESS: { [key: number]: string } = {
   4: "19DetoaaohQkjFVJ6oGXd83xhZYQSbpE1g",
   5: "15EKrhuD8Yf3SfhjAgbizYqfnBbKh9ZMZ7",
 };
+
+const POOL_LP_PLAN_SERVICE_FEE_RATE: Record<PoolLpPlan, number> = {
+  1: 35,
+  2: 35,
+  3: 135,
+  4: 335,
+  5: 535,
+};
+
 const getServiceFeeAddress = (lpPlan: number): string => {
   const addr = SERVICE_FEE_ADDRESS[lpPlan];
   if (!addr) throw new Error(`Invalid lpPlan: ${lpPlan}`);
   return addr;
+};
+
+const isPoolLpPlan = (lpPlan: number): lpPlan is PoolLpPlan =>
+  Number.isInteger(lpPlan) &&
+  Object.prototype.hasOwnProperty.call(POOL_LP_PLAN_SERVICE_FEE_RATE, lpPlan);
+
+const resolvePoolFeeConfig = (
+  serviceFeeRate?: number,
+  lpPlan?: PoolLpPlan,
+): { lpPlan: PoolLpPlan; serviceFeeRate: number } => {
+  const resolvedLpPlan = lpPlan ?? 1;
+  if (!isPoolLpPlan(resolvedLpPlan)) {
+    throw new Error("Invalid lpPlan: must be one of 1, 2, 3, 4, 5");
+  }
+
+  const expectedServiceFeeRate = POOL_LP_PLAN_SERVICE_FEE_RATE[resolvedLpPlan];
+  const resolvedServiceFeeRate = serviceFeeRate ?? expectedServiceFeeRate;
+  if (
+    !Number.isInteger(resolvedServiceFeeRate) ||
+    resolvedServiceFeeRate !== expectedServiceFeeRate
+  ) {
+    throw new Error(
+      `Invalid serviceFeeRate for lpPlan ${resolvedLpPlan}: expected ${expectedServiceFeeRate}`,
+    );
+  }
+
+  return {
+    lpPlan: resolvedLpPlan,
+    serviceFeeRate: resolvedServiceFeeRate,
+  };
 };
 
 class poolNFT2 {
@@ -187,8 +227,8 @@ class poolNFT2 {
    * @param {tbc.PrivateKey} privateKey_from - The private key used to create the pool NFT.
    * @param {tbc.Transaction.IUnspentOutput} utxo - The unspent output used to create the transaction.
    * @param {string} tag - The tag for the pool NFT.
-   * @param {number} serviceFeeRate - Optional service fee rate, defaults to 25.
-   * @param {1 | 2} lpPlan - Optional LP fee plan, defaults to 1.
+   * @param {number} serviceFeeRate - Optional service fee rate. Must match lpPlan: 1/2=35, 3=135, 4=335, 5=535.
+   * @param {1 | 2 | 3 | 4 | 5} lpPlan - Optional LP fee plan, defaults to 1.
    * @param {boolean} withLockTime - Whether to use time lock, defaults to false.
    * @returns {Promise<string>} Returns a Promise that resolves to the raw transaction data as a string.
    *
@@ -207,9 +247,10 @@ class poolNFT2 {
     utxo: tbc.Transaction.IUnspentOutput,
     tag: string,
     serviceFeeRate?: number,
-    lpPlan?: 1 | 2 | 3 | 4 | 5,
+    lpPlan?: PoolLpPlan,
     withLockTime?: boolean,
   ): Promise<string[]> {
+    const poolFeeConfig = resolvePoolFeeConfig(serviceFeeRate, lpPlan);
     const privateKey = privateKey_from;
     const publicKeyHash =
       tbc.Address.fromPrivateKey(privateKey).hashBuffer.toString("hex");
@@ -244,7 +285,7 @@ class poolNFT2 {
     this.poolnft_code = this.getPoolNftCode(
       txSource.hash,
       0,
-      lpPlan || 1,
+      poolFeeConfig.lpPlan,
       ftVersion,
       tag,
       isCoin,
@@ -279,9 +320,9 @@ class poolNFT2 {
     this.ft_a_partialhash = partial_sha256.calculate_partial_hash(
       Buffer.from(FTA.codeScript, "hex").subarray(0, ftaOffset),
     );
-    this.service_fee_rate = serviceFeeRate ?? this.service_fee_rate;
+    this.service_fee_rate = poolFeeConfig.serviceFeeRate;
     const poolnftTapeScript = this.getPoolNftTape(
-      lpPlan || 1,
+      poolFeeConfig.lpPlan,
       false,
       withLockTime || false,
     );
@@ -329,8 +370,8 @@ class poolNFT2 {
    * @param {tbc.PrivateKey} privateKey_from - The private key used to create the pool NFT.
    * @param {tbc.Transaction.IUnspentOutput} utxo - The unspent output used to create the transaction.
    * @param {string} tag - The tag for the pool NFT.
-   * @param {number} serviceFeeRate - Optional service fee rate, defaults to 25.
-   * @param {1 | 2} lpPlan - Optional LP fee plan, defaults to 1.
+   * @param {number} serviceFeeRate - Optional service fee rate. Must match lpPlan: 1/2=35, 3=135, 4=335, 5=535.
+   * @param {1 | 2 | 3 | 4 | 5} lpPlan - Optional LP fee plan, defaults to 1.
    * @param {boolean} withLockTime - Whether to use time lock, defaults to false.
    * @returns {Promise<string>} Returns a Promise that resolves to the raw transaction data as a string.
    *
@@ -352,9 +393,10 @@ class poolNFT2 {
     lpCostTBC: number,
     pubKeyLock: string[],
     serviceFeeRate?: number,
-    lpPlan?: 1 | 2 | 3 | 4 | 5,
+    lpPlan?: PoolLpPlan,
     withLockTime?: boolean,
   ): Promise<string[]> {
+    const poolFeeConfig = resolvePoolFeeConfig(serviceFeeRate, lpPlan);
     const privateKey = privateKey_from;
     const publicKeyHash =
       tbc.Address.fromPrivateKey(privateKey).hashBuffer.toString("hex");
@@ -389,7 +431,7 @@ class poolNFT2 {
     this.poolnft_code = this.getPoolNftCodeWithLock(
       txSource.hash,
       0,
-      lpPlan || 1,
+      poolFeeConfig.lpPlan,
       lpCostAddress,
       lpCostTBC,
       pubKeyLock,
@@ -427,9 +469,9 @@ class poolNFT2 {
     this.ft_a_partialhash = partial_sha256.calculate_partial_hash(
       Buffer.from(FTA.codeScript, "hex").subarray(0, ftaOffset),
     );
-    this.service_fee_rate = serviceFeeRate ?? this.service_fee_rate;
+    this.service_fee_rate = poolFeeConfig.serviceFeeRate;
     const poolnftTapeScript = this.getPoolNftTape(
-      lpPlan || 1,
+      poolFeeConfig.lpPlan,
       true,
       withLockTime || false,
     );
@@ -1478,7 +1520,7 @@ class poolNFT2 {
    * @param {string} address_to - 接收 FT-A 的地址。
    * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
    * @param {number | string} amount_tbc - 要交换的 TBC 数量。
-   * @param {1 | 2} [lpPlan] - 流动性池计划，默认为 1。
+   * @param {1 | 2 | 3 | 4 | 5} [lpPlan] - 流动性池计划，默认为 1。
    * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
    *
    * 该函数执行以下主要步骤：
@@ -1729,7 +1771,7 @@ class poolNFT2 {
    * @param {string} address_to - 接收 TBC 的地址。
    * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
    * @param {number | string} amount_token - 要交换的 FT-A 数量。
-   * @param {1 | 2} [lpPlan] - 流动性池计划，默认为 1。
+   * @param {1 | 2 | 3 | 4 | 5} [lpPlan] - 流动性池计划，默认为 1。
    * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
    *
    * 该函数执行以下主要步骤：
@@ -1973,7 +2015,7 @@ class poolNFT2 {
    * @param {tbc.Transaction[]} ftPreTX - 之前的 FT-A 交易列表。
    * @param {string[]} ftPrePreTxData - 之前的 FT-A 交易数据列表。
    * @param {number | string} amount_token - 要交换的 FT-A 数量。
-   * @param {1 | 2} [lpPlan] - 流动性池计划，默认为 1。
+   * @param {1 | 2 | 3 | 4 | 5} [lpPlan] - 流动性池计划，默认为 1。
    * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
    * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
    *
