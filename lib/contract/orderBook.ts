@@ -30,6 +30,28 @@ const token_order_size_hex = "023405";
 const zero_ft_tape_amount =
   "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
 const utxoFee = 0.01;
+const MAX_ORDER_INPUTS = 10;
+const MAX_FT_INPUTS = 5;
+
+const validateSellOrderInputCount = (utxoCount: number): void => {
+  if (utxoCount > MAX_ORDER_INPUTS) {
+    throw new Error(`Sell order UTXO count must not exceed ${MAX_ORDER_INPUTS}`);
+  }
+};
+
+const validateBuyOrderInputCount = (
+  utxoCount: number,
+  ftUtxoCount: number,
+): void => {
+  if (ftUtxoCount > MAX_FT_INPUTS) {
+    throw new Error(`Buy order FT UTXO count must not exceed ${MAX_FT_INPUTS}`);
+  }
+  if (utxoCount + ftUtxoCount > MAX_ORDER_INPUTS) {
+    throw new Error(
+      `Buy order total input count must not exceed ${MAX_ORDER_INPUTS}`,
+    );
+  }
+};
 
 type FTVersion = 1 | 2 | 3 | 4;
 const getFTVersion = (codeScript: string, isCoin: boolean): FTVersion => {
@@ -98,6 +120,7 @@ class OrderBook {
       throw new Error("FeeRate must be non-negative bigint");
     if (!_isValidSHA256Hash(ftID))
       throw new Error("FTID must be valid SHA256 hash strings");
+    validateSellOrderInputCount(utxos.length);
 
     this.type = "sell";
     this.hold_address = holdAddress;
@@ -190,6 +213,7 @@ class OrderBook {
       throw new Error("FeeRate must be non-negative bigint");
     if (!_isValidSHA256Hash(ftID))
       throw new Error("FTID must be a valid SHA256 hash string");
+    validateBuyOrderInputCount(utxos.length, ftutxos.length);
 
     this.type = "buy";
     this.hold_address = holdAddress;
@@ -834,6 +858,7 @@ class OrderBook {
           network,
           requiredAmount,
         );
+    validateBuyOrderInputCount(1, ftutxos.length);
     let preTXs: tbc.Transaction[] = [];
     let prepreTxData: string[] = [];
     for (let i = 0; i < ftutxos.length; i++) {

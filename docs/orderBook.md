@@ -1,6 +1,10 @@
 ## 数值
 - 用八字节小端存储，方法参数类型统一bigint，精度除ft外均是6
 
+## 下单输入数量限制
+- TBC 卖单：`utxos` 数量不得超过 10。
+- TBC/FT 买单：`ftutxos` 数量不得超过 5，且 `utxos` 与 `ftutxos` 的数量之和不得超过 10。
+
 ## 方法
 ```ts
 import * as tbc from "tbc-lib-js";
@@ -32,7 +36,7 @@ const requiredAmount = (saleVolume * unitPrice) / 1000000n;
      * @param {bigint} feeRate - 手续费率,交易所需支付的手续费比例
      * @param {string} ftContractTxid - FT合约ID
      * @param {string} ftCodeScript - FT合约脚本
-     * @param {tbc.Transaction.IUnspentOutput[]} utxos - 未花费交易输出数组,用于构建交易的输入
+     * @param {tbc.Transaction.IUnspentOutput[]} utxos - 未花费交易输出数组,用于构建交易的输入,最多10个
      * @returns {string} sellOrderNoSigs - 返回一个待签名的卖单交易字符串
      */
     const sellOrderNoSigs = order.buildSellOrderTX(holdAddress, taxAddress, saleVolume, unitPrice, feeRate, ftContractTxid, ftCodeScript, utxos);   //待签名交易
@@ -110,8 +114,8 @@ const requiredAmount = (saleVolume * unitPrice) / 1000000n;
      * @param {bigint} unitPrice - 单价,每个tbc的价格
      * @param {bigint} feeRate - 手续费率,交易所需支付的手续费比例
      * @param {string} ftContractTxid - FT合约ID
-     * @param {tbc.Transaction.IUnspentOutput[]} utxos - 普通utxo数组
-     * @param {tbc.Transaction.IUnspentOutput[]} ftutxos - ftutxo数组
+     * @param {tbc.Transaction.IUnspentOutput[]} utxos - 普通utxo数组,与ftutxos合计最多10个
+     * @param {tbc.Transaction.IUnspentOutput[]} ftutxos - ftutxo数组,最多5个,与utxos合计最多10个
      * @param {tbc.Transaction[]} preTXs - ftutxo父交易数组
      * @returns {string} buyOrderNoSigs - 返回一个待签名的买单交易字符串
      */

@@ -270,7 +270,7 @@ class FT {
         }
         tx.sign(privateKey);
         tx.seal();
-        console.log(tx.verify());
+        // console.log(tx.verify());
         const txraw = tx.uncheckedSerialize();
         return txraw;
     }

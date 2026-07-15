@@ -114,16 +114,57 @@ export function getOpCode(number: number): string {
         throw new Error("Number must be less than 256");     
 }
 
+function getLpCostData(poolCode: string): { pubKeyHash: Buffer; amount: Buffer } {
+    if (
+        poolCode.length === 0 ||
+        poolCode.length % 2 !== 0 ||
+        !/^[0-9a-fA-F]+$/.test(poolCode)
+    ) {
+        throw new Error("Invalid pool code");
+    }
+
+    let poolScript: tbc.Script;
+    try {
+        poolScript = tbc.Script.fromHex(poolCode);
+    } catch {
+        throw new Error("Invalid pool code");
+    }
+
+    // Match the LP fee fields by their opcode context because Pool code versions
+    // place the same fields at different byte offsets.
+    const matches: { pubKeyHash: Buffer; amount: Buffer }[] = [];
+    for (let i = 0; i + 5 < poolScript.chunks.length; i++) {
+        const addressChunk = poolScript.chunks[i];
+        const amountChunk = poolScript.chunks[i + 4];
+        if (
+            addressChunk.buf?.length === 20 &&
+            poolScript.chunks[i + 1].opcodenum === tbc.Opcode.OP_EQUALVERIFY &&
+            poolScript.chunks[i + 2].opcodenum === tbc.Opcode.OP_PARTIAL_HASH &&
+            poolScript.chunks[i + 3].opcodenum === tbc.Opcode.OP_OVER &&
+            amountChunk.buf?.length === 8 &&
+            poolScript.chunks[i + 5].opcodenum === tbc.Opcode.OP_EQUALVERIFY
+        ) {
+            matches.push({
+                pubKeyHash: addressChunk.buf,
+                amount: amountChunk.buf,
+            });
+        }
+    }
+
+    if (matches.length !== 1) {
+        throw new Error("Invalid locked pool code: expected exactly one LP cost entry");
+    }
+    return matches[0];
+}
+
 export function getLpCostAddress(poolCode: string): string {
-    const pubKeyHash = poolCode.substring(426, 426 + 40);
-    // console.log(pubKeyHash);
-    return tbc.Address.fromPublicKeyHash(Buffer.from(pubKeyHash, 'hex')).toString();
+    const { pubKeyHash } = getLpCostData(poolCode);
+    return tbc.Address.fromPublicKeyHash(pubKeyHash).toString();
 }
 
 export function getLpCostAmount(poolCode: string): number {
-    const amount = poolCode.substring(474, 474 + 16);
-    // console.log(amount);
-    const satoshi = new tbc.encoding.BufferReader(Buffer.from(amount, 'hex')).readUInt64LEBN();
+    const { amount } = getLpCostData(poolCode);
+    const satoshi = new tbc.encoding.BufferReader(amount).readUInt64LEBN();
     return Number(satoshi);
 }
 
