@@ -49,6 +49,7 @@ async function main() {
             {
                 let tbcAmount = 30;
                 let ftAmount = 1000; //大数应使用string
+                // 带锁池中 tbcAmount 为总投入，实际入池和首发 FT-LP 数量为 tbcAmount - lpCostTBC
                 // 准备 utxo
                 const utxo = await API.fetchUTXO(privateKeyA, tbcAmount + fee, network);
                 const tx2 = await poolUse.initPoolNFT(privateKeyA, addressA, utxo, tbcAmount, ftAmount);
