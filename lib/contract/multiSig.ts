@@ -1,29 +1,43 @@
 import * as tbc from "tbc-lib-js";
-import { fillCharLengthInFT, parseDecimalToBigInt } from "../util/util";
+import { parseDecimalToBigInt } from "../util/util";
+import { getFTVersion, isCoinCodeScript } from "../util/ftscript";
 const FT = require("./ft");
-const ft_v1_length = 1564;
-const ft_v1_partial_offset = 1536;
-const ft_v2_length = 1884;
-const ft_v2_partial_offset = 1856;
-const coin_length = 2012;
-
-type FTVersion = 1 | 2 | 3 | 4;
-
-const getFTVersion = (codeScript: string): FTVersion => {
-  const codeLength = codeScript.length / 2;
-  const baseVersion =
-    codeLength === ft_v2_length || codeLength === coin_length ? 2 : 1;
-  if (baseVersion !== 2) return 1;
-
-  const fillCharLength = fillCharLengthInFT(codeScript);
-  if (codeLength === coin_length && fillCharLength === 28) return 4;
-  return fillCharLength === 1 || fillCharLength === 2 ? 3 : 2;
-};
+const stableCoin = require("./stableCoin");
 
 interface MultiSigTxRaw {
   txraw: string;
   amounts: number[];
 }
+
+const applyStableCoinInputLockTimes = (
+  tx: tbc.Transaction,
+  ftutxos: tbc.Transaction.IUnspentOutput[],
+  preTXs: tbc.Transaction[],
+  inputIndexOffset: number,
+): boolean => {
+  if (ftutxos.length === 0) return false;
+
+  const isCoin = isCoinCodeScript(ftutxos[0].script);
+  if (ftutxos.some((ftutxo) => isCoinCodeScript(ftutxo.script) !== isCoin)) {
+    throw new Error("Mixed FT and StableCoin inputs are not supported");
+  }
+  if (!isCoin) return false;
+
+  let lockTimeMax = tx.nLockTime;
+  for (let i = 0; i < ftutxos.length; i++) {
+    const tapeOutput = preTXs[i]?.outputs[ftutxos[i].outputIndex + 1];
+    if (!tapeOutput) {
+      throw new Error(`Missing StableCoin Tape output for FT input ${i}`);
+    }
+    tx.setInputSequence(i + inputIndexOffset, 4294967294);
+    lockTimeMax = Math.max(
+      lockTimeMax,
+      stableCoin.getLockTimeFromTape(tapeOutput.script),
+    );
+  }
+  tx.setLockTime(lockTimeMax);
+  return true;
+};
 
 class MultiSig {
   /**
@@ -352,6 +366,7 @@ class MultiSig {
     );
     const script_asm = MultiSig.getMultiSigLockScript(address_to);
     const tx = new tbc.Transaction().from(ftutxos).from(utxo);
+    const isCoin = applyStableCoinInputLockTimes(tx, ftutxos, preTXs, 0);
     if (tbc_amount) {
       const amount_satoshis = Number(parseDecimalToBigInt(tbc_amount, 6));
       tx.addOutput(
@@ -419,7 +434,8 @@ class MultiSig {
             preTXs[i],
             prepreTxDatas[i],
             i,
-            ftutxos[i].outputIndex
+            ftutxos[i].outputIndex,
+            isCoin
           );
           return unlockingScript;
         }
@@ -490,6 +506,7 @@ class MultiSig {
     );
 
     const tx = new tbc.Transaction().from(utxo).from(ftutxos);
+    const isCoin = applyStableCoinInputLockTimes(tx, ftutxos, preTXs, 1);
     switch (ftutxos.length) {
       case 1:
         tx.addOutput(
@@ -580,7 +597,7 @@ class MultiSig {
       );
     }
 
-    const ftVersion = getFTVersion(ftutxos[0].script);
+    const ftVersion = getFTVersion(ftutxos[0].script, isCoin);
     for (let i = 0; i < ftutxos.length; i++) {
       tx.setInputScript(
         {
@@ -595,7 +612,8 @@ class MultiSig {
             contractTX,
             i + 1,
             ftutxos[i].outputIndex,
-            ftVersion
+            ftVersion,
+            isCoin
           );
           return unlockingScript;
         }

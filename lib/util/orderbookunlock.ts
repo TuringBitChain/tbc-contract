@@ -1,4 +1,12 @@
 import * as tbc from "tbc-lib-js"
+import {
+    FT_V2_CODE_LENGTH,
+    FT_V2_PARTIAL_OFFSET,
+    FT_V4_CODE_LENGTH,
+    FT_V4_PARTIAL_OFFSET,
+    LEGACY_COIN_CODE_LENGTH,
+    LEGACY_COIN_PARTIAL_OFFSET,
+} from './ftscript';
 const partial_sha256 = require('tbc-lib-js/lib/util/partial-sha256');
 
 const version = 10;
@@ -7,13 +15,9 @@ const inputslength = '28';
 const amountlength = '08';
 const hashlength = '20';
 
-const ftCodeLength = 1884;
-const coinCodeLength = 2012;
 const buyCodeLength = 960 + 114;
 const sellCodeLength = 832 + 114;
 const tokenOrderCodeLength = 1152 + 180;
-const ftPartialOffset = 1856;
-const coinPartialOffset = 1984;
 const buyPartialOffset = 960;
 const sellPartialOffset = 832;
 const tokenOrderPartialOffset = 1152;
@@ -133,8 +137,9 @@ export function getCurrentTxOutputsData(tx: tbc.Transaction, fixedOutputCount = 
         const size = getSize(len);
 
         let partialOffset = 0;
-        if (len === ftCodeLength) partialOffset = ftPartialOffset;
-        else if (len === coinCodeLength) partialOffset = coinPartialOffset;
+        if (len === FT_V2_CODE_LENGTH) partialOffset = FT_V2_PARTIAL_OFFSET;
+        else if (len === LEGACY_COIN_CODE_LENGTH) partialOffset = LEGACY_COIN_PARTIAL_OFFSET;
+        else if (len === FT_V4_CODE_LENGTH) partialOffset = FT_V4_PARTIAL_OFFSET;
         else if (len === buyCodeLength) partialOffset = buyPartialOffset;
         else if (len === sellCodeLength) partialOffset = sellPartialOffset;
         else if (len === tokenOrderCodeLength) partialOffset = tokenOrderPartialOffset;
@@ -170,7 +175,11 @@ export function getCurrentTxOutputsData(tx: tbc.Transaction, fixedOutputCount = 
         writer.write(getLengthHex(size.length));
         writer.write(size);
 
-        if (len === ftCodeLength || len === coinCodeLength) {
+        if (
+            len === FT_V2_CODE_LENGTH ||
+            len === LEGACY_COIN_CODE_LENGTH ||
+            len === FT_V4_CODE_LENGTH
+        ) {
             const nextOutput = tx.outputs[i + 1];
             writer.write(Buffer.from(amountlength, 'hex'));
             writer.writeUInt64LEBN(nextOutput.satoshisBN);

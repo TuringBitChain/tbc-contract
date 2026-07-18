@@ -1,15 +1,13 @@
 import * as tbc from 'tbc-lib-js';
+import {
+    FT_V1_PARTIAL_OFFSET,
+    getFTPartialOffsetByLength,
+} from './ftscript';
 const partial_sha256 = require('tbc-lib-js/lib/util/partial-sha256');
 const version = 10;
 const vliolength = '10'; // Version + nLockTime + inputCount + outputCount (16 bytes)
 const amountlength = '08'; // Length of the amount field (8 bytes)
 const hashlength = '20'; // Length of the hash field (32 bytes)
-const ft_v1_length = 1564;
-const ft_v1_partial_offset = 1536;
-const ft_v2_length = 1884;
-const ft_v2_partial_offset = 1856;
-const coin_length = 2012;
-const coin_partial_offset = 1984;
 /**
  * Retrieves the transaction data needed for contract operations.
  * @param tx - The transaction object.
@@ -96,14 +94,7 @@ export function getCurrentTxdata(tx: tbc.Transaction, inputIndex: number): strin
     for (let i = 0; i < tx.outputs.length; i++) {
         const lockingscript = tx.outputs[i].script.toBuffer();
         const scriptLengthByte = lockingscript.length;
-        let offset = 0;
-        if (scriptLengthByte === ft_v1_length) {
-            offset = ft_v1_partial_offset;
-        } else if (scriptLengthByte === ft_v2_length) {
-            offset = ft_v2_partial_offset;
-        } else if (scriptLengthByte === coin_length) {
-            offset = coin_partial_offset;
-        }
+        const offset = getFTPartialOffsetByLength(scriptLengthByte) ?? 0;
 
         if (offset > 0) {
             // For scripts longer than 1500 bytes, calculate partial hash
@@ -201,12 +192,8 @@ export function getPreTxdata(tx: tbc.Transaction, vout: number): string {
 
     const lockingscript = tx.outputs[vout].script.toBuffer();
     const scriptLengthByte = lockingscript.length;
-    let offset = ft_v1_partial_offset;
-    if (scriptLengthByte === ft_v2_length) {
-        offset = ft_v2_partial_offset;
-    } else if (scriptLengthByte === coin_length) {
-        offset = coin_partial_offset;
-    }
+    const offset =
+        getFTPartialOffsetByLength(scriptLengthByte) ?? FT_V1_PARTIAL_OFFSET;
     const size = getSize(scriptLengthByte); // Size in little-endian
     const partialhash = partial_sha256.calculate_partial_hash(lockingscript.subarray(0, offset));
     const suffixdata = lockingscript.subarray(offset);
@@ -264,14 +251,7 @@ export function getPrePreTxdata(tx: tbc.Transaction, vout: number): string {
 
     const lockingscript = tx.outputs[vout].script.toBuffer();
     const scriptLengthByte = lockingscript.length;
-    let offset = 0;
-    if (scriptLengthByte === ft_v1_length) {
-        offset = ft_v1_partial_offset;
-    } else if (scriptLengthByte === ft_v2_length) {
-        offset = ft_v2_partial_offset;
-    } else if (scriptLengthByte === coin_length) {
-        offset = coin_partial_offset;
-    }
+    const offset = getFTPartialOffsetByLength(scriptLengthByte) ?? 0;
 
     if (offset > 0) {
         const size = getSize(scriptLengthByte); // Size in little-endian

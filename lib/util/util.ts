@@ -1,5 +1,6 @@
 import * as tbc from 'tbc-lib-js';
 import { getPrePreTxdata } from './ftunlock';
+export { fillCharLengthInFT, isCoinCodeScript } from './ftscript';
 
 export function buildUTXO(tx: tbc.Transaction, vout: number, isFT?: boolean): tbc.Transaction.IUnspentOutput {
         let ftBlance: bigint;
@@ -215,25 +216,4 @@ export function _isValidHexString(param: string): boolean {
   if (typeof param !== "string") return false;
   if (param.length === 0) return false;
   return /^[0-9a-f]+$/.test(param);
-}
-
-export function fillCharLengthInFT(codeScript: string): number {
-    const fillChunk = getFTFillChunk(codeScript);
-    if (fillChunk.opcodenum === 95) {
-        return 1;
-    }
-    if (fillChunk.buf) {
-        return fillChunk.buf.length;
-    }
-    return fillChunk.opcodenum;
-}
-
-export function isCoinCodeScript(codeScript: string): boolean {
-    const fillChunk = getFTFillChunk(codeScript);
-    return codeScript.length / 2 === 2012 && fillChunk.buf?.toString("hex") === "ffff";
-}
-
-function getFTFillChunk(codeScript: string): any {
-    const code = tbc.Script.fromHex(codeScript);
-    return code.chunks[code.chunks.length - 5];
 }

@@ -9,20 +9,14 @@ import {
   fetchInBatches,
   _isValidSHA256Hash,
   _isValidHexString,
-  fillCharLengthInFT,
   isCoinCodeScript,
 } from "../util/util";
+import { getFTPartialOffset, getFTVersion } from "../util/ftscript";
 const API = require("../api/api");
 const FT = require("./ft");
 const stableCoin = require("./stableCoin");
 const partial_sha256 = require("tbc-lib-js/lib/util/partial-sha256");
 const BN = tbc.crypto.BN;
-const ft_v1_length = 1564;
-const ft_v1_partial_offset = 1536;
-const ft_v2_length = 1884;
-const ft_v2_partial_offset = 1856;
-const coin_length = 2012;
-const coin_partial_offset = 1984;
 const token_order_prefix_length = 1152;
 const token_order_data_length = 180;
 const token_order_length = token_order_prefix_length + token_order_data_length;
@@ -53,25 +47,56 @@ const validateBuyOrderInputCount = (
   }
 };
 
-type FTVersion = 1 | 2 | 3 | 4;
-const getFTVersion = (codeScript: string, isCoin: boolean): FTVersion => {
-  const codeLength = codeScript.length / 2;
-  const baseVersion =
-    codeLength === ft_v2_length || codeLength === coin_length || isCoin ? 2 : 1;
-  if (baseVersion !== 2) return 1;
+interface CoinInputLockContext {
+  inputIndex: number;
+  isCoin: boolean;
+  preTX: tbc.Transaction;
+  preTxVout: number;
+}
 
-  const fillCharLength = fillCharLengthInFT(codeScript);
-  if (!isCoin && codeLength === coin_length && fillCharLength === 28) return 4;
-  return fillCharLength === 1 || fillCharLength === 2 ? 3 : 2;
+const getCoinInputLockTime = (context: CoinInputLockContext): number => {
+  const tapeOutput = context.preTX?.outputs[context.preTxVout + 1];
+  if (!tapeOutput) {
+    throw new Error(
+      `Missing StableCoin Tape output for input ${context.inputIndex}`,
+    );
+  }
+  return stableCoin.getLockTimeFromTape(tapeOutput.script);
 };
 
-const getFTPartialOffset = (codeScript: string): number => {
-  const ftScriptLen = codeScript.length / 2;
-  return ftScriptLen === coin_length
-    ? coin_partial_offset
-    : ftScriptLen === ft_v1_length
-      ? ft_v1_partial_offset
-      : ft_v2_partial_offset;
+const applyCoinInputLockTimes = (
+  tx: tbc.Transaction,
+  contexts: CoinInputLockContext[],
+): void => {
+  let hasCoinInput = false;
+  let lockTimeMax = tx.nLockTime;
+  for (const context of contexts) {
+    if (!context.isCoin) continue;
+    hasCoinInput = true;
+    tx.setInputSequence(context.inputIndex, 4294967294);
+    lockTimeMax = Math.max(lockTimeMax, getCoinInputLockTime(context));
+  }
+  if (hasCoinInput) tx.setLockTime(lockTimeMax);
+};
+
+const validateCoinInputLockTimes = (
+  tx: tbc.Transaction,
+  contexts: CoinInputLockContext[],
+): void => {
+  for (const context of contexts) {
+    if (!context.isCoin) continue;
+    if (tx.inputs[context.inputIndex]?.sequenceNumber !== 4294967294) {
+      throw new Error(
+        `StableCoin input ${context.inputIndex} sequence must be 4294967294 before signing`,
+      );
+    }
+    const requiredLockTime = getCoinInputLockTime(context);
+    if (tx.nLockTime < requiredLockTime) {
+      throw new Error(
+        `StableCoin input ${context.inputIndex} requires lockTime ${requiredLockTime}, got ${tx.nLockTime}`,
+      );
+    }
+  }
 };
 
 const getFTCodeSizeHex = (codeScript: string): string => {
@@ -230,6 +255,15 @@ class OrderBook {
     const tx = new tbc.Transaction();
     tx.from(ftutxos);
     tx.from(utxos);
+    applyCoinInputLockTimes(
+      tx,
+      ftutxos.map((ftutxo: tbc.Transaction.IUnspentOutput, i: number) => ({
+        inputIndex: i,
+        isCoin,
+        preTX: preTXs[i],
+        preTxVout: ftutxo.outputIndex,
+      })),
+    );
 
     // Buy Order Output
     const buyOrder = this.getBuyOrderCode(
@@ -308,8 +342,17 @@ class OrderBook {
     utxos: tbc.Transaction.IUnspentOutput[],
   ): string {
     const buyData = OrderBook.getOrderData(buyutxo.script);
+    const isCoin = isCoinCodeScript(ftutxo.script);
     const tx = new tbc.Transaction();
     tx.from(buyutxo).from(ftutxo).from(utxos);
+    applyCoinInputLockTimes(tx, [
+      {
+        inputIndex: 1,
+        isCoin,
+        preTX: ftPreTX,
+        preTxVout: ftutxo.outputIndex,
+      },
+    ]);
 
     const tapeAmountSetIn: bigint[] = [];
     tapeAmountSetIn.push(ftutxo.ftBalance!);
@@ -366,8 +409,16 @@ class OrderBook {
     const tx = new tbc.Transaction(buyOrderTxRaw);
 
     const isCoin = isCoinCodeScript(tx.outputs[1].script.toHex());
+    validateCoinInputLockTimes(
+      tx,
+      preTXs.map((preTX, i) => ({
+        inputIndex: i,
+        isCoin,
+        preTX,
+        preTxVout: tx.inputs[i].outputIndex,
+      })),
+    );
     for (let i = 0; i < preTXs.length; i++) {
-      if (isCoin) tx.setInputSequence(i, 4294967294);
       tx.setInputScript(
         {
           inputIndex: i,
@@ -381,6 +432,7 @@ class OrderBook {
             prepreTxData[i],
             i,
             tx.inputs[i].outputIndex,
+            isCoin,
           );
           return unlockingScript;
         },
@@ -419,6 +471,14 @@ class OrderBook {
     const tx = new tbc.Transaction(buyOrderTxRaw);
     const isCoin = isCoinCodeScript(tx.outputs[0].script.toHex());
     const ftVersion = getFTVersion(tx.outputs[0].script.toHex(), isCoin);
+    validateCoinInputLockTimes(tx, [
+      {
+        inputIndex: 1,
+        isCoin,
+        preTX: ftPreTX,
+        preTxVout: tx.inputs[1].outputIndex,
+      },
+    ]);
     tx.setInputScript(
       {
         inputIndex: 0,
@@ -426,7 +486,6 @@ class OrderBook {
       tbc.Script.fromASM(`${sigs[0]} ${publicKey} OP_2`),
     );
 
-    if (isCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
       {
         inputIndex: 1,
@@ -665,7 +724,14 @@ class OrderBook {
 
     const isCoin = isCoinCodeScript(ftutxo.script);
     const ftVersion = getFTVersion(ftutxo.script, isCoin);
-    if (isCoin) tx.setInputSequence(1, 4294967294);
+    applyCoinInputLockTimes(tx, [
+      {
+        inputIndex: 1,
+        isCoin,
+        preTX: ftPreTX,
+        preTxVout: ftutxo.outputIndex,
+      },
+    ]);
     tx.setInputScript(
       {
         inputIndex: 1,
@@ -888,6 +954,15 @@ class OrderBook {
     const tx = new tbc.Transaction();
     tx.from(ftutxos);
     tx.from(utxos);
+    applyCoinInputLockTimes(
+      tx,
+      ftutxos.map((ftutxo: tbc.Transaction.IUnspentOutput, i: number) => ({
+        inputIndex: i,
+        isCoin,
+        preTX: preTXs[i],
+        preTxVout: ftutxo.outputIndex,
+      })),
+    );
 
     // Buy Order Output
     const buyOrder = this.getBuyOrderCode(
@@ -958,7 +1033,6 @@ class OrderBook {
     tx.feePerKb(80);
 
     for (let i = 0; i < ftutxos.length; i++) {
-      if (isCoin) tx.setInputSequence(i, 4294967294);
       tx.setInputScript(
         {
           inputIndex: i,
@@ -1005,6 +1079,14 @@ class OrderBook {
     const ftVersion = getFTVersion(ftutxo.script, isCoin);
     const tx = new tbc.Transaction();
     tx.from(buyutxo).from(ftutxo).from(utxos);
+    applyCoinInputLockTimes(tx, [
+      {
+        inputIndex: 1,
+        isCoin,
+        preTX: ftPreTX,
+        preTxVout: ftutxo.outputIndex,
+      },
+    ]);
 
     const tapeAmountSetIn: bigint[] = [];
     tapeAmountSetIn.push(ftutxo.ftBalance!);
@@ -1050,7 +1132,6 @@ class OrderBook {
       },
     );
 
-    if (isCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
       {
         inputIndex: 1,
@@ -1143,6 +1224,16 @@ class OrderBook {
     //构建交易
     const tx = new tbc.Transaction();
     tx.from(buyutxo).from(ftutxo).from(sellutxo).from(utxos);
+    const isCoin = isCoinCodeScript(ftutxo.script);
+    const ftVersion = getFTVersion(ftutxo.script, isCoin);
+    applyCoinInputLockTimes(tx, [
+      {
+        inputIndex: 1,
+        isCoin,
+        preTX: ftPreTX,
+        preTxVout: ftutxo.outputIndex,
+      },
+    ]);
 
     //处理ft输出
     const tapeAmountSetIn: bigint[] = [];
@@ -1282,9 +1373,6 @@ class OrderBook {
       },
     );
 
-    const isCoin = isCoinCodeScript(ftutxo.script);
-    const ftVersion = getFTVersion(ftutxo.script, isCoin);
-    if (isCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
       {
         inputIndex: 1,
@@ -1337,13 +1425,7 @@ class OrderBook {
   private getTokenPartialHash(codeScript: string): string {
     if (!_isValidHexString(codeScript))
       throw new Error("Invalid FT code script hex string");
-    const ftScriptLen = codeScript.length / 2;
-    const partialOffset =
-      ftScriptLen === coin_length
-        ? coin_partial_offset
-        : ftScriptLen === ft_v1_length
-          ? ft_v1_partial_offset
-          : ft_v2_partial_offset;
+    const partialOffset = getFTPartialOffset(codeScript);
     return partial_sha256.calculate_partial_hash(
       Buffer.from(codeScript, "hex").subarray(0, partialOffset),
     );
@@ -1384,8 +1466,18 @@ class OrderBook {
     this.ft_a_contract_partialhash = this.getTokenPartialHash(ftaCodeScript);
     this.ft_b_contract_partialhash = this.getTokenPartialHash(ftbCodeScript);
 
+    const isCoin = isCoinCodeScript(ftutxos[0].script);
     const tx = new tbc.Transaction();
     tx.from(ftutxos).from(utxos);
+    applyCoinInputLockTimes(
+      tx,
+      ftutxos.map((ftutxo: tbc.Transaction.IUnspentOutput, i: number) => ({
+        inputIndex: i,
+        isCoin,
+        preTX: preTXs[i],
+        preTxVout: ftutxo.outputIndex,
+      })),
+    );
 
     const sellOrder = this.getTokenSellOrderCode(taxAddress);
     tx.addOutput(
@@ -1481,8 +1573,18 @@ class OrderBook {
     this.ft_a_contract_partialhash = this.getTokenPartialHash(ftaCodeScript);
     this.ft_b_contract_partialhash = this.getTokenPartialHash(ftbCodeScript);
 
+    const isCoin = isCoinCodeScript(ftutxos[0].script);
     const tx = new tbc.Transaction();
     tx.from(ftutxos).from(utxos);
+    applyCoinInputLockTimes(
+      tx,
+      ftutxos.map((ftutxo: tbc.Transaction.IUnspentOutput, i: number) => ({
+        inputIndex: i,
+        isCoin,
+        preTX: preTXs[i],
+        preTxVout: ftutxo.outputIndex,
+      })),
+    );
 
     const buyOrder = this.getTokenBuyOrderCode(taxAddress);
     tx.addOutput(
@@ -1566,8 +1668,16 @@ class OrderBook {
     if (sigs.length < tx.inputs.length)
       throw new Error("Signatures length is less than inputs length");
     const isCoin = isCoinCodeScript(tx.outputs[1].script.toHex());
+    validateCoinInputLockTimes(
+      tx,
+      preTXs.map((preTX, i) => ({
+        inputIndex: i,
+        isCoin,
+        preTX,
+        preTxVout: tx.inputs[i].outputIndex,
+      })),
+    );
     for (let i = 0; i < preTXs.length; i++) {
-      if (isCoin) tx.setInputSequence(i, 4294967294);
       tx.setInputScript(
         {
           inputIndex: i,
@@ -1637,8 +1747,17 @@ class OrderBook {
     utxos: tbc.Transaction.IUnspentOutput[],
   ): string {
     const tokenOrderData = OrderBook.getTokenOrderData(tokenOrderUtxo.script);
+    const isCoin = isCoinCodeScript(ftutxo.script);
     const tx = new tbc.Transaction();
     tx.from(tokenOrderUtxo).from(ftutxo).from(utxos);
+    applyCoinInputLockTimes(tx, [
+      {
+        inputIndex: 1,
+        isCoin,
+        preTX: ftPreTX,
+        preTxVout: ftutxo.outputIndex,
+      },
+    ]);
 
     const tapeAmountSetIn = [ftutxo.ftBalance!];
     const tapeAmountSum = BigInt(tapeAmountSetIn[0]);
@@ -1710,6 +1829,14 @@ class OrderBook {
       throw new Error("Signatures length is less than inputs length");
     const isCoin = isCoinCodeScript(tx.outputs[0].script.toHex());
     const ftVersion = getFTVersion(tx.outputs[0].script.toHex(), isCoin);
+    validateCoinInputLockTimes(tx, [
+      {
+        inputIndex: 1,
+        isCoin,
+        preTX: ftPreTX,
+        preTxVout: tx.inputs[1].outputIndex,
+      },
+    ]);
 
     tx.setInputScript(
       {
@@ -1718,7 +1845,6 @@ class OrderBook {
       tbc.Script.fromASM(`${sigs[0]} ${publicKey} OP_2`),
     );
 
-    if (isCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
       {
         inputIndex: 1,
@@ -1846,6 +1972,20 @@ class OrderBook {
       .from(sellutxo)
       .from(sellFtUtxo)
       .from(utxos);
+    applyCoinInputLockTimes(tx, [
+      {
+        inputIndex: 1,
+        isCoin: isCoinCodeScript(buyFtUtxo.script),
+        preTX: buyFtPreTX,
+        preTxVout: buyFtUtxo.outputIndex,
+      },
+      {
+        inputIndex: 3,
+        isCoin: isCoinCodeScript(sellFtUtxo.script),
+        preTX: sellFtPreTX,
+        preTxVout: sellFtUtxo.outputIndex,
+      },
+    ]);
 
     const addFTPair = (
       codeScript: string,
@@ -2048,7 +2188,6 @@ class OrderBook {
 
     const buyFtIsCoin = isCoinCodeScript(buyFtUtxo.script);
     const buyFtVersion = getFTVersion(buyFtUtxo.script, buyFtIsCoin);
-    if (buyFtIsCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
       {
         inputIndex: 1,
@@ -2077,7 +2216,6 @@ class OrderBook {
 
     const sellFtIsCoin = isCoinCodeScript(sellFtUtxo.script);
     const sellFtVersion = getFTVersion(sellFtUtxo.script, sellFtIsCoin);
-    if (sellFtIsCoin) tx.setInputSequence(3, 4294967294);
     tx.setInputScript(
       {
         inputIndex: 3,
@@ -2194,6 +2332,15 @@ class OrderBook {
 
     const tx = new tbc.Transaction();
     tx.from(ftutxos).from(utxos);
+    applyCoinInputLockTimes(
+      tx,
+      ftutxos.map((ftutxo: tbc.Transaction.IUnspentOutput, i: number) => ({
+        inputIndex: i,
+        isCoin: isCoinA,
+        preTX: preTXs[i],
+        preTxVout: ftutxo.outputIndex,
+      })),
+    );
 
     //Sell Order Output
     const sellOrder = this.getTokenSellOrderCode(taxAddress);
@@ -2258,7 +2405,6 @@ class OrderBook {
     tx.feePerKb(80);
 
     for (let i = 0; i < ftutxos.length; i++) {
-      if (isCoinA) tx.setInputSequence(i, 4294967294);
       tx.setInputScript(
         {
           inputIndex: i,
@@ -2303,6 +2449,14 @@ class OrderBook {
     const ftVersion = getFTVersion(ftutxo.script, isCoin);
     const tx = new tbc.Transaction();
     tx.from(sellutxo).from(ftutxo).from(utxos);
+    applyCoinInputLockTimes(tx, [
+      {
+        inputIndex: 1,
+        isCoin,
+        preTX: ftPreTX,
+        preTxVout: ftutxo.outputIndex,
+      },
+    ]);
 
     const tapeAmountSetIn: bigint[] = [];
     tapeAmountSetIn.push(ftutxo.ftBalance!);
@@ -2348,7 +2502,6 @@ class OrderBook {
       },
     );
 
-    if (isCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
       {
         inputIndex: 1,
@@ -2468,6 +2621,15 @@ class OrderBook {
     const tx = new tbc.Transaction();
     tx.from(ftutxos);
     tx.from(utxos);
+    applyCoinInputLockTimes(
+      tx,
+      ftutxos.map((ftutxo: tbc.Transaction.IUnspentOutput, i: number) => ({
+        inputIndex: i,
+        isCoin: isCoinB,
+        preTX: preTXs[i],
+        preTxVout: ftutxo.outputIndex,
+      })),
+    );
 
     // Buy Order Output
     const buyOrder = this.getTokenBuyOrderCode(taxAddress);
@@ -2532,7 +2694,6 @@ class OrderBook {
     tx.feePerKb(80);
 
     for (let i = 0; i < ftutxos.length; i++) {
-      if (isCoinB) tx.setInputSequence(i, 4294967294);
       tx.setInputScript(
         {
           inputIndex: i,
@@ -2579,6 +2740,14 @@ class OrderBook {
     const ftVersion = getFTVersion(ftutxo.script, isCoin);
     const tx = new tbc.Transaction();
     tx.from(buyutxo).from(ftutxo).from(utxos);
+    applyCoinInputLockTimes(tx, [
+      {
+        inputIndex: 1,
+        isCoin,
+        preTX: ftPreTX,
+        preTxVout: ftutxo.outputIndex,
+      },
+    ]);
 
     const tapeAmountSetIn: bigint[] = [];
     tapeAmountSetIn.push(ftutxo.ftBalance!);
@@ -2624,7 +2793,6 @@ class OrderBook {
       },
     );
 
-    if (isCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
       {
         inputIndex: 1,
@@ -2715,6 +2883,20 @@ class OrderBook {
 
     const tx = new tbc.Transaction();
     tx.from(buyutxo).from(buyFtUtxo).from(sellutxo).from(sellFtUtxo).from(utxos);
+    applyCoinInputLockTimes(tx, [
+      {
+        inputIndex: 1,
+        isCoin: isCoinCodeScript(buyFtUtxo.script),
+        preTX: buyPreTX,
+        preTxVout: buyFtUtxo.outputIndex,
+      },
+      {
+        inputIndex: 3,
+        isCoin: isCoinCodeScript(sellFtUtxo.script),
+        preTX: sellPreTX,
+        preTxVout: sellFtUtxo.outputIndex,
+      },
+    ]);
 
     const addFTPair = (
       codeScript: string,
@@ -2879,7 +3061,6 @@ class OrderBook {
 
     const buyFtIsCoin = isCoinCodeScript(buyFtUtxo.script);
     const buyFtVersion = getFTVersion(buyFtUtxo.script, buyFtIsCoin);
-    if (buyFtIsCoin) tx.setInputSequence(1, 4294967294);
     tx.setInputScript(
       {
         inputIndex: 1,
@@ -2908,7 +3089,6 @@ class OrderBook {
 
     const sellFtIsCoin = isCoinCodeScript(sellFtUtxo.script);
     const sellFtVersion = getFTVersion(sellFtUtxo.script, sellFtIsCoin);
-    if (sellFtIsCoin) tx.setInputSequence(3, 4294967294);
     tx.setInputScript(
       {
         inputIndex: 3,
