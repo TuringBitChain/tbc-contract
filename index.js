@@ -13,6 +13,7 @@ contract.versionGuard = function (version) {
 contract.versionGuard(globalThis.contract);
 globalThis.contract = contract;
 contract.FT = require("./lib/contract/ft.js");
+contract.TBC20 = require("./lib/contract/tbc20.js");
 contract.poolNFT = require("./lib/contract/poolNFT.js");
 contract.poolNFT2 = require("./lib/contract/poolNFT2.0.js");
 contract.API = require("./lib/api/api.js");

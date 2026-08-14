@@ -334,6 +334,147 @@ declare module "tbc-contract" {
     symbol: string;
   }
 
+  /** Canonical SDK/indexer metadata embedded in the TBC20 Tape extension. */
+  export interface TBC20Metadata {
+    name: string;
+    symbol: string;
+    /**
+     * Exact human-readable SDK/indexer declaration. It is not a consensus
+     * supply cap. Use a decimal string, never a number.
+     */
+    supply: string;
+    /** Display precision in the range 0-18. */
+    decimal: number;
+  }
+
+  export interface TBC20Definition {
+    name: string;
+    symbol: string;
+    /** Exact human-readable declaration. Use a decimal string, never a number. */
+    supply: string;
+    /** Defaults to zero. */
+    decimal?: number;
+  }
+
+  /**
+   * Safely restores an existing token from a trusted adjacent Code/Tape pair.
+   * contractTxid is informational; codeScript is the token identity anchor.
+   */
+  export interface TBC20ExistingToken {
+    codeScript: string | Buffer | Script;
+    tapeScript: string | Buffer | Script;
+    contractTxid?: string;
+  }
+
+  export type TBC20ExistingConfig = TBC20ExistingToken &
+    (
+      | TBC20Definition
+      | {
+          name?: never;
+          symbol?: never;
+          supply?: never;
+          decimal?: never;
+        }
+    );
+
+  export type TBC20Config = TBC20Definition | TBC20ExistingConfig;
+
+  export type TBC20AncestorResolver =
+    | ReadonlyMap<string, Transaction>
+    | readonly Transaction[]
+    | ((txid: string) => Transaction | undefined);
+
+  export interface TBC20MintOptions {
+    /** Runs local script verification by default. */
+    verify?: boolean;
+  }
+
+  export interface TBC20TransferOptions {
+    tbcChangeAddress?: string;
+    /** Runs local script verification by default. */
+    verify?: boolean;
+  }
+
+  export interface TBC20MergeOptions extends TBC20TransferOptions {
+    /** Defaults to the signing key's P2PKH address. */
+    controller?: string;
+  }
+
+  export interface TBC20TokenOutput {
+    codeVout: number;
+    tapeVout: number;
+    /** Raw smallest-unit token amount. */
+    amount: bigint;
+  }
+
+  export interface TBC20BuildResult {
+    transaction: Transaction;
+    txraw: string;
+    feeSatoshis: number;
+    tokenOutputs: readonly TBC20TokenOutput[];
+  }
+
+  export interface TBC20MintResult extends TBC20BuildResult {
+    sourceTransaction: Transaction;
+    sourceTxraw: string;
+    sourceFeeSatoshis: number;
+    originalUTXO: {
+      txId: string;
+      outputIndex: number;
+    };
+  }
+
+  /**
+   * High-level TBC20 API. Low-level ABI and custom-controller builders remain
+   * available only from the deep contract module.
+   */
+  export class TBC20 {
+    readonly metadata?: Readonly<TBC20Metadata>;
+    readonly name?: string;
+    readonly symbol?: string;
+    readonly supply?: string;
+    readonly decimal?: number;
+    readonly declaredSupplyRaw?: bigint;
+    codeScript: string;
+    tapeScript: string;
+    contractTxid: string;
+
+    constructor(config: TBC20Config);
+
+    /** Uses the supply declared by the constructor metadata. */
+    mint(
+      privateKey: PrivateKey,
+      recipientAddress: string,
+      fundingUTXO: Transaction.IUnspentOutput,
+      options?: TBC20MintOptions,
+    ): TBC20MintResult;
+
+    /**
+     * Transfers a human-readable amount. tokenUTXOs[i], parentTxs[i], and
+     * ancestorResolvers[i] must describe the same token input.
+     */
+    transfer(
+      privateKey: PrivateKey,
+      recipientAddress: string,
+      humanAmount: string,
+      tokenUTXOs: readonly Transaction.IUnspentOutput[],
+      feeUTXO: Transaction.IUnspentOutput,
+      parentTxs: readonly Transaction[],
+      ancestorResolvers: readonly TBC20AncestorResolver[],
+      options?: TBC20TransferOptions,
+    ): TBC20BuildResult;
+
+    /** Merges 2-5 address-controlled token UTXOs into as few outputs as slot limits permit. */
+    merge(
+      privateKey: PrivateKey,
+      tokenUTXOs: readonly Transaction.IUnspentOutput[],
+      feeUTXO: Transaction.IUnspentOutput,
+      parentTxs: readonly Transaction[],
+      ancestorResolvers: readonly TBC20AncestorResolver[],
+      options?: TBC20MergeOptions,
+    ): TBC20BuildResult;
+  }
+
   export class FT {
     name: string;
     symbol: string;
