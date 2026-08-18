@@ -2,6 +2,7 @@ node_modules/
 changelog/
 test/
 test.*
+dev/
 lib/**/*.d.ts
 *.log
 *.txt

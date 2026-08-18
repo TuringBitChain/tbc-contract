@@ -724,8 +724,8 @@ declare module "tbc-contract" {
     ): Script;
   }
 
-  export type PoolLpPlan = 1 | 2 | 3 | 4 | 5;
-  export type PoolServiceFeeRate = 35 | 135 | 335 | 535;
+  export type PoolLpPlan = 1 | 2 | 3 | 4 | 5 | 6;
+  export type PoolServiceFeeRate = 35 | 130 | 135 | 335 | 535;
 
   export class poolNFT2 {
     ft_lp_amount: bigint;
@@ -817,14 +817,14 @@ declare module "tbc-contract" {
       address_to: string,
       utxo: Transaction.IUnspentOutput,
       amount_tbc: number | string,
-      lpPlan?: 1 | 2 | 3 | 4 | 5,
+      lpPlan?: PoolLpPlan,
     ): Promise<string>;
     swaptoTBC_baseToken(
       privateKey_from: PrivateKey,
       address_to: string,
       utxo: Transaction.IUnspentOutput,
       amount_token: number | string,
-      lpPlan?: 1 | 2 | 3 | 4 | 5,
+      lpPlan?: PoolLpPlan,
     ): Promise<string>;
     swaptoTBC_baseToken_local(
       privateKey_from: PrivateKey,
@@ -833,7 +833,7 @@ declare module "tbc-contract" {
       ftPreTX: Transaction[],
       ftPrePreTxData: string[],
       amount_token: number | string,
-      lpPlan?: 1 | 2 | 3 | 4 | 5,
+      lpPlan?: PoolLpPlan,
       utxo?: Transaction.IUnspentOutput,
     ): Promise<string>;
     fetchPoolNftInfo(contractTxid: string): Promise<PoolNFTInfo>;
@@ -902,7 +902,7 @@ declare module "tbc-contract" {
     getPoolNftCode(
       txid: string,
       vout: number,
-      lpPlan: 1 | 2 | 3 | 4 | 5,
+      lpPlan: PoolLpPlan,
       ftVersion: 1 | 2 | 3 | 4,
       tag?: string,
       isCoin?: boolean,
@@ -910,7 +910,7 @@ declare module "tbc-contract" {
     getPoolNftCodeWithLock(
       txid: string,
       vout: number,
-      lpPlan: 1 | 2 | 3 | 4 | 5,
+      lpPlan: PoolLpPlan,
       lpCostAddress: Address | string,
       lpCostTBC: number,
       pubKeyLock: string[],

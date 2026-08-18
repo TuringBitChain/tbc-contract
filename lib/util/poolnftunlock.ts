@@ -12,6 +12,7 @@ const SERVICE_FEE_ADDRESS: { [key: number]: string } = {
     3: "125fTLNsraQxTYqT4EeQNF2ggzcqicveKL",
     4: "19DetoaaohQkjFVJ6oGXd83xhZYQSbpE1g",
     5: "15EKrhuD8Yf3SfhjAgbizYqfnBbKh9ZMZ7",
+    6: "1N7rf2AuAHB2aCrVgnbQhSWhaUVk3rGhjm",
 };
 const SERVICE_FEE_PKH_SET = new Set(
     Object.values(SERVICE_FEE_ADDRESS).map(addr => tbc.Address.fromString(addr).hashBuffer.toString('hex'))

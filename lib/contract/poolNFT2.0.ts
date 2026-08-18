@@ -30,7 +30,7 @@ const API = require("../api/api");
 const FT = require("./ft");
 const partial_sha256 = require("tbc-lib-js/lib/util/partial-sha256");
 const BN = tbc.crypto.BN;
-type PoolLpPlan = 1 | 2 | 3 | 4 | 5;
+type PoolLpPlan = 1 | 2 | 3 | 4 | 5 | 6;
 
 const getScriptChunkNumber = (chunk: any): number | null => {
   if (!chunk) return null;
@@ -71,6 +71,7 @@ const SERVICE_FEE_ADDRESS: { [key: number]: string } = {
   3: "125fTLNsraQxTYqT4EeQNF2ggzcqicveKL",
   4: "19DetoaaohQkjFVJ6oGXd83xhZYQSbpE1g",
   5: "15EKrhuD8Yf3SfhjAgbizYqfnBbKh9ZMZ7",
+  6: "1N7rf2AuAHB2aCrVgnbQhSWhaUVk3rGhjm",
 };
 
 const POOL_LP_PLAN_SERVICE_FEE_RATE: Record<PoolLpPlan, number> = {
@@ -79,12 +80,25 @@ const POOL_LP_PLAN_SERVICE_FEE_RATE: Record<PoolLpPlan, number> = {
   3: 135,
   4: 335,
   5: 535,
+  6: 130,
 };
 
 const getServiceFeeAddress = (lpPlan: number): string => {
   const addr = SERVICE_FEE_ADDRESS[lpPlan];
-  if (!addr) throw new Error(`Invalid lpPlan: ${lpPlan}`);
+  if (addr === undefined) throw new Error(`Invalid lpPlan: ${lpPlan}`);
+  if (addr === "") {
+    throw new Error(`Service fee address for lpPlan ${lpPlan} is not configured`);
+  }
   return addr;
+};
+
+const getLpServiceFeeRate = (
+  lpPlan: PoolLpPlan,
+  serviceFeeRate: number,
+): number => {
+  if (lpPlan === 1) return serviceFeeRate - 10;
+  if (lpPlan === 6) return 80;
+  return 5;
 };
 
 const isPoolLpPlan = (lpPlan: number): lpPlan is PoolLpPlan =>
@@ -97,7 +111,7 @@ const resolvePoolFeeConfig = (
 ): { lpPlan: PoolLpPlan; serviceFeeRate: number } => {
   const resolvedLpPlan = lpPlan ?? 1;
   if (!isPoolLpPlan(resolvedLpPlan)) {
-    throw new Error("Invalid lpPlan: must be one of 1, 2, 3, 4, 5");
+    throw new Error("Invalid lpPlan: must be one of 1, 2, 3, 4, 5, 6");
   }
 
   const expectedServiceFeeRate = POOL_LP_PLAN_SERVICE_FEE_RATE[resolvedLpPlan];
@@ -207,8 +221,8 @@ class poolNFT2 {
    * @param {tbc.PrivateKey} privateKey_from - The private key used to create the pool NFT.
    * @param {tbc.Transaction.IUnspentOutput} utxo - The unspent output used to create the transaction.
    * @param {string} tag - The tag for the pool NFT.
-   * @param {number} serviceFeeRate - Optional service fee rate. Must match lpPlan: 1/2=35, 3=135, 4=335, 5=535.
-   * @param {1 | 2 | 3 | 4 | 5} lpPlan - Optional LP fee plan, defaults to 1.
+   * @param {number} serviceFeeRate - Optional service fee rate. Must match lpPlan: 1/2=35, 3=135, 4=335, 5=535, 6=130.
+   * @param {1 | 2 | 3 | 4 | 5 | 6} lpPlan - Optional LP fee plan, defaults to 1.
    * @param {boolean} withLockTime - Whether to use time lock, defaults to false.
    * @returns {Promise<string>} Returns a Promise that resolves to the raw transaction data as a string.
    *
@@ -231,6 +245,7 @@ class poolNFT2 {
     withLockTime?: boolean,
   ): Promise<string[]> {
     const poolFeeConfig = resolvePoolFeeConfig(serviceFeeRate, lpPlan);
+    getServiceFeeAddress(poolFeeConfig.lpPlan);
     const privateKey = privateKey_from;
     const publicKeyHash =
       tbc.Address.fromPrivateKey(privateKey).hashBuffer.toString("hex");
@@ -350,8 +365,8 @@ class poolNFT2 {
    * @param {tbc.PrivateKey} privateKey_from - The private key used to create the pool NFT.
    * @param {tbc.Transaction.IUnspentOutput} utxo - The unspent output used to create the transaction.
    * @param {string} tag - The tag for the pool NFT.
-   * @param {number} serviceFeeRate - Optional service fee rate. Must match lpPlan: 1/2=35, 3=135, 4=335, 5=535.
-   * @param {1 | 2 | 3 | 4 | 5} lpPlan - Optional LP fee plan, defaults to 1.
+   * @param {number} serviceFeeRate - Optional service fee rate. Must match lpPlan: 1/2=35, 3=135, 4=335, 5=535, 6=130.
+   * @param {1 | 2 | 3 | 4 | 5 | 6} lpPlan - Optional LP fee plan, defaults to 1.
    * @param {boolean} withLockTime - Whether to use time lock, defaults to false.
    * @returns {Promise<string>} Returns a Promise that resolves to the raw transaction data as a string.
    *
@@ -377,6 +392,7 @@ class poolNFT2 {
     withLockTime?: boolean,
   ): Promise<string[]> {
     const poolFeeConfig = resolvePoolFeeConfig(serviceFeeRate, lpPlan);
+    getServiceFeeAddress(poolFeeConfig.lpPlan);
     const privateKey = privateKey_from;
     const publicKeyHash =
       tbc.Address.fromPrivateKey(privateKey).hashBuffer.toString("hex");
@@ -1524,7 +1540,7 @@ class poolNFT2 {
    * @param {string} address_to - 接收 FT-A 的地址。
    * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
    * @param {number | string} amount_tbc - 要交换的 TBC 数量。
-   * @param {1 | 2 | 3 | 4 | 5} [lpPlan] - 流动性池计划，默认为 1。
+   * @param {1 | 2 | 3 | 4 | 5 | 6} [lpPlan] - 流动性池计划，默认为 1。
    * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
    *
    * 该函数执行以下主要步骤：
@@ -1543,9 +1559,11 @@ class poolNFT2 {
     address_to: string,
     utxo: tbc.Transaction.IUnspentOutput,
     amount_tbc: number | string,
-    lpPlan?: 1 | 2 | 3 | 4 | 5,
+    lpPlan?: PoolLpPlan,
   ): Promise<string> {
     const privateKey = privateKey_from;
+    lpPlan = isPoolLpPlan(this.lp_plan) ? this.lp_plan : lpPlan || 1;
+    const serviceFeeAddress = getServiceFeeAddress(lpPlan);
     const FTA = new FT(this.ft_a_contractTxid);
     let FTAInfo;
     try {
@@ -1557,10 +1575,6 @@ class poolNFT2 {
     FTA.initialize(FTAInfo);
     const isCoin = isCoinCodeScript(FTA.codeScript);
     const ftVersion = getFTVersion(FTA.codeScript, isCoin);
-    lpPlan =
-      this.lp_plan >= 1 && this.lp_plan <= 5
-        ? (this.lp_plan as 1 | 2 | 3 | 4 | 5)
-        : lpPlan || 1;
     if (Number(amount_tbc) <= 0) {
       throw new Error("Invalid TBC amount input");
     }
@@ -1573,7 +1587,8 @@ class poolNFT2 {
     const serviceFee =
       (amount_tbcbn * BigInt(this.service_fee_rate)) / BigInt(10000);
     const serviceFeeLP =
-      (amount_tbcbn * BigInt(lpPlan === 1 ? this.service_fee_rate - 10 : 5)) /
+      (amount_tbcbn *
+        BigInt(getLpServiceFeeRate(lpPlan, this.service_fee_rate))) /
       BigInt(10000);
     const serviceFeeA = serviceFee - serviceFeeLP;
     const amount_tbcbn_swap = amount_tbcbn - serviceFee;
@@ -1695,7 +1710,7 @@ class poolNFT2 {
     );
     // P2PKH_ServiceFee
     if (serviceFeeA >= BigInt(10)) {
-      tx.to(getServiceFeeAddress(lpPlan), Number(serviceFeeA));
+      tx.to(serviceFeeAddress, Number(serviceFeeA));
     }
     // FTAbyC_Change
     if (ft_a_amount_decrement < tapeAmountSum) {
@@ -1775,7 +1790,7 @@ class poolNFT2 {
    * @param {string} address_to - 接收 TBC 的地址。
    * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
    * @param {number | string} amount_token - 要交换的 FT-A 数量。
-   * @param {1 | 2 | 3 | 4 | 5} [lpPlan] - 流动性池计划，默认为 1。
+   * @param {1 | 2 | 3 | 4 | 5 | 6} [lpPlan] - 流动性池计划，默认为 1。
    * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
    *
    * 该函数执行以下主要步骤：
@@ -1794,9 +1809,11 @@ class poolNFT2 {
     address_to: string,
     utxo: tbc.Transaction.IUnspentOutput,
     amount_token: number | string,
-    lpPlan?: 1 | 2 | 3 | 4 | 5,
+    lpPlan?: PoolLpPlan,
   ): Promise<string> {
     const privateKey = privateKey_from;
+    lpPlan = isPoolLpPlan(this.lp_plan) ? this.lp_plan : lpPlan || 1;
+    const serviceFeeAddress = getServiceFeeAddress(lpPlan);
     const FTA = new FT(this.ft_a_contractTxid);
     let FTAInfo;
     try {
@@ -1807,10 +1824,6 @@ class poolNFT2 {
     }
     FTA.initialize(FTAInfo);
     const isCoin = isCoinCodeScript(FTA.codeScript);
-    lpPlan =
-      this.lp_plan >= 1 && this.lp_plan <= 5
-        ? (this.lp_plan as 1 | 2 | 3 | 4 | 5)
-        : lpPlan || 1;
     const amount_ftbn = parseDecimalToBigInt(amount_token, FTA.decimal);
     if (Number(amount_token) <= 0) {
       throw new Error("Invalid FT amount input");
@@ -1843,7 +1856,7 @@ class poolNFT2 {
       BigInt(10000);
     const serviceFeeLP =
       (tbc_amount_decrement *
-        BigInt(lpPlan === 1 ? this.service_fee_rate - 10 : 5)) /
+        BigInt(getLpServiceFeeRate(lpPlan, this.service_fee_rate))) /
       BigInt(10000);
     const serviceFeeA = serviceFee - serviceFeeLP;
     const tbc_amount_decrement_swap = tbc_amount_decrement - serviceFee;
@@ -1939,7 +1952,7 @@ class poolNFT2 {
     );
     // P2PKH_ServiceFee
     if (serviceFeeA >= BigInt(10)) {
-      tx.to(getServiceFeeAddress(lpPlan), Number(serviceFeeA));
+      tx.to(serviceFeeAddress, Number(serviceFeeA));
     }
     // FTAbyA_change
     if (amount_ftbn < fttxo_a.ftBalance!) {
@@ -2019,7 +2032,7 @@ class poolNFT2 {
    * @param {tbc.Transaction[]} ftPreTX - 之前的 FT-A 交易列表。
    * @param {string[]} ftPrePreTxData - 之前的 FT-A 交易数据列表。
    * @param {number | string} amount_token - 要交换的 FT-A 数量。
-   * @param {1 | 2 | 3 | 4 | 5} [lpPlan] - 流动性池计划，默认为 1。
+   * @param {1 | 2 | 3 | 4 | 5 | 6} [lpPlan] - 流动性池计划，默认为 1。
    * @param {tbc.Transaction.IUnspentOutput} utxo - 用于创建交易的未花费输出。
    * @returns {Promise<string>} 返回一个 Promise，解析为字符串形式的未检查交易数据。
    *
@@ -2031,10 +2044,12 @@ class poolNFT2 {
     ftPreTX: tbc.Transaction[],
     ftPrePreTxData: string[],
     amount_token: number | string,
-    lpPlan?: 1 | 2 | 3 | 4 | 5,
+    lpPlan?: PoolLpPlan,
     utxo?: tbc.Transaction.IUnspentOutput,
   ): Promise<string> {
     const privateKey = privateKey_from;
+    lpPlan = isPoolLpPlan(this.lp_plan) ? this.lp_plan : lpPlan || 1;
+    const serviceFeeAddress = getServiceFeeAddress(lpPlan);
     const fttxo_a = ftutxo;
     const FTA = new FT(this.ft_a_contractTxid);
     let FTAInfo;
@@ -2046,10 +2061,6 @@ class poolNFT2 {
     }
     FTA.initialize(FTAInfo);
     const isCoin = isCoinCodeScript(FTA.codeScript);
-    lpPlan =
-      this.lp_plan >= 1 && this.lp_plan <= 5
-        ? (this.lp_plan as 1 | 2 | 3 | 4 | 5)
-        : lpPlan || 1;
     const amount_ftbn = parseDecimalToBigInt(amount_token, FTA.decimal);
     if (Number(amount_token) <= 0) {
       throw new Error("Invalid FT amount input");
@@ -2078,7 +2089,7 @@ class poolNFT2 {
       BigInt(10000);
     const serviceFeeLP =
       (tbc_amount_decrement *
-        BigInt(lpPlan === 1 ? this.service_fee_rate - 10 : 5)) /
+        BigInt(getLpServiceFeeRate(lpPlan, this.service_fee_rate))) /
       BigInt(10000);
     const serviceFeeA = serviceFee - serviceFeeLP;
     const tbc_amount_decrement_swap = tbc_amount_decrement - serviceFee;
@@ -2136,7 +2147,7 @@ class poolNFT2 {
     );
     // P2PKH_ServiceFee
     if (serviceFeeA >= BigInt(10)) {
-      tx.to(getServiceFeeAddress(lpPlan), Number(serviceFeeA));
+      tx.to(serviceFeeAddress, Number(serviceFeeA));
     }
     // FTAbyA_change
     if (amount_ftbn < fttxo_a.ftBalance!) {
@@ -4709,7 +4720,7 @@ class poolNFT2 {
   }
 
   private getPoolNftTape(
-    lpPlan: 1 | 2 | 3 | 4 | 5,
+    lpPlan: PoolLpPlan,
     withLock?: boolean,
     withLockTime?: boolean,
   ): tbc.Script {
@@ -4782,7 +4793,7 @@ class poolNFT2 {
   getPoolNftCode(
     txid: string,
     vout: number,
-    lpPlan: 1 | 2 | 3 | 4 | 5,
+    lpPlan: PoolLpPlan,
     ftVersion: FTVersion,
     tag?: string,
     isCoin?: boolean,
@@ -4810,7 +4821,7 @@ class poolNFT2 {
   getPoolNftCodeWithLock(
     txid: string,
     vout: number,
-    lpPlan: 1 | 2 | 3 | 4 | 5,
+    lpPlan: PoolLpPlan,
     lpCostAddress: tbc.Address | string,
     lpCostTBC: number,
     pubKeyLock: string[],
