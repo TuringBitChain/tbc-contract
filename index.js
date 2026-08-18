@@ -14,6 +14,13 @@ contract.versionGuard(globalThis.contract);
 globalThis.contract = contract;
 contract.FT = require("./lib/contract/ft.js");
 contract.TBC20 = require("./lib/contract/tbc20.js");
+var tokenValidator = require("./lib/validator/tbc20.js");
+// The validator core is shared by TBC20 and registered ordinary FT v1-v4.
+// Only expose the protocol-neutral public names from the package root.
+contract.TokenValidator = tokenValidator.TokenValidator || tokenValidator;
+contract.TokenValidationError =
+  tokenValidator.TokenValidationError ||
+  contract.TokenValidator.TokenValidationError;
 contract.poolNFT = require("./lib/contract/poolNFT.js");
 contract.poolNFT2 = require("./lib/contract/poolNFT2.0.js");
 contract.API = require("./lib/api/api.js");

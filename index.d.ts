@@ -1,5 +1,4 @@
 import { PrivateKey, Address, Transaction, Script } from "tbc-lib-js";
-declare module "tbc-contract" {
   export class API {
     static getTBCbalance(
       address: string,
@@ -199,14 +198,14 @@ declare module "tbc-contract" {
     ): Promise<Transaction.IUnspentOutput[]>;
   }
 
-  interface CollectionData {
+  export interface CollectionData {
     collectionName: string;
     description: string;
     supply: number;
     file: string;
   }
 
-  interface NFTInfo {
+  export interface NFTInfo {
     collectionId: string;
     collectionIndex: number;
     collectionName: string;
@@ -218,7 +217,7 @@ declare module "tbc-contract" {
     nftIcon: string;
   }
 
-  interface NFTData {
+  export interface NFTData {
     nftName: string;
     symbol: string;
     description: string;
@@ -324,7 +323,7 @@ declare module "tbc-contract" {
     static encodeNFTDataToHex(data: any): string;
   }
 
-  interface FtInfo {
+  export interface FtInfo {
     contractTxid?: string;
     codeScript: string;
     tapeScript: string;
@@ -475,6 +474,202 @@ declare module "tbc-contract" {
     ): TBC20BuildResult;
   }
 
+  export type TokenProtocolDescriptor =
+    | Readonly<{ family: "TBC20"; version: 1 }>
+    | Readonly<{ family: "FT"; version: 1 | 2 | 3 | 4 }>;
+
+  export type TokenValidationErrorCode =
+    | "INVALID_POLICY"
+    | "ROOT_RAW_INVALID"
+    | "INVALID_TRANSACTION_VERSION"
+    | "NO_TOKEN_OUTPUT"
+    | "PARENT_FETCH_FAILED"
+    | "ANCESTOR_FETCH_FAILED"
+    | "VALIDATOR_INTERNAL_ERROR"
+    | "VALIDATOR_INTERNAL_INCOMPLETE"
+    | "DUPLICATE_INPUT_OUTPOINT"
+    | "INPUT_LIMIT_EXCEEDED"
+    | "OUTPUT_LIMIT_EXCEEDED"
+    | "PARENT_VOUT_OUT_OF_RANGE"
+    | "UNSUPPORTED_TOKEN_PROTOCOL"
+    | "MIXED_TOKEN_PROTOCOLS"
+    | "INVALID_TOKEN_CODE"
+    | "INVALID_TOKEN_TAPE"
+    | "TOKEN_CODE_WITHOUT_TAPE"
+    | "ORPHAN_TOKEN_TAPE"
+    | "UNSUPPORTED_TBC20_ARTIFACT"
+    | "INVALID_TBC20_CODE"
+    | "EMPTY_LOCKING_SCRIPT"
+    | "TBC20_CODE_WITHOUT_TAPE"
+    | "ORPHAN_TBC20_TAPE"
+    | "INVALID_TBC20_TAPE"
+    | "INVALID_CODE_VALUE"
+    | "INVALID_TAPE_VALUE"
+    | "AMOUNT_SLOT_WITHOUT_INPUT"
+    | "AMOUNT_SLOT_WITHOUT_TOKEN_INPUT"
+    | "OUTPUT_INPUT_IDENTITY_MISMATCH"
+    | "OUTPUT_IDENTITY_WITHOUT_INPUT"
+    | "ZERO_IDENTITY_WITNESS_UNRESOLVED"
+    | "ZERO_IDENTITY_WITNESS_CAPACITY_EXCEEDED"
+    | "VIN_AMOUNT_NOT_CONSERVED"
+    | "IDENTITY_AMOUNT_NOT_CONSERVED"
+    | "TAPE_ENVELOPE_MISMATCH"
+    | "PARENT_SLOT_WITHOUT_VIN"
+    | "ANCESTOR_VOUT_OUT_OF_RANGE"
+    | "ANCESTOR_EMPTY_LOCKING_SCRIPT"
+    | "ANCESTOR_IDENTITY_MISMATCH"
+    | "ORIGINAL_UTXO_MISMATCH";
+
+  export interface TokenValidationPolicy {
+    /** Defaults to strict. relaxed-metadata only relaxes extension equality. */
+    preset?: "strict" | "relaxed-metadata";
+    /** Strict mode requires byte-identical Tape envelopes for one identity. */
+    requireExactTapeEnvelope?: boolean;
+  }
+
+  export interface TokenValidationOptions {
+    /** The caller asserts that this transaction is already on chain. */
+    transaction: Transaction | string | Buffer;
+    /** Passed through to API.fetchTXraw without an independent chain check. */
+    network: string;
+    policy?: TokenValidationPolicy;
+  }
+
+  export interface TokenValidationIssue {
+    code: TokenValidationErrorCode;
+    severity: "error" | "warning";
+    stage:
+      | "SOURCE"
+      | "ROOT"
+      | "PARENT"
+      | "OUTPUT_SCAN"
+      | "MATRIX"
+      | "ANCESTOR";
+    message: string;
+    vin?: number;
+    vout?: number;
+    slot?: number;
+    txid?: string;
+    identity?: string;
+  }
+
+  export interface TokenValidationResult {
+    status: "VALID" | "INVALID" | "UNKNOWN";
+    txid?: string;
+    kind: "TRANSITION" | "NON_TOKEN" | "UNDETERMINED";
+    protocol?: TokenProtocolDescriptor;
+    assurances: readonly (
+      | "OUTPUT_SOURCE_GRAPH_RESOLVED"
+      | "STRUCTURE"
+      | "TRANSITION"
+      | "OUTPUT_SOURCE_LINEAGE"
+    )[];
+    issues: readonly TokenValidationIssue[];
+    inputs: readonly (
+      | {
+          vin: number;
+          prevTxid: string;
+          prevVout: number;
+          kind: "UNRESOLVED";
+          resolution: "NOT_REQUESTED" | "UNAVAILABLE" | "INVALID";
+        }
+      | {
+          vin: number;
+          prevTxid: string;
+          prevVout: number;
+          kind: "ORDINARY";
+          resolution: "RESOLVED";
+          parentTxid: string;
+        }
+      | {
+          vin: number;
+          prevTxid: string;
+          prevVout: number;
+          kind: "TBC20" | "FT";
+          resolution: "RESOLVED";
+          sourceRole?: "POSITIVE_SOURCE" | "ZERO_IDENTITY_WITNESS";
+          parentTxid: string;
+          codeVout: number;
+          tapeVout: number;
+          identity: string;
+          slots: readonly [bigint, bigint, bigint, bigint, bigint, bigint];
+          balanceRaw: bigint;
+          protocol: TokenProtocolDescriptor;
+        }
+    )[];
+    outputGroups: readonly {
+      logicalIndex: number;
+      kind: "TBC20" | "FT" | "ORDINARY";
+      firstVout: number;
+      /** Number of consecutive physical outputs represented by this ABI group. */
+      physicalVoutCount: 1 | 2;
+      codeVout?: number;
+      tapeVout?: number;
+      identity?: string;
+      slots?: readonly [bigint, bigint, bigint, bigint, bigint, bigint];
+      balanceRaw?: bigint;
+      protocol?: TokenProtocolDescriptor;
+      recognizedContract?: {
+        family: "FT" | "STABLE_COIN";
+        version: 1 | 2 | 3 | 4;
+      };
+    }[];
+    assets: readonly {
+      identity: string;
+      protocol: TokenProtocolDescriptor;
+      inputVins: readonly number[];
+      outputGroups: readonly number[];
+      inputRaw: bigint;
+      outputRaw: bigint;
+      envelopeHash?: string;
+    }[];
+    matrix: readonly (readonly bigint[])[];
+    ancestorEdges: readonly {
+      currentVin: number;
+      parentTxid: string;
+      parentCodeVout: number;
+      parentSlot: number;
+      parentVin: number;
+      /** Always 5 - parentSlot. */
+      abiPrepreIndex: number;
+      ancestorTxid: string;
+      ancestorVout: number;
+      parentIdentity: string;
+      ancestorIdentity?: string;
+      resolution: "SAME_IDENTITY" | "ORIGINAL_UTXO";
+    }[];
+    source?: {
+      network: string;
+      api: "API.fetchTXraw";
+      trustModel: "API_FETCH_TXRAW_FULLY_TRUSTED";
+      rootTrustModel: "CALLER_ASSERTED_ON_CHAIN_AND_INPUT_SCRIPTS_VALID";
+      queriedTxids: readonly string[];
+      resolvedTxids: readonly string[];
+      requiredSourceTxids: readonly string[];
+    };
+    resolvedTransactions: number;
+    parentsChecked: number;
+    ancestorsChecked: number;
+    originalUTXOBoundaries: number;
+    /** Recursively converts bigint values to decimal strings. */
+    toJSON(): Record<string, unknown>;
+  }
+
+  export class TokenValidationError extends Error {
+    readonly report: TokenValidationResult;
+    constructor(report: TokenValidationResult);
+  }
+
+  export class TokenValidator {
+    private constructor();
+    static validateOnChainTransaction(
+      options: TokenValidationOptions,
+    ): Promise<TokenValidationResult>;
+    static assertValidOnChainTransaction(
+      options: TokenValidationOptions,
+    ): Promise<TokenValidationResult>;
+  }
+
   export class FT {
     name: string;
     symbol: string;
@@ -594,7 +789,7 @@ declare module "tbc-contract" {
     static getBalanceFromTape(tape: string): bigint;
   }
 
-  interface PoolNFTInfo {
+  export interface PoolNFTInfo {
     ft_lp_amount: bigint;
     ft_a_amount: bigint;
     tbc_amount: bigint;
@@ -610,7 +805,7 @@ declare module "tbc-contract" {
     currentContractSatoshi: number;
   }
 
-  interface poolNFTDifference {
+  export interface poolNFTDifference {
     ft_lp_difference: bigint;
     ft_a_difference: bigint;
     tbc_amount_difference: bigint;
@@ -934,7 +1129,7 @@ declare module "tbc-contract" {
     ): Script;
   }
 
-  interface MultiSigTxRaw {
+  export interface MultiSigTxRaw {
     txraw: string;
     amounts: number[];
   }
@@ -1489,7 +1684,7 @@ declare module "tbc-contract" {
     ): string;
   }
 
-  interface coinNftData {
+  export interface coinNftData {
     nftName: string;
     nftSymbol: string;
     description: string;
@@ -1653,4 +1848,3 @@ declare module "tbc-contract" {
   ): bigint;
   export function fillCharLengthInFT(codeScript: string): number;
   export function isCoinCodeScript(codeScript: string): boolean;
-}
