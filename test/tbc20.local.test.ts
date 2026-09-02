@@ -276,14 +276,14 @@ test("instantiates every compiled placeholder with its declared push length", ()
 
   assert.equal(
     TBC20.artifactSha256,
-    "e06235404815def601948893adab791e0ddf7b3ffc08ed1b4961e46477dabeb1",
+    "4efb2bca72f20e2a1e336dbcccc3e81228eb19411ff43cdcb24118115788a186",
   );
   assert.equal(
     createHash("sha256").update(template).digest("hex"),
-    "f48467e6cfa9a72849b154cb5d97726695fc8d09de5fc1554b6b906be49e42c1",
+    "81057a9f086addeba719c0d2981d6017b860ccc080c7523ad7fb49db9fb570b8",
   );
-  assert.equal(TBC20.codeBytes, 2396);
-  assert.equal(TBC20.partialOffset, 2368);
+  assert.equal(TBC20.codeBytes, 2460);
+  assert.equal(TBC20.partialOffset, 2432);
 
   assert.equal(originalUTXO.length, 36);
   assert.equal(
@@ -1078,21 +1078,21 @@ test("prices from maximum signature placeholders before signing across byte boun
     verify: true,
   }));
 
-  const derOscillation = build(7);
-  const exactAfterShorterSignature = build(8);
-  const atBoundary = build(340);
-  const overBoundary = build(341);
+  const derOscillation = build(5);
+  const exactAfterShorterSignature = build(6);
+  const atBoundary = build(276);
+  const overBoundary = build(277);
   const oscillationBytes = Buffer.from(derOscillation.txraw, "hex").length;
-  assert.equal(oscillationBytes, 3_662);
-  assert.equal(derOscillation.feeSatoshis, 294);
-  assert.equal(TBC20.feeForSize(oscillationBytes), 293);
+  assert.equal(oscillationBytes, 3_725);
+  assert.equal(derOscillation.feeSatoshis, 299);
+  assert.equal(TBC20.feeForSize(oscillationBytes), 298);
   assert.equal(
     derOscillation.feeSatoshis - TBC20.feeForSize(oscillationBytes),
     1,
   );
   const exactBytes = Buffer.from(exactAfterShorterSignature.txraw, "hex").length;
-  assert.equal(exactBytes, 3_663);
-  assert.equal(exactAfterShorterSignature.feeSatoshis, 294);
+  assert.equal(exactBytes, 3_726);
+  assert.equal(exactAfterShorterSignature.feeSatoshis, 299);
   assert.equal(exactAfterShorterSignature.feeSatoshis, TBC20.feeForSize(exactBytes));
   assert.equal(Buffer.from(atBoundary.txraw, "hex").length, 4_000);
   assert.equal(atBoundary.feeSatoshis, 321);
@@ -1310,31 +1310,31 @@ test("chooses dust-safe change topology before producing any real signature", { 
   }));
 
   const insufficient = captureSignatureCalls(() => assert.throws(
-    () => build(280),
-    /can pay only 280 sat; transaction requires 281 sat/,
+    () => build(285),
+    /can pay only 285 sat; transaction requires 286 sat/,
   ));
   assert.equal(insufficient.calls.length, 0);
 
-  const exactNoChange = captureSignatureCalls(() => build(281));
+  const exactNoChange = captureSignatureCalls(() => build(286));
   assert.equal(exactNoChange.result.transaction.outputs.length, 2);
-  assert.equal(exactNoChange.result.feeSatoshis, 281);
+  assert.equal(exactNoChange.result.feeSatoshis, 286);
   assert.equal(
     exactNoChange.result.feeSatoshis,
     TBC20.feeForSize(Buffer.from(exactNoChange.result.txraw, "hex").length),
   );
 
-  const donatedDust = captureSignatureCalls(() => build(322));
+  const donatedDust = captureSignatureCalls(() => build(327));
   assert.equal(donatedDust.result.transaction.outputs.length, 2);
-  assert.equal(donatedDust.result.feeSatoshis, 322);
+  assert.equal(donatedDust.result.feeSatoshis, 327);
   assert.equal(
     donatedDust.result.feeSatoshis - TBC20.feeForSize(Buffer.from(donatedDust.result.txraw, "hex").length),
     41,
   );
 
-  const dustChange = captureSignatureCalls(() => build(328));
+  const dustChange = captureSignatureCalls(() => build(334));
   assert.equal(dustChange.result.transaction.outputs.length, 3);
   assert.equal(dustChange.result.transaction.outputs[2].satoshis, 42);
-  assert.equal(dustChange.result.feeSatoshis, 286);
+  assert.equal(dustChange.result.feeSatoshis, 292);
   assert.equal(
     dustChange.result.feeSatoshis,
     TBC20.feeForSize(Buffer.from(dustChange.result.txraw, "hex").length),
@@ -1417,6 +1417,113 @@ test("constructs transfer, split, merge, and a chained ancestor spend with the e
   const postMergeResult = verifyInput(postMerge.transaction, 0);
   assert.equal(postMergeResult.success, true);
   assert.equal(postMergeResult.error, "");
+});
+
+test("rejects non-8-byte CurrentTX Code and Tape values in the first and last output groups", () => {
+  const { ownerAddress, mint, genesisInput } = fixture();
+  const current = new tbc.Transaction();
+  (current as any).version = 10;
+  current.from(genesisInput.utxo);
+
+  const outputGroups: Array<{ codeVout: number; tapeVout: number }> = [];
+  current.addOutput(new tbc.Transaction.Output({
+    script: mint.transaction.outputs[0].script,
+    satoshis: 500,
+  }));
+  current.addOutput(new tbc.Transaction.Output({
+    script: mint.transaction.outputs[1].script,
+    satoshis: 0,
+  }));
+  outputGroups.push({ codeVout: 0, tapeVout: 1 });
+
+  // A 25-byte P2PKH script avoids the non-minimal size witness that OP_TRUE
+  // would produce, while still exercising both value fields in all 8 groups.
+  const opaqueScript = tbc.Script.buildPublicKeyHashOut(ownerAddress);
+  for (let groupIndex = 1; groupIndex < 8; groupIndex += 1) {
+    const codeVout = current.outputs.length;
+    current.addOutput(new tbc.Transaction.Output({ script: opaqueScript, satoshis: 0 }));
+    current.addOutput(new tbc.Transaction.Output({ script: opaqueScript, satoshis: 0 }));
+    outputGroups.push({ codeVout, tapeVout: codeVout + 1 });
+  }
+
+  const unlock = withoutInterpreterLogs(() => TBC20.attachUnlockScript({
+    transaction: current,
+    inputIndex: 0,
+    tokenInput: genesisInput,
+    outputGroups,
+    verify: true,
+  }));
+  assert.equal(current.outputs.length, 16);
+  assert.equal(outputGroups.length, 8);
+  assert.equal(unlock.chunks.length, 123);
+  assert.equal(verifyInput(current, 0).success, true);
+
+  const cloneWithPrevouts = (source: tbc.Transaction): tbc.Transaction => {
+    const copy = new tbc.Transaction(source.uncheckedSerialize());
+    source.inputs.forEach((input: any, inputIndex: number) => {
+      assert.ok(input.output, `missing prevout ${inputIndex}`);
+      (copy.inputs[inputIndex] as any).output = new tbc.Transaction.Output({
+        script: input.output.script,
+        satoshis: input.output.satoshis,
+      });
+    });
+    return copy;
+  };
+  const replaceUnlockPush = (
+    transaction: tbc.Transaction,
+    chunkIndex: number,
+    value: Buffer,
+  ): void => {
+    const rebuilt = new tbc.Script();
+    transaction.inputs[0].script.chunks.forEach((chunk: any, index: number) => {
+      if (index === chunkIndex) rebuilt.add(value);
+      else if (chunk.buf !== undefined) rebuilt.add(Buffer.from(chunk.buf));
+      else rebuilt.add(chunk.opcodenum);
+    });
+    assert.equal(rebuilt.chunks.length, 123);
+    transaction.setInputScript(0, rebuilt);
+  };
+  const valueWithWidth = (satoshis: number, width: number): Buffer => {
+    const canonical = Buffer.alloc(8);
+    canonical.writeBigUInt64LE(BigInt(satoshis));
+    return width < canonical.length
+      ? Buffer.from(canonical.subarray(0, width))
+      : Buffer.concat([canonical, Buffer.alloc(width - canonical.length)]);
+  };
+
+  const targets = [
+    { label: "first Code.Value", chunkIndex: 0, vout: 0 },
+    { label: "first Tape.Value", chunkIndex: 4, vout: 1 },
+    { label: "last Code.Value", chunkIndex: 42, vout: 14 },
+    { label: "last Tape.Value", chunkIndex: 46, vout: 15 },
+  ] as const;
+  const lockingChunks = tbc.Script.fromHex(genesisInput.utxo.script).chunks;
+  const failurePcByField = new Map<string, number>();
+
+  for (const target of targets) {
+    assert.equal(chunkBuffer(unlock.chunks[target.chunkIndex]).length, 8);
+    for (const malformedLength of [7, 9, 88]) {
+      const mutated = cloneWithPrevouts(current);
+      replaceUnlockPush(
+        mutated,
+        target.chunkIndex,
+        valueWithWidth(current.outputs[target.vout].satoshis, malformedLength),
+      );
+      const result = verifyInput(mutated, 0);
+      const label = `${target.label}/${malformedLength}B`;
+      assert.equal(result.success, false, label);
+      assert.equal(result.error, "SCRIPT_ERR_EQUALVERIFY");
+      const failurePc = result.failedAt?.pc;
+      assert.ok(Number.isInteger(failurePc), `${label} missing failure pc`);
+      assert.equal(lockingChunks[failurePc - 2]?.opcodenum, tbc.Opcode.OP_SIZE);
+      assert.equal(lockingChunks[failurePc - 1]?.opcodenum, tbc.Opcode.OP_8);
+      assert.equal(lockingChunks[failurePc]?.opcodenum, tbc.Opcode.OP_EQUALVERIFY);
+      const priorPc = failurePcByField.get(target.label);
+      if (priorPc === undefined) failurePcByField.set(target.label, failurePc);
+      else assert.equal(failurePc, priorPc);
+    }
+  }
+  assert.equal(new Set(failurePcByField.values()).size, targets.length);
 });
 
 test("allows one output total above 2^63-1 when every provenance slot stays bounded", () => {

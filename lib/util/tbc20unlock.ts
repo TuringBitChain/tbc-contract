@@ -48,6 +48,8 @@ export interface TBC20OutputGroupData {
 /**
  * One logical CurrentTX.FTOutput entry. A group consumes either one physical
  * output (Code only) or two consecutive physical outputs (Code then Tape).
+ * Every present Code/Tape value witness is encoded as exactly eight-byte
+ * UInt64LE; only the padded fields for an absent output remain empty.
  */
 export interface TBC20CurrentOutputGroup {
   codeVout: number;

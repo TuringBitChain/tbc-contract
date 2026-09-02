@@ -228,10 +228,10 @@ function metadataConvenienceFixture() {
     const originalUTXO = TBC20.encodeOriginalUTXO(outpoint);
     const tapeSize = TBC20.minTapeBytes;
     const template = TBC20.lockHexTemplate;
-    strict_1.default.equal(TBC20.artifactSha256, "e06235404815def601948893adab791e0ddf7b3ffc08ed1b4961e46477dabeb1");
-    strict_1.default.equal((0, node_crypto_1.createHash)("sha256").update(template).digest("hex"), "f48467e6cfa9a72849b154cb5d97726695fc8d09de5fc1554b6b906be49e42c1");
-    strict_1.default.equal(TBC20.codeBytes, 2396);
-    strict_1.default.equal(TBC20.partialOffset, 2368);
+    strict_1.default.equal(TBC20.artifactSha256, "4efb2bca72f20e2a1e336dbcccc3e81228eb19411ff43cdcb24118115788a186");
+    strict_1.default.equal((0, node_crypto_1.createHash)("sha256").update(template).digest("hex"), "81057a9f086addeba719c0d2981d6017b860ccc080c7523ad7fb49db9fb570b8");
+    strict_1.default.equal(TBC20.codeBytes, 2460);
+    strict_1.default.equal(TBC20.partialOffset, 2432);
     strict_1.default.equal(originalUTXO.length, 36);
     strict_1.default.equal(originalUTXO.subarray(0, 32).toString("hex"), Buffer.from(outpoint.txId, "hex").reverse().toString("hex"));
     strict_1.default.equal(originalUTXO.subarray(32).toString("hex"), "04030201");
@@ -636,18 +636,18 @@ function metadataConvenienceFixture() {
         tbcChangeAddress: ownerAddress,
         verify: true,
     }));
-    const derOscillation = build(7);
-    const exactAfterShorterSignature = build(8);
-    const atBoundary = build(340);
-    const overBoundary = build(341);
+    const derOscillation = build(5);
+    const exactAfterShorterSignature = build(6);
+    const atBoundary = build(276);
+    const overBoundary = build(277);
     const oscillationBytes = Buffer.from(derOscillation.txraw, "hex").length;
-    strict_1.default.equal(oscillationBytes, 3_662);
-    strict_1.default.equal(derOscillation.feeSatoshis, 294);
-    strict_1.default.equal(TBC20.feeForSize(oscillationBytes), 293);
+    strict_1.default.equal(oscillationBytes, 3_725);
+    strict_1.default.equal(derOscillation.feeSatoshis, 299);
+    strict_1.default.equal(TBC20.feeForSize(oscillationBytes), 298);
     strict_1.default.equal(derOscillation.feeSatoshis - TBC20.feeForSize(oscillationBytes), 1);
     const exactBytes = Buffer.from(exactAfterShorterSignature.txraw, "hex").length;
-    strict_1.default.equal(exactBytes, 3_663);
-    strict_1.default.equal(exactAfterShorterSignature.feeSatoshis, 294);
+    strict_1.default.equal(exactBytes, 3_726);
+    strict_1.default.equal(exactAfterShorterSignature.feeSatoshis, 299);
     strict_1.default.equal(exactAfterShorterSignature.feeSatoshis, TBC20.feeForSize(exactBytes));
     strict_1.default.equal(Buffer.from(atBoundary.txraw, "hex").length, 4_000);
     strict_1.default.equal(atBoundary.feeSatoshis, 321);
@@ -848,20 +848,20 @@ function metadataConvenienceFixture() {
         tbcChangeAddress: ownerAddress,
         verify: true,
     }));
-    const insufficient = captureSignatureCalls(() => strict_1.default.throws(() => build(280), /can pay only 280 sat; transaction requires 281 sat/));
+    const insufficient = captureSignatureCalls(() => strict_1.default.throws(() => build(285), /can pay only 285 sat; transaction requires 286 sat/));
     strict_1.default.equal(insufficient.calls.length, 0);
-    const exactNoChange = captureSignatureCalls(() => build(281));
+    const exactNoChange = captureSignatureCalls(() => build(286));
     strict_1.default.equal(exactNoChange.result.transaction.outputs.length, 2);
-    strict_1.default.equal(exactNoChange.result.feeSatoshis, 281);
+    strict_1.default.equal(exactNoChange.result.feeSatoshis, 286);
     strict_1.default.equal(exactNoChange.result.feeSatoshis, TBC20.feeForSize(Buffer.from(exactNoChange.result.txraw, "hex").length));
-    const donatedDust = captureSignatureCalls(() => build(322));
+    const donatedDust = captureSignatureCalls(() => build(327));
     strict_1.default.equal(donatedDust.result.transaction.outputs.length, 2);
-    strict_1.default.equal(donatedDust.result.feeSatoshis, 322);
+    strict_1.default.equal(donatedDust.result.feeSatoshis, 327);
     strict_1.default.equal(donatedDust.result.feeSatoshis - TBC20.feeForSize(Buffer.from(donatedDust.result.txraw, "hex").length), 41);
-    const dustChange = captureSignatureCalls(() => build(328));
+    const dustChange = captureSignatureCalls(() => build(334));
     strict_1.default.equal(dustChange.result.transaction.outputs.length, 3);
     strict_1.default.equal(dustChange.result.transaction.outputs[2].satoshis, 42);
-    strict_1.default.equal(dustChange.result.feeSatoshis, 286);
+    strict_1.default.equal(dustChange.result.feeSatoshis, 292);
     strict_1.default.equal(dustChange.result.feeSatoshis, TBC20.feeForSize(Buffer.from(dustChange.result.txraw, "hex").length));
     for (const capture of [exactNoChange, donatedDust, dustChange]) {
         strict_1.default.deepEqual(capture.calls.map((call) => call.inputIndex), [0, 1]);
@@ -926,6 +926,103 @@ function metadataConvenienceFixture() {
     const postMergeResult = verifyInput(postMerge.transaction, 0);
     strict_1.default.equal(postMergeResult.success, true);
     strict_1.default.equal(postMergeResult.error, "");
+});
+(0, node_test_1.default)("rejects non-8-byte CurrentTX Code and Tape values in the first and last output groups", () => {
+    const { ownerAddress, mint, genesisInput } = fixture();
+    const current = new tbc.Transaction();
+    current.version = 10;
+    current.from(genesisInput.utxo);
+    const outputGroups = [];
+    current.addOutput(new tbc.Transaction.Output({
+        script: mint.transaction.outputs[0].script,
+        satoshis: 500,
+    }));
+    current.addOutput(new tbc.Transaction.Output({
+        script: mint.transaction.outputs[1].script,
+        satoshis: 0,
+    }));
+    outputGroups.push({ codeVout: 0, tapeVout: 1 });
+    // A 25-byte P2PKH script avoids the non-minimal size witness that OP_TRUE
+    // would produce, while still exercising both value fields in all 8 groups.
+    const opaqueScript = tbc.Script.buildPublicKeyHashOut(ownerAddress);
+    for (let groupIndex = 1; groupIndex < 8; groupIndex += 1) {
+        const codeVout = current.outputs.length;
+        current.addOutput(new tbc.Transaction.Output({ script: opaqueScript, satoshis: 0 }));
+        current.addOutput(new tbc.Transaction.Output({ script: opaqueScript, satoshis: 0 }));
+        outputGroups.push({ codeVout, tapeVout: codeVout + 1 });
+    }
+    const unlock = withoutInterpreterLogs(() => TBC20.attachUnlockScript({
+        transaction: current,
+        inputIndex: 0,
+        tokenInput: genesisInput,
+        outputGroups,
+        verify: true,
+    }));
+    strict_1.default.equal(current.outputs.length, 16);
+    strict_1.default.equal(outputGroups.length, 8);
+    strict_1.default.equal(unlock.chunks.length, 123);
+    strict_1.default.equal(verifyInput(current, 0).success, true);
+    const cloneWithPrevouts = (source) => {
+        const copy = new tbc.Transaction(source.uncheckedSerialize());
+        source.inputs.forEach((input, inputIndex) => {
+            strict_1.default.ok(input.output, `missing prevout ${inputIndex}`);
+            copy.inputs[inputIndex].output = new tbc.Transaction.Output({
+                script: input.output.script,
+                satoshis: input.output.satoshis,
+            });
+        });
+        return copy;
+    };
+    const replaceUnlockPush = (transaction, chunkIndex, value) => {
+        const rebuilt = new tbc.Script();
+        transaction.inputs[0].script.chunks.forEach((chunk, index) => {
+            if (index === chunkIndex)
+                rebuilt.add(value);
+            else if (chunk.buf !== undefined)
+                rebuilt.add(Buffer.from(chunk.buf));
+            else
+                rebuilt.add(chunk.opcodenum);
+        });
+        strict_1.default.equal(rebuilt.chunks.length, 123);
+        transaction.setInputScript(0, rebuilt);
+    };
+    const valueWithWidth = (satoshis, width) => {
+        const canonical = Buffer.alloc(8);
+        canonical.writeBigUInt64LE(BigInt(satoshis));
+        return width < canonical.length
+            ? Buffer.from(canonical.subarray(0, width))
+            : Buffer.concat([canonical, Buffer.alloc(width - canonical.length)]);
+    };
+    const targets = [
+        { label: "first Code.Value", chunkIndex: 0, vout: 0 },
+        { label: "first Tape.Value", chunkIndex: 4, vout: 1 },
+        { label: "last Code.Value", chunkIndex: 42, vout: 14 },
+        { label: "last Tape.Value", chunkIndex: 46, vout: 15 },
+    ];
+    const lockingChunks = tbc.Script.fromHex(genesisInput.utxo.script).chunks;
+    const failurePcByField = new Map();
+    for (const target of targets) {
+        strict_1.default.equal(chunkBuffer(unlock.chunks[target.chunkIndex]).length, 8);
+        for (const malformedLength of [7, 9, 88]) {
+            const mutated = cloneWithPrevouts(current);
+            replaceUnlockPush(mutated, target.chunkIndex, valueWithWidth(current.outputs[target.vout].satoshis, malformedLength));
+            const result = verifyInput(mutated, 0);
+            const label = `${target.label}/${malformedLength}B`;
+            strict_1.default.equal(result.success, false, label);
+            strict_1.default.equal(result.error, "SCRIPT_ERR_EQUALVERIFY");
+            const failurePc = result.failedAt?.pc;
+            strict_1.default.ok(Number.isInteger(failurePc), `${label} missing failure pc`);
+            strict_1.default.equal(lockingChunks[failurePc - 2]?.opcodenum, tbc.Opcode.OP_SIZE);
+            strict_1.default.equal(lockingChunks[failurePc - 1]?.opcodenum, tbc.Opcode.OP_8);
+            strict_1.default.equal(lockingChunks[failurePc]?.opcodenum, tbc.Opcode.OP_EQUALVERIFY);
+            const priorPc = failurePcByField.get(target.label);
+            if (priorPc === undefined)
+                failurePcByField.set(target.label, failurePc);
+            else
+                strict_1.default.equal(failurePc, priorPc);
+        }
+    }
+    strict_1.default.equal(new Set(failurePcByField.values()).size, targets.length);
 });
 (0, node_test_1.default)("allows one output total above 2^63-1 when every provenance slot stays bounded", () => {
     const ownerKey = tbc.PrivateKey.fromString(OWNER_WIF);

@@ -265,6 +265,7 @@ async function prepareTBC20Proofs(
 - SDK 生成的当前交易最多6个 vin。位置式便捷接口必须预留1个 fee vin，所以最多使用5个 Token 输入。
 - 每个 `parentTxs[i]` 也必须是版本 `10`，且最多6个输入；ancestor 交易必须是版本 `10`，但不受父交易固定6条输入证明的限制。
 - 当前交易最多8个逻辑输出组、16个物理 vout。一组 Token 必须是相邻的 Code + Tape，占2个物理 vout；普通 TBC 找零占1个逻辑组和1个物理 vout。
+- 解锁见证中每个实际存在的 CurrentTX Code/Tape 金额必须是严格8字节 UInt64LE；只有不存在输出的补齐字段保持为空。官方 SDK 会自动按此格式编码，自定义 ABI 构造器不能使用变长 ScriptNum。
 
 ## Transfer
 
