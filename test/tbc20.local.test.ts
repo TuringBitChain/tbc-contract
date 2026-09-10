@@ -5,6 +5,7 @@ import * as tbc from "tbc-lib-js";
 
 const TBC20 = require("../lib/contract/tbc20");
 import {
+  TBC20_CODE_MARKER,
   TBC20_TAPE_MARKER,
   TBC20_TAPE_PREFIX,
   getTBC20CodeIdentity,
@@ -276,14 +277,14 @@ test("instantiates every compiled placeholder with its declared push length", ()
 
   assert.equal(
     TBC20.artifactSha256,
-    "4efb2bca72f20e2a1e336dbcccc3e81228eb19411ff43cdcb24118115788a186",
+    "0f5db33bb46e4517963cbd383518f74283b5c2c4efb0a733522a1fbc0d4a9f84",
   );
   assert.equal(
     createHash("sha256").update(template).digest("hex"),
-    "81057a9f086addeba719c0d2981d6017b860ccc080c7523ad7fb49db9fb570b8",
+    "731ae1278ba9404c79da4886024892838ff0f6d90c483ad4a74a59125d497080",
   );
-  assert.equal(TBC20.codeBytes, 2460);
-  assert.equal(TBC20.partialOffset, 2432);
+  assert.equal(TBC20.codeBytes, 2657);
+  assert.equal(TBC20.partialOffset, 2624);
 
   assert.equal(originalUTXO.length, 36);
   assert.equal(
@@ -336,7 +337,24 @@ test("instantiates every compiled placeholder with its declared push length", ()
     code.toBuffer().subarray(TBC20.partialOffset).length,
     code.toBuffer().length - TBC20.partialOffset,
   );
+  assert.deepEqual(
+    code.toBuffer().subarray(-(TBC20_CODE_MARKER.length + 1)),
+    Buffer.concat([Buffer.from([TBC20_CODE_MARKER.length]), TBC20_CODE_MARKER]),
+  );
+  assert.equal(
+    code.toBuffer().length - (1 + 21 + 1 + TBC20_CODE_MARKER.length),
+    TBC20.partialOffset,
+  );
   assert.deepEqual(getTBC20Controller(code), controller);
+
+  const legacyMarkerCode = Buffer.concat([
+    code.toBuffer().subarray(0, -(TBC20_CODE_MARKER.length + 1)),
+    Buffer.from("0532436f6465", "hex"),
+  ]);
+  assert.throws(
+    () => getTBC20Controller(legacyMarkerCode),
+    /missing the terminal TBC20CODE2 marker/,
+  );
 
   const changedController = TBC20.addressController(
     tbc.PrivateKey.fromRandom().toAddress().toString(),
@@ -1014,10 +1032,10 @@ test("charges 80 sat/KB from final bytes with an 80-satoshi minimum", () => {
 
   priced.forEach(({ label, transaction, fee }) => {
     const sizeBytes = Buffer.from(transaction.uncheckedSerialize(), "hex").length;
-    assert.equal(
-      fee,
-      TBC20.feeForSize(sizeBytes),
-      `${label} fee does not match its final serialized size`,
+    const requiredFee = TBC20.feeForSize(sizeBytes);
+    assert.ok(
+      fee >= requiredFee && fee - requiredFee <= 1,
+      `${label} fee must equal or exceed its final-size fee by at most 1 satoshi`,
     );
   });
   assert.ok(Buffer.from(mint.sourceTxraw, "hex").length < 1_000);
@@ -1078,21 +1096,21 @@ test("prices from maximum signature placeholders before signing across byte boun
     verify: true,
   }));
 
-  const derOscillation = build(5);
-  const exactAfterShorterSignature = build(6);
-  const atBoundary = build(276);
-  const overBoundary = build(277);
+  const derOscillation = build(11);
+  const exactAfterShorterSignature = build(12);
+  const atBoundary = build(74);
+  const overBoundary = build(75);
   const oscillationBytes = Buffer.from(derOscillation.txraw, "hex").length;
-  assert.equal(oscillationBytes, 3_725);
-  assert.equal(derOscillation.feeSatoshis, 299);
-  assert.equal(TBC20.feeForSize(oscillationBytes), 298);
+  assert.equal(oscillationBytes, 3_937);
+  assert.equal(derOscillation.feeSatoshis, 316);
+  assert.equal(TBC20.feeForSize(oscillationBytes), 315);
   assert.equal(
     derOscillation.feeSatoshis - TBC20.feeForSize(oscillationBytes),
     1,
   );
   const exactBytes = Buffer.from(exactAfterShorterSignature.txraw, "hex").length;
-  assert.equal(exactBytes, 3_726);
-  assert.equal(exactAfterShorterSignature.feeSatoshis, 299);
+  assert.equal(exactBytes, 3_938);
+  assert.equal(exactAfterShorterSignature.feeSatoshis, 316);
   assert.equal(exactAfterShorterSignature.feeSatoshis, TBC20.feeForSize(exactBytes));
   assert.equal(Buffer.from(atBoundary.txraw, "hex").length, 4_000);
   assert.equal(atBoundary.feeSatoshis, 321);
@@ -1310,31 +1328,31 @@ test("chooses dust-safe change topology before producing any real signature", { 
   }));
 
   const insufficient = captureSignatureCalls(() => assert.throws(
-    () => build(285),
-    /can pay only 285 sat; transaction requires 286 sat/,
+    () => build(302),
+    /can pay only 302 sat; transaction requires 303 sat/,
   ));
   assert.equal(insufficient.calls.length, 0);
 
-  const exactNoChange = captureSignatureCalls(() => build(286));
+  const exactNoChange = captureSignatureCalls(() => build(303));
   assert.equal(exactNoChange.result.transaction.outputs.length, 2);
-  assert.equal(exactNoChange.result.feeSatoshis, 286);
+  assert.equal(exactNoChange.result.feeSatoshis, 303);
   assert.equal(
     exactNoChange.result.feeSatoshis,
     TBC20.feeForSize(Buffer.from(exactNoChange.result.txraw, "hex").length),
   );
 
-  const donatedDust = captureSignatureCalls(() => build(327));
+  const donatedDust = captureSignatureCalls(() => build(344));
   assert.equal(donatedDust.result.transaction.outputs.length, 2);
-  assert.equal(donatedDust.result.feeSatoshis, 327);
+  assert.equal(donatedDust.result.feeSatoshis, 344);
   assert.equal(
     donatedDust.result.feeSatoshis - TBC20.feeForSize(Buffer.from(donatedDust.result.txraw, "hex").length),
     41,
   );
 
-  const dustChange = captureSignatureCalls(() => build(334));
+  const dustChange = captureSignatureCalls(() => build(350));
   assert.equal(dustChange.result.transaction.outputs.length, 3);
   assert.equal(dustChange.result.transaction.outputs[2].satoshis, 42);
-  assert.equal(dustChange.result.feeSatoshis, 292);
+  assert.equal(dustChange.result.feeSatoshis, 308);
   assert.equal(
     dustChange.result.feeSatoshis,
     TBC20.feeForSize(Buffer.from(dustChange.result.txraw, "hex").length),

@@ -9,6 +9,7 @@ export const TBC20_CODE_SATOSHIS = 500;
 export const TBC20_TAPE_SATOSHIS = 0;
 export const TBC20_AMOUNT_SLOTS = 6;
 export const TBC20_AMOUNT_BYTES = TBC20_AMOUNT_SLOTS * 8;
+export const TBC20_CODE_MARKER = Buffer.from("TBC20CODE2", "ascii");
 export const TBC20_TAPE_PREFIX = Buffer.from("006a30", "hex");
 export const TBC20_TAPE_MARKER = Buffer.from("TBC20TAPE", "ascii");
 export const TBC20_MIN_TAPE_BYTES = TBC20_TAPE_PREFIX.length + TBC20_AMOUNT_BYTES + TBC20_TAPE_MARKER.length;
@@ -639,11 +640,16 @@ function emptyContractTxData(): TBC20ContractTxData {
 /** Return the terminal 21-byte controller: hash160 || controlOption. */
 export function getTBC20Controller(codeScript: tbc.Script | string | Buffer): Buffer {
   const code = codeScript instanceof tbc.Script ? codeScript.toBuffer() : toBuffer(codeScript, "code script");
-  const terminalMarker = Buffer.from("0532436f6465", "hex");
-  if (code.length < 28 || !code.subarray(code.length - terminalMarker.length).equals(terminalMarker)) {
-    fail("code script is missing the terminal 2Code marker");
+  const terminalMarker = Buffer.concat([
+    Buffer.from([TBC20_CODE_MARKER.length]),
+    TBC20_CODE_MARKER,
+  ]);
+  const terminalSuffixBytes = 1 + 21 + terminalMarker.length;
+  if (code.length < terminalSuffixBytes ||
+      !code.subarray(code.length - terminalMarker.length).equals(terminalMarker)) {
+    fail("code script is missing the terminal TBC20CODE2 marker");
   }
-  const controllerPushOffset = code.length - 28;
+  const controllerPushOffset = code.length - terminalSuffixBytes;
   if (code[controllerPushOffset] !== 21) {
     fail("code script terminal controller must be a direct 21-byte push");
   }

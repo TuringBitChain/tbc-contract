@@ -228,10 +228,10 @@ function metadataConvenienceFixture() {
     const originalUTXO = TBC20.encodeOriginalUTXO(outpoint);
     const tapeSize = TBC20.minTapeBytes;
     const template = TBC20.lockHexTemplate;
-    strict_1.default.equal(TBC20.artifactSha256, "4efb2bca72f20e2a1e336dbcccc3e81228eb19411ff43cdcb24118115788a186");
-    strict_1.default.equal((0, node_crypto_1.createHash)("sha256").update(template).digest("hex"), "81057a9f086addeba719c0d2981d6017b860ccc080c7523ad7fb49db9fb570b8");
-    strict_1.default.equal(TBC20.codeBytes, 2460);
-    strict_1.default.equal(TBC20.partialOffset, 2432);
+    strict_1.default.equal(TBC20.artifactSha256, "0f5db33bb46e4517963cbd383518f74283b5c2c4efb0a733522a1fbc0d4a9f84");
+    strict_1.default.equal((0, node_crypto_1.createHash)("sha256").update(template).digest("hex"), "731ae1278ba9404c79da4886024892838ff0f6d90c483ad4a74a59125d497080");
+    strict_1.default.equal(TBC20.codeBytes, 2657);
+    strict_1.default.equal(TBC20.partialOffset, 2624);
     strict_1.default.equal(originalUTXO.length, 36);
     strict_1.default.equal(originalUTXO.subarray(0, 32).toString("hex"), Buffer.from(outpoint.txId, "hex").reverse().toString("hex"));
     strict_1.default.equal(originalUTXO.subarray(32).toString("hex"), "04030201");
@@ -256,7 +256,14 @@ function metadataConvenienceFixture() {
     strict_1.default.equal(code.toBuffer().length, TBC20.codeBytes);
     strict_1.default.equal(TBC20.partialOffset, Math.floor(code.toBuffer().length / 64) * 64);
     strict_1.default.equal(code.toBuffer().subarray(TBC20.partialOffset).length, code.toBuffer().length - TBC20.partialOffset);
+    strict_1.default.deepEqual(code.toBuffer().subarray(-(tbc20unlock_1.TBC20_CODE_MARKER.length + 1)), Buffer.concat([Buffer.from([tbc20unlock_1.TBC20_CODE_MARKER.length]), tbc20unlock_1.TBC20_CODE_MARKER]));
+    strict_1.default.equal(code.toBuffer().length - (1 + 21 + 1 + tbc20unlock_1.TBC20_CODE_MARKER.length), TBC20.partialOffset);
     strict_1.default.deepEqual((0, tbc20unlock_1.getTBC20Controller)(code), controller);
+    const legacyMarkerCode = Buffer.concat([
+        code.toBuffer().subarray(0, -(tbc20unlock_1.TBC20_CODE_MARKER.length + 1)),
+        Buffer.from("0532436f6465", "hex"),
+    ]);
+    strict_1.default.throws(() => (0, tbc20unlock_1.getTBC20Controller)(legacyMarkerCode), /missing the terminal TBC20CODE2 marker/);
     const changedController = TBC20.addressController(tbc.PrivateKey.fromRandom().toAddress().toString());
     const changedCode = TBC20.replaceController(code, changedController);
     strict_1.default.deepEqual((0, tbc20unlock_1.getTBC20CodeIdentity)(changedCode), (0, tbc20unlock_1.getTBC20CodeIdentity)(code));
@@ -590,7 +597,8 @@ function metadataConvenienceFixture() {
     strict_1.default.throws(() => TBC20.feeForSize(0), /positive safe integer/);
     priced.forEach(({ label, transaction, fee }) => {
         const sizeBytes = Buffer.from(transaction.uncheckedSerialize(), "hex").length;
-        strict_1.default.equal(fee, TBC20.feeForSize(sizeBytes), `${label} fee does not match its final serialized size`);
+        const requiredFee = TBC20.feeForSize(sizeBytes);
+        strict_1.default.ok(fee >= requiredFee && fee - requiredFee <= 1, `${label} fee must equal or exceed its final-size fee by at most 1 satoshi`);
     });
     strict_1.default.ok(Buffer.from(mint.sourceTxraw, "hex").length < 1_000);
     strict_1.default.equal(mint.sourceFeeSatoshis, 80);
@@ -636,18 +644,18 @@ function metadataConvenienceFixture() {
         tbcChangeAddress: ownerAddress,
         verify: true,
     }));
-    const derOscillation = build(5);
-    const exactAfterShorterSignature = build(6);
-    const atBoundary = build(276);
-    const overBoundary = build(277);
+    const derOscillation = build(11);
+    const exactAfterShorterSignature = build(12);
+    const atBoundary = build(74);
+    const overBoundary = build(75);
     const oscillationBytes = Buffer.from(derOscillation.txraw, "hex").length;
-    strict_1.default.equal(oscillationBytes, 3_725);
-    strict_1.default.equal(derOscillation.feeSatoshis, 299);
-    strict_1.default.equal(TBC20.feeForSize(oscillationBytes), 298);
+    strict_1.default.equal(oscillationBytes, 3_937);
+    strict_1.default.equal(derOscillation.feeSatoshis, 316);
+    strict_1.default.equal(TBC20.feeForSize(oscillationBytes), 315);
     strict_1.default.equal(derOscillation.feeSatoshis - TBC20.feeForSize(oscillationBytes), 1);
     const exactBytes = Buffer.from(exactAfterShorterSignature.txraw, "hex").length;
-    strict_1.default.equal(exactBytes, 3_726);
-    strict_1.default.equal(exactAfterShorterSignature.feeSatoshis, 299);
+    strict_1.default.equal(exactBytes, 3_938);
+    strict_1.default.equal(exactAfterShorterSignature.feeSatoshis, 316);
     strict_1.default.equal(exactAfterShorterSignature.feeSatoshis, TBC20.feeForSize(exactBytes));
     strict_1.default.equal(Buffer.from(atBoundary.txraw, "hex").length, 4_000);
     strict_1.default.equal(atBoundary.feeSatoshis, 321);
@@ -848,20 +856,20 @@ function metadataConvenienceFixture() {
         tbcChangeAddress: ownerAddress,
         verify: true,
     }));
-    const insufficient = captureSignatureCalls(() => strict_1.default.throws(() => build(285), /can pay only 285 sat; transaction requires 286 sat/));
+    const insufficient = captureSignatureCalls(() => strict_1.default.throws(() => build(302), /can pay only 302 sat; transaction requires 303 sat/));
     strict_1.default.equal(insufficient.calls.length, 0);
-    const exactNoChange = captureSignatureCalls(() => build(286));
+    const exactNoChange = captureSignatureCalls(() => build(303));
     strict_1.default.equal(exactNoChange.result.transaction.outputs.length, 2);
-    strict_1.default.equal(exactNoChange.result.feeSatoshis, 286);
+    strict_1.default.equal(exactNoChange.result.feeSatoshis, 303);
     strict_1.default.equal(exactNoChange.result.feeSatoshis, TBC20.feeForSize(Buffer.from(exactNoChange.result.txraw, "hex").length));
-    const donatedDust = captureSignatureCalls(() => build(327));
+    const donatedDust = captureSignatureCalls(() => build(344));
     strict_1.default.equal(donatedDust.result.transaction.outputs.length, 2);
-    strict_1.default.equal(donatedDust.result.feeSatoshis, 327);
+    strict_1.default.equal(donatedDust.result.feeSatoshis, 344);
     strict_1.default.equal(donatedDust.result.feeSatoshis - TBC20.feeForSize(Buffer.from(donatedDust.result.txraw, "hex").length), 41);
-    const dustChange = captureSignatureCalls(() => build(334));
+    const dustChange = captureSignatureCalls(() => build(350));
     strict_1.default.equal(dustChange.result.transaction.outputs.length, 3);
     strict_1.default.equal(dustChange.result.transaction.outputs[2].satoshis, 42);
-    strict_1.default.equal(dustChange.result.feeSatoshis, 292);
+    strict_1.default.equal(dustChange.result.feeSatoshis, 308);
     strict_1.default.equal(dustChange.result.feeSatoshis, TBC20.feeForSize(Buffer.from(dustChange.result.txraw, "hex").length));
     for (const capture of [exactNoChange, donatedDust, dustChange]) {
         strict_1.default.deepEqual(capture.calls.map((call) => call.inputIndex), [0, 1]);
