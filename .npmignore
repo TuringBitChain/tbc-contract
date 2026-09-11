@@ -13,3 +13,4 @@ obfuscate.js
 .claude/
 .vscode/
 CLAUDE.md
+tsconfig.json

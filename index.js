@@ -23,6 +23,17 @@ contract.TokenValidationError =
   contract.TokenValidator.TokenValidationError;
 contract.poolNFT = require("./lib/contract/poolNFT.js");
 contract.poolNFT2 = require("./lib/contract/poolNFT2.0.js");
+// Pool3 public API: lifecycle, signing, inspection and swap fees.
+contract.PoolNFT3 = require("./lib/contract/poolNFT3.0.js").PoolNFT3;
+contract.poolNFT3 = contract.PoolNFT3;
+contract.FTLPTBC20 = require("./lib/contract/ftlpTbc20.js").FTLPTBC20;
+contract.privateKeySigner = require("./lib/util/poolnft3/transaction.js").privateKeySigner;
+contract.decodePoolTape = require("./lib/util/poolnft3/tape.js").decodePoolTape;
+var pool3Fees = require("./lib/util/poolnft3/fees.js");
+contract.resolveSwapFeePolicy = pool3Fees.resolveSwapFeePolicy;
+contract.calculateSwapFees = pool3Fees.calculateSwapFees;
+contract.deriveFeeRecipient = pool3Fees.deriveFeeRecipient;
+contract.validatePool3Transaction = require("./lib/validator/poolnft3.js").validatePool3Transaction;
 contract.API = require("./lib/api/api.js");
 contract.NFT = require("./lib/contract/nft.js");
 contract.MultiSig = require("./lib/contract/multiSig.js");

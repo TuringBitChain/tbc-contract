@@ -4,12 +4,16 @@
   "main": "index.js",
   "types": "index.d.ts",
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "test:pool3": "npm run build && node --test test/pool3/pool3-*.test.cjs"
   },
   "author": "Edmund",
   "dependencies": {
     "@types/node": "22.10.1",
     "tbc-lib-js": "^1.0.30"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
   },
   "license": "OpenTBC",
   "description": "A TBC smart contract SDK."

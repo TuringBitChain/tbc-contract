@@ -737,7 +737,16 @@ function resolveContractWitness(
 }
 
 function addBuffer(script: tbc.Script, value: Buffer): void {
-  script.add(value);
+  // Small byte strings must use canonical number opcodes under MINIMALDATA.
+  // In particular a Pool's zero-fee OP_FALSE OP_RETURN script has Size=02.
+  // OP_0 cannot replace the one-byte 00 string: those are different values.
+  if (value.length === 1 && value[0] >= 1 && value[0] <= 16) {
+    script.add(tbc.Opcode.smallInt(value[0]));
+  } else if (value.length === 1 && value[0] === 0x81) {
+    script.add(tbc.Opcode.OP_1NEGATE);
+  } else {
+    script.add(value);
+  }
 }
 
 function addSmallScriptNumber(script: tbc.Script, value: number, name: string): void {
