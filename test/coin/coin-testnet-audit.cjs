@@ -114,6 +114,73 @@ function verifyProvenance(config) {
   return { artifactSHA: config.artifactSHA, sdkFiles: config.sdkFiles, signerPublicKeys: config.signerPublicKeys };
 }
 
+function auditCeremonies(events, config) {
+  const ceremonies = events.filter(event => event.type === 'musig2-signature');
+  const participants = new Set(), nonces = new Set(), messages = new Set(), aggregateKeys = new Set();
+  for (const event of ceremonies) {
+    assert(Number.isInteger(event.inputIndex) && event.inputIndex >= 0, 'MuSig2 input index');
+    assert(/^[0-9a-f]{64}$/.test(event.sighash), 'MuSig2 32-byte message');
+    assert(/^[0-9a-f]{64}$/.test(event.aggregatePublicKey), 'MuSig2 32-byte aggregate public key');
+    assert(Array.isArray(event.participants) && event.participants.length === 2 && new Set(event.participants).size === 2,
+      'MuSig2 ceremony has two distinct participants');
+    assert(Array.isArray(event.publicNonces) && event.publicNonces.length === 2, 'MuSig2 ceremony has two public nonces');
+    assert.equal(event.partialVerified, true, 'runner records successful partial verification');
+    assert.equal(event.aggregateVerified, true, 'runner records successful aggregate verification');
+    for (const [index, participant] of event.participants.entries()) {
+      assert(/^(?:02|03)[0-9a-f]{64}$/.test(participant), 'MuSig2 participant is a compressed public key');
+      tbc.PublicKey.fromBuffer(Buffer.from(participant, 'hex'));
+      const nonce = event.publicNonces[index];
+      assert(/^(?:(?:02|03)[0-9a-f]{64}){2}$/.test(nonce), 'MuSig2 public nonce contains two compressed curve points');
+      const bytes = Buffer.from(nonce, 'hex');
+      tbc.PublicKey.fromBuffer(bytes.subarray(0, 33)); tbc.PublicKey.fromBuffer(bytes.subarray(33));
+      const reference = `${participant}:${nonce}`;
+      assert(!nonces.has(reference), 'MuSig2 participant reused a public nonce across signing calls');
+      nonces.add(reference); participants.add(participant);
+    }
+    const M = tbc.crypto.MuSig2, pubkeys = event.participants.map(publicKey => Buffer.from(publicKey, 'hex'));
+    const aggregate = M.getAggPubkey(M.keyAgg(M.keySort(pubkeys))).toString('hex');
+    assert.equal(aggregate, event.aggregatePublicKey, 'recorded participants independently reproduce aggregate public key');
+    if (config.aggregateAdmin !== undefined) assert.equal(aggregate, config.aggregateAdmin, 'ceremony aggregate matches campaign administrator');
+    messages.add(event.sighash); aggregateKeys.add(aggregate);
+  }
+  return { messages: ceremonies.length, distinctSighashes: messages.size, participants: participants.size,
+    participations: nonces.size, duplicatePublicNonces: 0, aggregatePublicKeys: [...aggregateKeys],
+    aggregateKeysIndependentlyRecomputed: true,
+    verificationScope: 'Nonce shapes, per-participant uniqueness and aggregate public keys are independently checked. partialVerified and aggregateVerified are runner-reported booleans; partial signatures are not present for independent verification. Accepted raw input signatures are independently executed by the VM.' };
+}
+
+function verifyObservation(event, tx) {
+  assert.equal(event.rawMatches, true); assert(Number.isInteger(event.confirmations) && event.confirmations >= 0);
+  if (event.lockTime !== undefined) assert.equal(event.lockTime, tx.nLockTime, 'observed lock time matches saved raw');
+  if (event.observedTip !== undefined) assert(Number.isInteger(event.observedTip) && event.observedTip >= 0);
+  if (event.confirmations === 0) {
+    assert(event.blockhash == null && event.blockheight == null, 'unconfirmed observation has no confirmed block');
+    return;
+  }
+  assert(/^[0-9a-f]{64}$/.test(event.blockhash), 'confirmation requires recorded block identity');
+  assert(Number.isInteger(event.blockheight) && event.blockheight > 0, 'confirmation requires recorded positive block height');
+  assert.equal(event.blockMembershipVerified, true, 'observer records block membership verification');
+  if (!tx.nLockTime || !tx.inputs.some(input => input.sequenceNumber !== 0xffffffff)) return;
+  if (tx.nLockTime < 500000000) {
+    assert(tx.nLockTime < event.blockheight, 'recorded confirming height strictly satisfies transaction lock');
+    return;
+  }
+  const finality = event.timestampFinality;
+  assert(finality?.verified === true && Array.isArray(finality.headers) && finality.headers.length === 11,
+    'confirmed timestamp lock requires eleven recorded previous block headers');
+  assert.equal(new Set(finality.headers.map(header => header.hash)).size, 11, 'previous headers are distinct');
+  for (const [index, header] of finality.headers.entries()) {
+    assert(/^[0-9a-f]{64}$/.test(header.hash) && /^[0-9a-f]{64}$/.test(header.previoushash));
+    assert.equal(header.height, event.blockheight - index - 1, 'previous header heights are consecutive');
+    assert(Number.isInteger(header.time) && header.time >= 0 && header.time <= 0xffffffff);
+    if (index < 10) assert.equal(header.previoushash, finality.headers[index + 1].hash, 'recorded previous headers link by hash');
+  }
+  if (event.blockPreviousHash !== undefined) assert.equal(event.blockPreviousHash, finality.headers[0].hash, 'previous header chain is bound to recorded confirming block');
+  const median = finality.headers.map(header => header.time).sort((a, b) => a - b)[5];
+  assert.equal(finality.previousBlockMTP, median, 'recorded MTP equals independently computed median');
+  assert(tx.nLockTime < median, 'recorded previous-block MTP strictly satisfies transaction lock');
+}
+
 function auditCoinJournal(directory = DIRECTORY) {
   const source = fs.readFileSync(path.join(directory, 'journal.jsonl'), 'utf8');
   const completeLength = source.lastIndexOf('\n') + 1;
@@ -128,6 +195,7 @@ function auditCoinJournal(directory = DIRECTORY) {
   assert(Number.isInteger(config.funding.index) && config.funding.index >= 0);
   assert(BigInt(config.allocatedSat) <= BigInt(config.funding.value));
   const provenance = verifyProvenance(config);
+  const musig2 = auditCeremonies(events, config);
   const transactions = new Map(), transactionCoins = new Map();
   const rawEventTypes = new Set(['parent', 'prepared', 'broadcast-attempt', 'accepted', 'rejected', 'replay-verified']);
   for (const id of new Set(events.filter(event => rawEventTypes.has(event.type)).map(event => event.txid))) {
@@ -171,8 +239,7 @@ function auditCoinJournal(directory = DIRECTORY) {
     if (event.type === 'broadcast-response') { assert(pending.has(event.txid)); responses.set(event.txid, event); continue; }
     if (event.type === 'chain-observation') {
       assert(acceptedIds.has(event.txid), 'observation must refer to an accepted transaction');
-      assert.equal(event.rawMatches, true); assert(Number.isInteger(event.confirmations) && event.confirmations >= 0);
-      if (event.confirmations > 0) assert(/^[0-9a-f]{64}$/.test(event.blockhash), 'confirmation requires recorded block identity');
+      verifyObservation(event, transactions.get(event.txid));
       observations.set(event.txid, event); continue;
     }
     if (event.type === 'replay-verified') {
@@ -310,7 +377,7 @@ function auditCoinJournal(directory = DIRECTORY) {
   const observed = [...observations.values()];
   return JSON.parse(json({ auditAt: new Date().toISOString(), snapshotLastEvent: events.at(-1).at,
     ignoredIncompleteTrailingBytes: source.length - completeLength, eventCount: events.length,
-    network: config.network, endpoint: config.endpoint, provenance,
+    network: config.network, endpoint: config.endpoint, provenance, musig2,
     accepted: accepted.length, rejected: rejections.length, replayVerified: events.filter(event => event.type === 'replay-verified').length,
     rawFilesValidated: transactions.size, acceptedInputsRevalidated: acceptedInputs, allAcceptedRawInputScriptsPassed: true,
     acceptedDoubleSpends: 0, unresolved: [...pending], maximumRollingSecondBroadcasts,
@@ -323,6 +390,7 @@ function auditCoinJournal(directory = DIRECTORY) {
     issuers: [...certificates.values()].map(({ root, ...value }) => value), rejections, liveOutputs,
     globalSatoshis: { initialSat: config.funding.value, allocatedSat: config.allocatedSat, liveSat, minerFeesSat, conserved: true },
     nodeObservations: { observedAccepted: observed.length, confirmed: observed.filter(event => event.confirmations > 0).length,
+      evidenceScope: 'Block heights, raw lock times, recorded header links and MTP arithmetic are checked offline. Block membership flags and header data are observer records, not independently authenticated block or Merkle proofs.',
       unconfirmed: observed.filter(event => event.confirmations === 0).length, unobserved: accepted.filter(event => !observations.has(event.txid)).map(event => event.txid), latest: observed,
       nonzeroTransactionLockTimes: accepted.filter(event => transactions.get(event.txid).nLockTime > 0).map(event => ({
         txid: event.txid, label: event.label, nLockTime: transactions.get(event.txid).nLockTime, observation: observations.get(event.txid) || null })) },

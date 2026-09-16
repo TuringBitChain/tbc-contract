@@ -208,3 +208,34 @@ test('audit snapshots complete JSONL records and reports unresolved broadcasts h
   const report = auditCoinJournal(h.directory);
   assert.deepEqual(report.unresolved, [tx.id]); assert(report.ignoredIncompleteTrailingBytes > 0);
 });
+
+function ceremony(index) {
+  const participants = [owner, recipient].map(signer => signer.publicKey.toString());
+  const M = tbc.crypto.MuSig2, publicKeys = participants.map(publicKey => Buffer.from(publicKey, 'hex'));
+  return { type: 'musig2-signature', label: `offline-ceremony-${index}`, inputIndex: 0,
+    sighash: sha(`offline-message-${index}`), participants,
+    aggregatePublicKey: M.getAggPubkey(M.keyAgg(M.keySort(publicKeys))).toString('hex'),
+    publicNonces: [0, 1].map(member => Buffer.concat([key(9200 + index * 4 + member * 2).publicKey.toBuffer(),
+      key(9201 + index * 4 + member * 2).publicKey.toBuffer()]).toString('hex')),
+    partialVerified: true, aggregateVerified: true };
+}
+
+test('MuSig2 audit counts fresh public nonces and distinguishes recorded verification flags', t => {
+  const h = fixture(t); h.append(ceremony(0)); h.append(ceremony(1)); h.write();
+  const report = auditCoinJournal(h.directory);
+  assert.equal(report.musig2.messages, 2); assert.equal(report.musig2.participants, 2);
+  assert.equal(report.musig2.participations, 4); assert.equal(report.musig2.duplicatePublicNonces, 0);
+  assert.equal(report.musig2.aggregateKeysIndependentlyRecomputed, true);
+  assert.match(report.musig2.verificationScope, /runner-reported booleans/);
+  h.events.at(-1).partialVerified = false; h.write();
+  assert.throws(() => auditCoinJournal(h.directory), /runner records successful partial verification/);
+});
+
+test('MuSig2 audit rejects one participant reusing its nonce across calls and messages', t => {
+  const h = fixture(t), first = ceremony(0), second = ceremony(1);
+  second.publicNonces[0] = first.publicNonces[0];
+  h.append(first); h.append(second); h.write();
+  assert.throws(() => auditCoinJournal(h.directory), /participant reused a public nonce/);
+  h.events.at(-1).sighash = first.sighash; h.write();
+  assert.throws(() => auditCoinJournal(h.directory), /participant reused a public nonce/);
+});
