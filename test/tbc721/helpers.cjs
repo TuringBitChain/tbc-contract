@@ -4,7 +4,7 @@
 // every derived transaction is verified with the library's real interpreter.
 const assert = require('node:assert/strict');
 const tbc = require('tbc-lib-js');
-const { buildUTXO } = require('../../lib/util/util.js');
+const { buildUTXO } = require('../../lib/util/common/util.js');
 
 tbc.Script.Interpreter.MAX_SCRIPT_ELEMENT_SIZE = Number.MAX_SAFE_INTEGER;
 tbc.Script.Interpreter.MAXIMUM_ELEMENT_SIZE = Number.MAX_SAFE_INTEGER;

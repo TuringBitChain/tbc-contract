@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const tbc = require('tbc-lib-js');
 const { Campaign, run, coins, human, addr, BASE, withCampaignLock } = require('./coin-testnet-production.cjs');
 const { prepareCoinAdversarial, validateCoinTransaction } = require('./coin-testnet-adversarial.cjs');
-const { CoinTBC20 } = require('../../lib/util/coinTbc20Code.js');
+const { CoinTBC20 } = require('../../lib/util/coin/coinTbc20Code.js');
 const Coin = require('../../lib/contract/coinTbc20.js');
 const { silent } = require('../pool3/pool3-testnet-runner.cjs');
 const sha = b => tbc.crypto.Hash.sha256(b);

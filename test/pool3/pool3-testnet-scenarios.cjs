@@ -9,7 +9,7 @@ const tbc = require('tbc-lib-js');
 const { PoolNFT3 } = require('../../lib/contract/poolNFT3.0.js');
 const TBC20 = require('../../lib/contract/tbc20.js');
 const { FTLPTBC20: LP } = require('../../lib/contract/ftlpTbc20.js');
-const { getTBC20Controller } = require('../../lib/util/tbc20unlock.js');
+const { getTBC20Controller } = require('../../lib/util/tbc20/tbc20unlock.js');
 const { getPoolUnlockLeafCount } = require('../../lib/util/poolnft3/witness.js');
 
 const PRECISION = 1_000_000n;

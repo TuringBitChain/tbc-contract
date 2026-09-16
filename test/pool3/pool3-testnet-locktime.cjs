@@ -8,7 +8,7 @@ const tbc = require('tbc-lib-js');
 const TBC20 = require('../../lib/contract/tbc20.js');
 const { PoolNFT3 } = require('../../lib/contract/poolNFT3.0.js');
 const { FTLPTBC20: LP } = require('../../lib/contract/ftlpTbc20.js');
-const { getTBC20Controller } = require('../../lib/util/tbc20unlock.js');
+const { getTBC20Controller } = require('../../lib/util/tbc20/tbc20unlock.js');
 
 const FIRST_TBC_SAT = 1_000_000n;
 const FIRST_FT_RAW = 20_000_000n;

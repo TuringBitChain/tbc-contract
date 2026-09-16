@@ -9,8 +9,8 @@ const assert = require('node:assert/strict');
 const tbc = require('tbc-lib-js');
 const Coin = require('../../lib/contract/coinTbc20.js');
 const LegacyStableCoin = require('../../lib/contract/stableCoin.js');
-const { CoinTBC20 } = require('../../lib/util/coinTbc20Code.js');
-const { buildUTXO, buildFtPrePreTxData } = require('../../lib/util/util.js');
+const { CoinTBC20 } = require('../../lib/util/coin/coinTbc20Code.js');
+const { buildUTXO, buildFtPrePreTxData } = require('../../lib/util/common/util.js');
 
 // Match tbc-lib-js Transaction.Input.verify: the bare interpreter retains
 // legacy 520-byte pushes / four-byte numbers until the transaction entry point

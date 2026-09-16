@@ -12,9 +12,9 @@ const tbc = require('tbc-lib-js');
 const Coin = require('../../lib/contract/coinTbc20.js');
 const LegacyStableCoin = require('../../lib/contract/stableCoin.js');
 const TBC721 = require('../../lib/contract/tbc721.js');
-const { CoinTBC20: CoinCodec } = require('../../lib/util/coinTbc20Code.js');
-const { buildCoinTBC20UnlockScript } = require('../../lib/util/coinTbc20unlock.js');
-const { buildUTXO } = require('../../lib/util/util.js');
+const { CoinTBC20: CoinCodec } = require('../../lib/util/coin/coinTbc20Code.js');
+const { buildCoinTBC20UnlockScript } = require('../../lib/util/coin/coinTbc20unlock.js');
+const { buildUTXO } = require('../../lib/util/common/util.js');
 const { auditCoinJournal } = require('./coin-testnet-audit.cjs');
 const ROOT = path.resolve(__dirname, '../..');
 const sha = value => crypto.createHash('sha256').update(value).digest('hex');
@@ -58,8 +58,8 @@ function fixture(t, { transfer = true, legacyIssuer = false } = {}) {
   save(root); append({ type: 'parent', txid: root.id });
   append({ type: 'campaign-init', network: 'testnet', endpoint, wallet: owner.toAddress().toString(),
     funding: { txid: root.id, index: 0, value: 1000000 }, allocatedSat: 1000000,
-    artifactSHA: sha(fs.readFileSync(path.join(ROOT, 'lib/util/coin_tbc20.json'))),
-    sdkFiles: Object.fromEntries(['lib/contract/coinTbc20.js', 'lib/util/coinTbc20Code.js'].map(file => [file, sha(fs.readFileSync(path.join(ROOT, file)))])),
+    artifactSHA: sha(fs.readFileSync(path.join(ROOT, 'lib/util/coin/artifacts/coin_tbc20.json'))),
+    sdkFiles: Object.fromEntries(['lib/contract/coinTbc20.js', 'lib/util/coin/coinTbc20Code.js'].map(file => [file, sha(fs.readFileSync(path.join(ROOT, file)))])),
     signerPublicKeys: { administrator: publicKey.toString('hex'), owner: owner.publicKey.toString() } });
   // Reproduce the historical Coin TBC20 + coinNft combination through the
   // retained legacy issuer builder and the facade's Coin script factory.

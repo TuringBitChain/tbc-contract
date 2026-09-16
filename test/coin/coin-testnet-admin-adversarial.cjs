@@ -4,10 +4,10 @@
 // signing callback are supplied by the caller; no key discovery, RPC or send.
 const assert = require('node:assert/strict');
 const tbc = require('tbc-lib-js');
-const { CoinTBC20: Coin } = require('../../lib/util/coinTbc20Code.js');
-const { getTBC20CurrentOutputData, getTBC20CurrentInputsData } = require('../../lib/util/tbc20unlock.js');
+const { CoinTBC20: Coin } = require('../../lib/util/coin/coinTbc20Code.js');
+const { getTBC20CurrentOutputData, getTBC20CurrentInputsData } = require('../../lib/util/tbc20/tbc20unlock.js');
 const { validateCoinTransaction } = require('./coin-testnet-adversarial.cjs');
-const ABI = [...require('../../lib/util/coin_tbc20.json').unlock.main.matchAll(/<([^>]+)>/g)].map(match => match[1]);
+const ABI = [...require('../../lib/util/coin/artifacts/coin_tbc20.json').unlock.main.matchAll(/<([^>]+)>/g)].map(match => match[1]);
 const CASES = Object.freeze(['wrong-admin', 'admin-amount-inflation', 'admin-final-sequence']);
 assert.equal(ABI.length, 123);
 assert.equal(ABI.indexOf('sig'), 98);

@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const Coin = require('../../lib/contract/coinTbc20.js');
 const LegacyStableCoin = require('../../lib/contract/stableCoin.js');
 const TBC721 = require('../../lib/contract/tbc721.js');
-const { CoinTBC20 } = require('../../lib/util/coinTbc20Code.js');
+const { CoinTBC20 } = require('../../lib/util/coin/coinTbc20Code.js');
 const { tbc, owner, bob, admin, stranger, address, sha, quiet, makeHarness, buildUTXO } = require('../tbc721/helpers.cjs');
 
 const adminPublicKey = admin.publicKey.toBuffer().subarray(1);

@@ -3,8 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const tbc = require('tbc-lib-js');
-const { CoinTBC20: Coin } = require('../../lib/util/coinTbc20Code.js');
-const { buildCoinTBC20UnlockScriptWithSignature } = require('../../lib/util/coinTbc20unlock.js');
+const { CoinTBC20: Coin } = require('../../lib/util/coin/coinTbc20Code.js');
+const { buildCoinTBC20UnlockScriptWithSignature } = require('../../lib/util/coin/coinTbc20unlock.js');
 const { validateCoinTransaction } = require('./coin-testnet-adversarial.cjs');
 const { prepareCoinAdminAdversarial, prepareCoinAdminControllerChange } = require('./coin-testnet-admin-adversarial.cjs');
 const M = tbc.crypto.MuSig2;

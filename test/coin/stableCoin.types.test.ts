@@ -15,8 +15,8 @@ import {
 import type {
   CoinTBC20UnlockWithPrivateKeyOptions as DeepPrivateKeyOptions,
   CoinTBC20UnlockWithSignatureOptions as DeepSignatureOptions,
-} from "../../lib/util/coinTbc20unlock";
-import type { CoinTBC20 as DeepCodec } from "../../lib/util/coinTbc20Code";
+} from "../../lib/util/coin/coinTbc20unlock";
+import type { CoinTBC20 as DeepCodec } from "../../lib/util/coin/coinTbc20Code";
 
 declare const key: PrivateKey;
 declare const admin: Buffer;

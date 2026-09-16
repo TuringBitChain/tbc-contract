@@ -83,18 +83,26 @@ test('CommonJS root exposes only the supported Pool3 API and preserves every exi
   assert.equal(sdk.calculateSwapFees(1000000n, sdk.resolveSwapFeePolicy()).totalFeeSat, 3500n);
 });
 
-test('npm publication includes standalone declarations, compiled code and the frozen Pool3/Coin artifacts', () => {
+test('npm publication includes standalone declarations, grouped utilities and frozen artifacts without flat utility remnants', () => {
   const data = JSON.parse(execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'],
     { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }))[0];
   const files = new Set(data.files.map(file => file.path));
   for (const name of ['pool', 'pool_hash_lock', 'ftlp_tbc20', 'ftlp_tbc20_locktime']) {
     assert(files.has(`lib/util/poolnft3/artifacts/${name}.json`));
   }
-  assert(files.has('lib/util/coin_tbc20.json'));
+  for (const artifact of ['lib/util/coin/artifacts/coin_tbc20.json', 'lib/util/tbc721/artifacts/tbc721.json']) {
+    assert(files.has(artifact), artifact);
+  }
   assert.deepEqual([...files].filter(name => name.endsWith('.d.ts')), ['index.d.ts']);
   for (const name of ['lib/contract/poolNFT3.0.js', 'lib/contract/ftlpTbc20.js',
     'lib/util/poolnft3/transaction.js', 'lib/validator/poolnft3.js', 'lib/contract/stableCoin.js',
-    'lib/contract/coinTbc20.js', 'lib/util/coinTbc20Code.js', 'lib/util/coinTbc20unlock.js']) assert(files.has(name), name);
+    'lib/contract/coinTbc20.js', 'lib/util/common/util.js', 'lib/util/common/utxoSelect.js',
+    'lib/util/ft/ftunlock.js', 'lib/util/ft/ftscript.js', 'lib/util/nft/nftunlock.js',
+    'lib/util/tbc20/tbc20unlock.js', 'lib/util/coin/coinTbc20Code.js', 'lib/util/coin/coinTbc20unlock.js',
+    'lib/util/tbc721/tbc721unlock.js', 'lib/util/poolnft/poolnftunlock.js',
+    'lib/util/orderbook/orderbookunlock.js', 'lib/util/poolnft3/ftlpTbc20unlock.js']) assert(files.has(name), name);
+  assert(![...files].some(name => /^lib\/util\/[^/]+\.(?:js|json)$/.test(name)),
+    'Moved utility modules and artifacts must not remain at the flat lib/util paths');
   assert(![...files].some(name => name.endsWith('.ts') && !name.endsWith('.d.ts')), 'TypeScript implementation sources must not be needed at runtime');
   assert(![...files].some(name => name.startsWith('tests/') || name.startsWith('test/')), 'Offline fixtures must not enter the npm package');
 
@@ -132,7 +140,7 @@ test('npm publication includes standalone declarations, compiled code and the fr
 test('Pool3 implementation is strict and its public types match index.d.ts in both directions', () => {
   const ts = loadTypeScript();
   const productionRoots = ['lib/contract/poolNFT3.0.ts', 'lib/contract/ftlpTbc20.ts',
-    'lib/util/ftlpTbc20unlock.ts', 'lib/validator/poolnft3.ts',
+    'lib/validator/poolnft3.ts',
     ...fs.readdirSync(path.join(root, 'lib/util/poolnft3')).filter(name => name.endsWith('.ts') && !name.endsWith('.d.ts'))
       .map(name => `lib/util/poolnft3/${name}`)].map(name => path.join(root, name));
   const compatibilityFile = path.join(__dirname, '__pool3-public-type-compatibility__.ts');

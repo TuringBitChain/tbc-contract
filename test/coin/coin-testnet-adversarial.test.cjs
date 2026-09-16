@@ -4,8 +4,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const tbc = require('tbc-lib-js');
 const Coin = require('../../lib/contract/coinTbc20.js');
-const { CoinTBC20: CoinCodec } = require('../../lib/util/coinTbc20Code.js');
-const { buildUTXO } = require('../../lib/util/util.js');
+const { CoinTBC20: CoinCodec } = require('../../lib/util/coin/coinTbc20Code.js');
+const { buildUTXO } = require('../../lib/util/common/util.js');
 const {
   prepareCoinAdversarial, validateCoinTransaction, COIN_ADVERSARIAL_CASES,
 } = require('./coin-testnet-adversarial.cjs');

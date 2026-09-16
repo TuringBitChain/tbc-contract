@@ -30,8 +30,8 @@ function report() {
   // Archived reports and their historical source-hash keys remain unchanged.
   const artifactFiles = ['lib/api/api.ts', 'lib/api/api.js', 'lib/contract/stableCoin.ts', 'lib/contract/stableCoin.js',
     'lib/contract/coinTbc20.ts', 'lib/contract/coinTbc20.js',
-    'lib/util/coinTbc20Code.ts', 'lib/util/coinTbc20Code.js',
-    'lib/util/coinTbc20unlock.ts', 'lib/util/coinTbc20unlock.js', 'lib/util/coin_tbc20.json'];
+    'lib/util/coin/coinTbc20Code.ts', 'lib/util/coin/coinTbc20Code.js',
+    'lib/util/coin/coinTbc20unlock.ts', 'lib/util/coin/coinTbc20unlock.js', 'lib/util/coin/artifacts/coin_tbc20.json'];
   const value = { generatedAt: new Date().toISOString(), network: 'testnet', endpoint: audit.endpoint,
     acceptance: { contractScenariosPassed: true, allAcceptedTransactionsConfirmed: true, indexerPassed: indexer.ready,
       productionReleasePassed: false, blockers: ['Stablecoin indexer does not return the confirmed new assets'],

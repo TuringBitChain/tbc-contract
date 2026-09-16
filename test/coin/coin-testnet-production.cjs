@@ -8,8 +8,8 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const tbc = require('tbc-lib-js');
 const Coin = require('../../lib/contract/coinTbc20.js');
-const { CoinTBC20 } = require('../../lib/util/coinTbc20Code.js');
-const { buildUTXO } = require('../../lib/util/util.js');
+const { CoinTBC20 } = require('../../lib/util/coin/coinTbc20Code.js');
+const { buildUTXO } = require('../../lib/util/common/util.js');
 const { TestnetJournal, localKey, silent, BASE, ADDRESS } = require('../pool3/pool3-testnet-runner.cjs');
 const { validatePool3Transaction } = require('../../lib/validator/poolnft3.js');
 
@@ -150,10 +150,10 @@ class Campaign {
       // Record the current implementation, including the extracted codec.
       // Existing journal fingerprints remain unchanged; the frozen SDK
       // archive is required to reproduce the historical r1 campaign.
-      const files = ['lib/contract/stableCoin.js', 'lib/contract/coinTbc20.js', 'lib/util/coinTbc20unlock.js',
-        'lib/util/coinTbc20Code.ts', 'lib/util/coinTbc20Code.js'];
+      const files = ['lib/contract/stableCoin.js', 'lib/contract/coinTbc20.js', 'lib/util/coin/coinTbc20unlock.js',
+        'lib/util/coin/coinTbc20Code.ts', 'lib/util/coin/coinTbc20Code.js'];
       this.j.append({ type: 'campaign-init', network: 'testnet', endpoint: BASE, funding: selected, allocatedSat: 1000000,
-        wallet: ADDRESS, node, artifactFile: 'lib/util/coin_tbc20.json', artifactSHA: sha(fs.readFileSync(path.join(ROOT, 'lib/util/coin_tbc20.json'))),
+        wallet: ADDRESS, node, artifactFile: 'lib/util/coin/artifacts/coin_tbc20.json', artifactSHA: sha(fs.readFileSync(path.join(ROOT, 'lib/util/coin/artifacts/coin_tbc20.json'))),
         sdkFiles: Object.fromEntries(files.map(f => [f, sha(fs.readFileSync(path.join(ROOT, f)))])),
         signerPublicKeys: Object.fromEntries(Object.entries(this.keys).map(([r, k]) => [r, k.publicKey.toString()])),
         aggregateAdmin: this.admin.toString('hex'), derivationNamespace: RUN, maximumFeeSat: 500000, maximumBroadcastTps: 4 });

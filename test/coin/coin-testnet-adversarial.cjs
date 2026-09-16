@@ -5,15 +5,15 @@
 // these candidates before their valid counterpart consumes the shared inputs.
 const assert = require('node:assert/strict');
 const tbc = require('tbc-lib-js');
-const { CoinTBC20: Coin } = require('../../lib/util/coinTbc20Code.js');
-const artifact = require('../../lib/util/coin_tbc20.json');
+const { CoinTBC20: Coin } = require('../../lib/util/coin/coinTbc20Code.js');
+const artifact = require('../../lib/util/coin/artifacts/coin_tbc20.json');
 const {
   encodeTBC20UnsignedLE,
   getTBC20CurrentInputsData,
   getTBC20CurrentOutputData,
   getTBC20PrePreTxArray,
   getTBC20PreTxData,
-} = require('../../lib/util/tbc20unlock.js');
+} = require('../../lib/util/tbc20/tbc20unlock.js');
 
 const ABI = [...artifact.unlock.main.matchAll(/<([^>]+)>/g)].map(match => match[1]);
 assert.equal(ABI.length, 123, 'unsupported Coin ABI');

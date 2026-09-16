@@ -8,14 +8,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const tbc = require('tbc-lib-js');
-const { CoinTBC20: Coin } = require('../../lib/util/coinTbc20Code.js');
+const { CoinTBC20: Coin } = require('../../lib/util/coin/coinTbc20Code.js');
 const TBC721 = require('../../lib/contract/tbc721.js');
 
 const ROOT = path.resolve(__dirname, '../..');
 const DIRECTORY = path.resolve(ROOT, 'test/coin-testnet-20260916-r1');
 const ENDPOINT = 'https://api.tbcdev.org/api/tbc/';
-const ARTIFACT_FILE = 'lib/util/coin_tbc20.json';
-const ARTIFACT = require('../../lib/util/coin_tbc20.json');
+const ARTIFACT_FILE = 'lib/util/coin/artifacts/coin_tbc20.json';
+const ARTIFACT = require('../../lib/util/coin/artifacts/coin_tbc20.json');
 const ABI = ARTIFACT.unlock.main.match(/<[^>]+>/g);
 const PUBLIC_KEY_INDEX = ABI.indexOf('<publicKey>');
 const sha = value => crypto.createHash('sha256').update(value).digest('hex');

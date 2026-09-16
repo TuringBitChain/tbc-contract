@@ -5,9 +5,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const tbc = require('tbc-lib-js');
-const { CoinTBC20: Coin } = require('../lib/util/coinTbc20Code.js');
+const { CoinTBC20: Coin } = require('../lib/util/coin/coinTbc20Code.js');
 const { buildCoinTBC20UnlockScript: unlock, buildCoinTBC20UnlockScriptWithSignature: unlockSigned } =
-  require('../lib/util/coinTbc20unlock.js');
+  require('../lib/util/coin/coinTbc20unlock.js');
 const key = n => new tbc.PrivateKey(n.toString(16).padStart(64, '0'));
 const owner = key(501), admin = key(502), recipient = key(503);
 const hash160 = b => tbc.crypto.Hash.sha256ripemd160(b);
