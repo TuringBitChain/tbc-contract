@@ -807,6 +807,47 @@ export class NFT {
   static encodeNFTDataToHex(data: any): string;
 }
 
+/** TBC721CODE3 NFTs. The original NFT export remains available for existing assets. */
+export class TBC721 {
+  collection_id: string;
+  collection_index: number;
+  collection_name: string;
+  transfer_count: number;
+  contract_id: string;
+  nftData: NFTData;
+  constructor(contract_id: string);
+  initialize(nftInfo: NFTInfo): void;
+  static createCollection(address: string, privateKey: PrivateKey, data: CollectionData,
+    utxos: Transaction.IUnspentOutput[]): string;
+  static createNFT(collection_id: string, address: string, privateKey: PrivateKey, data: NFTData,
+    utxos: Transaction.IUnspentOutput[], nfttxo: Transaction.IUnspentOutput): string;
+  static batchCreateNFT(collection_id: string, address: string, privateKey: PrivateKey, datas: NFTData[],
+    utxos: Transaction.IUnspentOutput[], nfttxos: Transaction.IUnspentOutput[]): Array<{ txraw: string }>;
+  transferNFT(address_from: string, address_to: string, privateKey: PrivateKey,
+    utxos: Transaction.IUnspentOutput[], pre_tx: Transaction, pre_pre_tx: Transaction, batch?: boolean): string;
+  transferNFTWithTBC(address_from: string, address_to_nft: string, address_to_tbc: string,
+    privateKey: PrivateKey, utxos: Transaction.IUnspentOutput[], pre_tx: Transaction,
+    pre_pre_tx: Transaction, tbc_amount: number | string): string;
+  static buildCodeScript(txid: string, outputIndex: number): Script;
+  static getNftCode(txid: string, outputIndex: number): Script;
+  static parseCode(script: Script | string): { originalUTXO: Buffer; txid: string; outputIndex: number };
+  static isTBC721Code(script: Script | string): boolean;
+  static getNFTVersion(script: Script | string): 3 | -1;
+  static buildUnlockScript(privateKey: PrivateKey, currentTX: Transaction, preTX: Transaction,
+    prepreTX: Transaction, currentUnlockIndex?: number): Script;
+  /** The externally supplied signature includes its SIGHASH byte. */
+  static buildUnlockScript(signature: Buffer, publicKey: Buffer, currentTX: Transaction,
+    preTX: Transaction, prepreTX: Transaction, currentUnlockIndex?: number): Script;
+  static buildUnlockScriptSchnorr(signature64: Buffer, publicKey32: Buffer, currentTX: Transaction,
+    preTX: Transaction, prepreTX: Transaction, currentUnlockIndex?: number): Script;
+  static getHoldScriptFromHash(pubKeyHashHex: string, flag: string): Script;
+  static buildHoldScript(address: string): Script;
+  static buildMintScript(address: string): Script;
+  static buildTapeScript(data: CollectionData | NFTData): Script;
+  static decodeNFTDataFromHex(hex: string): any;
+  static encodeNFTDataToHex(data: any): string;
+}
+
 export interface FtInfo {
   contractTxid?: string;
   codeScript: string;
@@ -2397,7 +2438,7 @@ export class stableCoinLegacy extends FT {
   };
 }
 
-/** Creates Coin TBC20 by default; initialized legacy Code continues through the legacy path. */
+/** Creates Coin TBC20 with a TBC721 issuer; existing certificate identities retain their mint path. */
 export class stableCoin extends stableCoinLegacy {
   constructor(
     txidOrParams:

@@ -1,6 +1,6 @@
 # StableCoin：Coin TBC20 SDK
 
-`stableCoin` 默认创建基于 `coin_tbc20.ct` 的稳定币。发行凭证仍使用 coinNFT，管理员仍以 MuSig2 聚合公钥和外部 Schnorr 签名完成首次发行、增发、冻结、解冻。
+`stableCoin` 默认创建基于 `coin_tbc20.ct` 的稳定币，发行凭证使用 [TBC721](./tbc721.md)。管理员以 MuSig2 聚合公钥和外部 Schnorr 签名完成首次发行、增发、冻结、解冻。
 
 当前 Coin Code 为 **2981 字节**，解锁脚本采用固定 **123 字段 ABI**。Tape 使用 `TBC20TAPE` 标记，支持区块高度和时间戳锁。普通 FT 的旧解锁脚本和祖交易证明字符串不能用于新 Coin。
 
@@ -29,6 +29,8 @@ import {
 | `stableCoin.getUnlockScriptWithSignature` | 外部签名的新 Coin 底层 ABI 构造器 |
 
 新 Code 不会改变已发行旧币的合约身份。旧币的 `FTape`、解锁格式和 `prepreTxData: string[]` 继续保留在 legacy 路径。混合新旧 Coin 输入不能合并为同一种资产。
+
+新发行凭证使用 `TBC721CODE3` 和包含当前完整输入列表的 20 字段解锁 ABI。原 `NFT`、`stableCoinLegacy` 保留；此前以旧 coinNft 发行的 Coin TBC20 也继续使用原凭证增发。已发行币绑定了凭证完整 Code 哈希，不能在增发中更换凭证模板。`coinNftCodeHash` 和 `buildCoinNftTX` 的公开名称保持兼容，其中新版 `stableCoin.buildCoinNftTX` 现在创建 TBC721。
 
 新 Coin 的祖证明参数由 `string[]` 改为 `CoinAncestors`，其他常用方法仍使用原来的位置参数及返回形式。`mergeCoin` 的 `localTX` 参数现在可省略。新实例的 `totalSupply` 是原始最小单位数量；`createCoin`、`mintCoin`、转账及批量收款参数中的金额是显示单位，建议始终传十进制字符串。`decimal` 支持 `0..18`，不接受科学计数法或超出精度的有效小数位。
 
@@ -127,7 +129,7 @@ function finishIssuance(
 }
 ```
 
-返回交易依赖顺序是 `issuerRaw → firstMintRaw`。如需广播，调用方按这个顺序发送。`coin.contractTxid` 为首次 mint 的交易 ID，后续增发不改变该标识；它与初始发行凭证交易 ID 不同。链上发行权限绑定的是完整 coinNFT Code 的 SHA256。首次 mint 和后续 mint 的输出 `0/1/2` 分别是 coinNFT Code/Hold/Tape，输出 `3/4` 是新发行 Coin Code/Tape。
+返回交易依赖顺序是 `issuerRaw → firstMintRaw`。如需广播，调用方按这个顺序发送。`coin.contractTxid` 为首次 mint 的交易 ID，后续增发不改变该标识；它与初始发行凭证交易 ID 不同。链上发行权限绑定的是完整 TBC721 Code 的 SHA256。首次 mint 和后续 mint 的输入 `0/1` 花费凭证 Code/Hold，输出 `0/1/2` 延续凭证 Code/Hold/Tape，输出 `3/4` 是新发行 Coin Code/Tape。
 
 增发花费**最新**发行凭证的 Code 和 Hold：
 
@@ -148,7 +150,7 @@ function prepareNextMint(
 }
 ```
 
-`issuerAncestorTX` 是 `latestIssuerTX.inputs[0]` 引用的交易。对于第二次 mint，`latestIssuerTX` 就是首次 mint 交易，`issuerAncestorTX` 是初始 issuer 交易。累计供应从最新 coinNFT Tape 的 `coinTotalSupply` 读取，以原始最小单位相加，并在 finalize 成功后更新实例。
+`issuerAncestorTX` 是 `latestIssuerTX.inputs[0]` 引用的交易。对于第二次 mint，`latestIssuerTX` 就是首次 mint 交易，`issuerAncestorTX` 是初始 issuer 交易。累计供应从最新凭证 Tape 的 `coinTotalSupply` 读取，以原始最小单位相加，并在 finalize 成功后更新实例。SDK 保持管理员 Hold 和供应量元数据；TBC721 本身不强制 Tape 中的供应量计算，也不禁止持有人修改 Hold。
 
 恢复已有新 Coin 时，可从可信 Code/Tape 和发行凭证元数据初始化：
 
@@ -285,3 +287,5 @@ npm run test:coin
 ```
 
 该命令构建 SDK 后运行 `test/coin/*.test.cjs` 和 `test/coinTbc20.local.test.cjs`，覆盖新的 ABI、Code/Tape 编码与离线签名流程，不访问链或广播交易。旧 `test/stableCoin.schnorr.test.ts` 是在线操作示例，包含广播调用，不是本命令的测试入口。
+
+真实测试网覆盖和当前上线阻项见 [2026-09-16 测试网验收报告](./StableCoin测试网验收-20260916.md)。确认后的新版资产目前仍无法通过测试网稳定币索引查询；SDK 会保留后端错误码，金额接口统一返回原子单位 `bigint`。索引返回的零余额不能替代对已确认交易的核对。

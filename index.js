@@ -36,6 +36,7 @@ contract.deriveFeeRecipient = pool3Fees.deriveFeeRecipient;
 contract.validatePool3Transaction = require("./lib/validator/poolnft3.js").validatePool3Transaction;
 contract.API = require("./lib/api/api.js");
 contract.NFT = require("./lib/contract/nft.js");
+contract.TBC721 = require("./lib/contract/tbc721.js");
 contract.MultiSig = require("./lib/contract/multiSig.js");
 contract.piggyBank = require("./lib/contract/piggyBank.js");
 contract.orderBook = require("./lib/contract/orderBook.js");

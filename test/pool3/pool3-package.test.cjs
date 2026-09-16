@@ -14,7 +14,7 @@ const publicPool3Exports = [
 ];
 const existingExports = [
   'version', 'versionGuard', 'FT', 'TBC20', 'TokenValidator', 'TokenValidationError',
-  'poolNFT', 'poolNFT2', 'API', 'NFT', 'MultiSig', 'piggyBank', 'orderBook', 'HTLC', 'stableCoin', 'stableCoinLegacy', 'CoinTBC20',
+  'poolNFT', 'poolNFT2', 'API', 'NFT', 'TBC721', 'MultiSig', 'piggyBank', 'orderBook', 'HTLC', 'stableCoin', 'stableCoinLegacy', 'CoinTBC20',
   'buildUTXO', 'buildFtPrePreTxData', 'getFtBalanceFromTape', 'selectTXfromLocal', 'fetchInBatches',
   'fetchWithRetry', 'getOpCode', 'getLpCostAddress', 'getLpCostAmount', 'isLock', 'fetchTBCLockTime',
   'safeJSONParse', 'parseDecimalToBigInt', 'fillCharLengthInFT', 'isCoinCodeScript',

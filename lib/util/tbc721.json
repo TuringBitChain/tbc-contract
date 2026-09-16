@@ -1,0 +1,202 @@
+{
+  "metadata": {
+    "compiler_name": "utxo_compiler",
+    "compiler_version": "1.0.0",
+    "compiler_description": "AtomicProof Compiler.",
+    "build_timestamp": 1789545785,
+    "git_commit_hash": "8bc16116ce28868ccd671413026c545660b557cd",
+    "git_branch": "test",
+    "source_file": "tbc721",
+    "compiler_capabilities": {
+      "ast_validation": false,
+      "bytecode_optimization": false,
+      "script_verification": false
+    }
+  },
+  "structs": [
+    {
+      "name": "CurrentTX",
+      "type": "struct",
+      "fields": [
+        {
+          "name": "CodeValue",
+          "type": "hex"
+        },
+        {
+          "name": "CodeHash",
+          "type": "hex"
+        },
+        {
+          "name": "OutputsLastPart",
+          "type": "hex"
+        }
+      ]
+    },
+    {
+      "name": "PreTX",
+      "type": "struct",
+      "fields": [
+        {
+          "name": "VLIO",
+          "type": "hex"
+        },
+        {
+          "name": "Inputs",
+          "type": "hex"
+        },
+        {
+          "name": "UnlockingScriptHash",
+          "type": "hex"
+        },
+        {
+          "name": "CodeValue",
+          "type": "hex"
+        },
+        {
+          "name": "CodeHash",
+          "type": "hex"
+        },
+        {
+          "name": "HoldValue",
+          "type": "hex"
+        },
+        {
+          "name": "HoldScript",
+          "type": "hex"
+        },
+        {
+          "name": "OutputsLastPart",
+          "type": "hex"
+        }
+      ]
+    },
+    {
+      "name": "PrePreTX",
+      "type": "struct",
+      "fields": [
+        {
+          "name": "VLIO",
+          "type": "hex"
+        },
+        {
+          "name": "InputsHashData",
+          "type": "hex"
+        },
+        {
+          "name": "OutputsFirstPart",
+          "type": "hex"
+        },
+        {
+          "name": "CodeValue",
+          "type": "hex"
+        },
+        {
+          "name": "CodeHash",
+          "type": "hex"
+        },
+        {
+          "name": "OutputsLastPart",
+          "type": "hex"
+        }
+      ]
+    }
+  ],
+  "abi": [
+    {
+      "type": "function",
+      "name": "main",
+      "index": 0,
+      "params": [
+        {
+          "name": "sig",
+          "type": "hex"
+        },
+        {
+          "name": "publicKey",
+          "type": "hex"
+        },
+        {
+          "name": "currentTX",
+          "type": "CurrentTX"
+        },
+        {
+          "name": "currentInputsData",
+          "type": "hex"
+        },
+        {
+          "name": "prepreTX",
+          "type": "PrePreTX"
+        },
+        {
+          "name": "preTX",
+          "type": "PreTX"
+        }
+      ]
+    }
+  ],
+  "lock": {
+    "asm": "OP_OVER OP_3 OP_SPLIT OP_NIP 14 OP_SPLIT OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_OVER OP_SIZE OP_8 OP_EQUALVERIFY OP_DROP OP_CAT OP_FROMALTSTACK OP_CAT OP_OVER OP_SIZE 20 OP_EQUALVERIFY OP_TOALTSTACK OP_CAT OP_OVER OP_SIZE OP_8 OP_EQUALVERIFY OP_DROP OP_CAT OP_SHA256 OP_OVER OP_SIZE 20 OP_EQUALVERIFY OP_DROP OP_CAT OP_OVER OP_SIZE 28 OP_MOD OP_0 OP_EQUALVERIFY 24 OP_SPLIT OP_DROP OP_TOALTSTACK OP_SWAP OP_SHA256 OP_2 OP_PICK OP_SIZE OP_16 OP_EQUALVERIFY OP_DROP OP_ROT OP_SWAP OP_CAT OP_SWAP OP_CAT OP_HASH256 OP_6 OP_PUSH_META 24 OP_SPLIT OP_DROP 20 OP_SPLIT OP_BIN2NUM OP_0 OP_EQUALVERIFY OP_EQUALVERIFY OP_OVER OP_TOALTSTACK OP_CAT OP_OVER OP_SIZE OP_8 OP_EQUALVERIFY OP_DROP OP_CAT OP_OVER OP_SIZE OP_NIP OP_DUP 28 OP_MOD OP_0 OP_EQUALVERIFY 28 OP_DIV OP_ROT OP_ROT OP_CAT OP_SHA256 OP_2 OP_PICK OP_SIZE 40 OP_EQUALVERIFY OP_DROP OP_ROT OP_SWAP OP_CAT OP_2 OP_PICK OP_SIZE OP_16 OP_EQUALVERIFY OP_DROP OP_ROT OP_SWAP OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP 20 OP_SPLIT OP_BIN2NUM OP_DUP OP_6 OP_ROLL OP_EQUALVERIFY OP_4 OP_ROLL OP_ROT OP_EQUALVERIFY OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_3 OP_ROLL OP_EQUAL OP_IF OP_0 OP_EQUALVERIFY OP_DROP OP_ELSE OP_DROP <self.OriginalUTXO36> OP_EQUALVERIFY OP_ENDIF OP_DUP OP_SHA256 OP_5 OP_PUSH_META OP_EQUALVERIFY 28 OP_SPLIT OP_DROP OP_6 OP_PUSH_META OP_EQUALVERIFY OP_OVER OP_FROMALTSTACK OP_EQUALVERIFY OP_CAT OP_OVER OP_SIZE OP_8 OP_EQUALVERIFY OP_DROP OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_FROMALTSTACK OP_OVER OP_HASH160 OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 544243373231434f444533",
+    "hex": "78537f7701147f756b6ba878825888757e6c7e78820120886b7e78825888757ea87882012088757e7882012897008801247f756b7ca85279826088757b7c7e7c7eaa56ba01247f7501207f81008888786b7e78825888757e7882777601289700880128967b7b7ea8527982014088757b7c7e5279826088757b7c7eaa6c6c7601207f8176567a88547a7b886c766b537a87630088756775<self.OriginalUTXO36>886876a855ba8801287f7556ba88786c887e78825888757ea857ba886c78a988ac6a0b544243373231434f444533"
+  },
+  "unlock": {
+    "main": "<sig><publicKey><currentTX.CodeValue><currentTX.CodeHash><currentTX.OutputsLastPart><currentInputsData><prepreTX.VLIO><prepreTX.InputsHashData><prepreTX.OutputsFirstPart><prepreTX.CodeValue><prepreTX.CodeHash><prepreTX.OutputsLastPart><preTX.VLIO><preTX.Inputs><preTX.UnlockingScriptHash><preTX.CodeValue><preTX.CodeHash><preTX.HoldValue><preTX.HoldScript><preTX.OutputsLastPart>"
+  },
+  "constructorParams": [
+    {
+      "name": "OriginalUTXO",
+      "type": "hex36"
+    }
+  ],
+  "functions": [
+    {
+      "name": "_verifyPreTX",
+      "type": "private",
+      "params": [
+        {
+          "name": "preTX",
+          "type": "PreTX"
+        }
+      ]
+    },
+    {
+      "name": "_verifyPrePreTX",
+      "type": "private",
+      "params": [
+        {
+          "name": "prepreTX",
+          "type": "PrePreTX"
+        }
+      ]
+    },
+    {
+      "name": "main",
+      "type": "public",
+      "params": [
+        {
+          "name": "sig",
+          "type": "hex"
+        },
+        {
+          "name": "publicKey",
+          "type": "hex"
+        },
+        {
+          "name": "currentTX",
+          "type": "CurrentTX"
+        },
+        {
+          "name": "currentInputsData",
+          "type": "hex"
+        },
+        {
+          "name": "prepreTX",
+          "type": "PrePreTX"
+        },
+        {
+          "name": "preTX",
+          "type": "PreTX"
+        }
+      ]
+    }
+  ]
+}

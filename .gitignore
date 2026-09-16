@@ -9,6 +9,10 @@ test/pool3/*
 test/coin/*
 !test/coin/*.cjs
 !test/coin/*.test.ts
+!test/tbc721/
+test/tbc721/*
+!test/tbc721/*.cjs
+!test/tbc721/*.test.ts
 !test/coin/coin-testnet-network-evidence.json
 !test/coinTbc20.local.test.cjs
 test.*

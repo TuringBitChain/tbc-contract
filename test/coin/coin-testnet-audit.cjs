@@ -9,6 +9,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const tbc = require('tbc-lib-js');
 const { CoinTBC20: Coin } = require('../../lib/contract/coinTbc20.js');
+const TBC721 = require('../../lib/contract/tbc721.js');
 
 const ROOT = path.resolve(__dirname, '../..');
 const DIRECTORY = path.resolve(ROOT, 'test/coin-testnet-20260916-r1');
@@ -23,20 +24,27 @@ const json = value => JSON.stringify(value, (_key, item) => typeof item === 'big
 const marker = (script, text) => script.toBuffer().subarray(-text.length).equals(Buffer.from(text));
 const outpoint = input => `${input.prevTxId.toString('hex')}:${input.outputIndex}`;
 
-// The real issuance certificate template; its sole variable is the original
-// funding outpoint. Matching the complete script prevents an OP_TRUE fixture
-// or arbitrary script with an appended 3Code marker from passing the audit.
+// Both issuance certificate templates have only the original funding outpoint
+// as a variable. Match the complete Code, rather than trusting a tail marker.
 const NFT_BEFORE = 'OP_1 OP_PICK OP_3 OP_SPLIT 0x01 0x14 OP_SPLIT OP_DROP OP_TOALTSTACK OP_DROP OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_OVER OP_TOALTSTACK OP_TOALTSTACK OP_CAT OP_FROMALTSTACK OP_CAT OP_SHA256 OP_CAT OP_OVER 0x01 0x24 OP_SPLIT OP_DROP OP_TOALTSTACK OP_TOALTSTACK OP_SHA256 OP_CAT OP_FROMALTSTACK OP_CAT OP_HASH256 OP_6 OP_PUSH_META 0x01 0x20 OP_SPLIT OP_4 OP_SPLIT OP_DROP OP_BIN2NUM OP_0 OP_EQUALVERIFY OP_EQUALVERIFY OP_OVER OP_TOALTSTACK OP_CAT OP_CAT OP_SHA256 OP_CAT OP_CAT OP_CAT OP_HASH256 OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP 0x01 0x20 OP_SPLIT OP_BIN2NUM OP_TOALTSTACK OP_3 OP_ROLL OP_EQUALVERIFY OP_SWAP OP_FROMALTSTACK OP_FROMALTSTACK OP_DUP OP_TOALTSTACK OP_ROT OP_EQUAL OP_IF OP_0 OP_EQUALVERIFY OP_DROP OP_ELSE OP_DROP 0x24 ';
 const NFT_AFTER = ' OP_EQUALVERIFY OP_ENDIF OP_OVER OP_FROMALTSTACK OP_EQUALVERIFY OP_CAT OP_CAT OP_SHA256 OP_7 OP_PUSH_META OP_EQUALVERIFY OP_DUP OP_HASH160 OP_FROMALTSTACK OP_EQUALVERIFY OP_CHECKSIG OP_RETURN 0x05 0x33436f6465';
 
 function certificate(tx) {
-  if (!tx.outputs[0] || !marker(tx.outputs[0].script, '3Code')) return null;
+  if (!tx.outputs[0]) return null;
+  const current = marker(tx.outputs[0].script, 'TBC721CODE3');
+  if (!current && !marker(tx.outputs[0].script, '3Code')) return null;
   const [code, hold, tape] = tx.outputs;
   assert(hold && tape, 'issuer must have Code/Hold/Tape outputs');
-  const roots = code.script.chunks.filter(chunk => chunk.buf?.length === 36);
-  assert.equal(roots.length, 1, 'issuer template has one funding outpoint');
-  const expected = new tbc.Script(NFT_BEFORE + '0x' + roots[0].buf.toString('hex') + NFT_AFTER);
-  assert.equal(code.script.toHex(), expected.toHex(), 'complete real Coin NFT template');
+  let root;
+  if (current) {
+    root = TBC721.parseCode(code.script).originalUTXO;
+  } else {
+    const roots = code.script.chunks.filter(chunk => chunk.buf?.length === 36);
+    assert.equal(roots.length, 1, 'issuer template has one funding outpoint');
+    root = roots[0].buf;
+    const expected = new tbc.Script(NFT_BEFORE + '0x' + root.toString('hex') + NFT_AFTER);
+    assert.equal(code.script.toHex(), expected.toHex(), 'complete real Coin NFT template');
+  }
   assert.equal(code.satoshis, 200); assert.equal(hold.satoshis, 100); assert.equal(tape.satoshis, 0);
   const hc = hold.script.chunks, tc = tape.script.chunks;
   assert.equal(hc.length, 7, 'issuer Hold shape');
@@ -48,7 +56,7 @@ function certificate(tx) {
   assert(typeof metadata.coinTotalSupply === 'string' && /^(0|[1-9][0-9]*)$/.test(metadata.coinTotalSupply));
   assert(Number.isInteger(metadata.coinDecimal) && metadata.coinDecimal >= 0 && metadata.coinDecimal <= 18);
   return { hash: sha(code.script.toBuffer()), supply: BigInt(metadata.coinTotalSupply), metadata,
-    adminHash: hc[2].buf.toString('hex'), root: roots[0].buf, txid: tx.id };
+    adminHash: hc[2].buf.toString('hex'), root, txid: tx.id };
 }
 
 function coins(tx) {

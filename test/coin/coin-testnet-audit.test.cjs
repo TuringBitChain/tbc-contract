@@ -10,6 +10,8 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const tbc = require('tbc-lib-js');
 const StableCoin = require('../../lib/contract/stableCoin.js');
+const LegacyStableCoin = require('../../lib/contract/stableCoinLegacy.js');
+const TBC721 = require('../../lib/contract/tbc721.js');
 const { CoinTBC20: Coin } = require('../../lib/contract/coinTbc20.js');
 const { buildCoinTBC20UnlockScript } = require('../../lib/util/coinTbc20unlock.js');
 const { buildUTXO } = require('../../lib/util/util.js');
@@ -23,7 +25,7 @@ const endpoint = 'https://api.tbcdev.org/api/tbc/';
 const json = value => JSON.stringify(value, (_key, item) => typeof item === 'bigint' ? item.toString() : item);
 function quiet(fn) { const log = console.log; console.log = () => {}; try { return fn(); } finally { console.log = log; } }
 
-function fixture(t, { transfer = true } = {}) {
+function fixture(t, { transfer = true, legacyIssuer = false } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'coin-evidence-audit-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const root = new tbc.Transaction();
@@ -59,7 +61,11 @@ function fixture(t, { transfer = true } = {}) {
     artifactSHA: sha(fs.readFileSync(path.join(ROOT, 'lib/util/coin_tbc20.json'))),
     sdkFiles: Object.fromEntries(['lib/contract/stableCoin.js', 'lib/contract/coinTbc20.js'].map(file => [file, sha(fs.readFileSync(path.join(ROOT, file)))])),
     signerPublicKeys: { administrator: publicKey.toString('hex'), owner: owner.publicKey.toString() } });
-  const prepared = quiet(() => sdk.createCoin(publicKey, owner, owner.toAddress().toString(), buildUTXO(root, 0), root, 'audit fixture'));
+  // Reproduce the historical Coin TBC20 + coinNft combination through the
+  // retained legacy issuer builder and the facade's Coin script factory.
+  if (legacyIssuer) sdk.totalSupply = '100.25';
+  const create = legacyIssuer ? LegacyStableCoin.prototype.createCoin : sdk.createCoin;
+  const prepared = quiet(() => create.call(sdk, publicKey, owner, owner.toAddress().toString(), buildUTXO(root, 0), root, 'audit fixture'));
   const [sourceRaw, mintRaw] = quiet(() => prepared.finalize(signatures(prepared)));
   const source = record(new tbc.Transaction(sourceRaw), 'create-issuer');
   const mint = record(new tbc.Transaction(mintRaw), 'initial-mint');
@@ -70,8 +76,9 @@ function fixture(t, { transfer = true } = {}) {
   return { directory, sdk, root, source, mint, transferTx, chain, events, accepted, record, append, save, write };
 }
 
-test('offline audit executes real Coin/NFT/Hold/fee inputs and reconciles atomic and native supply', t => {
+test('offline audit executes real Coin/TBC721/Hold/fee inputs and reconciles atomic and native supply', t => {
   const h = fixture(t), report = auditCoinJournal(h.directory);
+  assert.equal(TBC721.parseCode(h.source.outputs[0].script).txid, h.root.id);
   assert.equal(report.accepted, 3); assert.equal(report.acceptedInputsRevalidated, 6);
   assert.equal(report.coin.codeBytes, 2981); assert.equal(report.coin.supplies.length, 1);
   assert.equal(report.coin.supplies[0].issuedRaw, '10025'); assert.equal(report.coin.supplies[0].liveRaw, '10025');
@@ -81,6 +88,34 @@ test('offline audit executes real Coin/NFT/Hold/fee inputs and reconciles atomic
   assert.equal(report.nodeObservations.confirmed, 0); assert.equal(report.nodeObservations.unobserved.length, 3);
   assert.equal(fs.existsSync(path.join(h.directory, 'audit-report.json')), false, 'API is read-only');
 });
+
+test('audit still accepts historical Coin TBC20 issuance with the exact legacy coinNft template', t => {
+  const h = fixture(t, { legacyIssuer: true }), report = auditCoinJournal(h.directory);
+  assert.equal(h.source.outputs[0].script.chunks.at(-1).buf.toString(), '3Code');
+  assert.equal(report.accepted, 3);
+  assert.equal(report.allAcceptedRawInputScriptsPassed, true);
+  assert.equal(report.coin.supplies[0].issuedRaw, '10025');
+  assert.equal(report.coin.supplies[0].liveRaw, '10025');
+  assert.equal(report.issuers[0].supply, '10025');
+});
+
+for (const kind of ['marker-only script', 'modified contract opcode']) {
+  test(`audit rejects TBC721 issuer impersonation with ${kind}`, t => {
+    const h = fixture(t, { transfer: false });
+    const bytes = Buffer.from(h.source.outputs[0].script.toBuffer());
+    bytes[0] = tbc.Opcode.OP_NOP;
+    const fake = kind === 'marker-only script'
+      ? new tbc.Script().add(tbc.Opcode.OP_TRUE).add(tbc.Opcode.OP_RETURN).add(Buffer.from('TBC721CODE3'))
+      : tbc.Script.fromBuffer(bytes);
+    const tx = new tbc.Transaction().from(buildUTXO(h.mint, h.mint.outputs.length - 1));
+    for (const [script, satoshis] of [[fake, 200], [h.source.outputs[1].script, 100], [h.source.outputs[2].script, 0]]) {
+      tx.addOutput(new tbc.Transaction.Output({ script, satoshis }));
+    }
+    tx.fee(80).change(owner.toAddress()).sign(owner).seal();
+    h.record(tx, `forged-issuer-${kind}`);
+    assert.throws(() => auditCoinJournal(h.directory), /TBC721.*(?:template|[Cc]ode|script)/);
+  });
+}
 
 test('audit sets TBC VM limits temporarily and restores caller configuration', t => {
   const h = fixture(t), I = tbc.Script.Interpreter;

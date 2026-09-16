@@ -14,6 +14,23 @@ const { validateCoinTransaction } = require('./coin-testnet-adversarial.cjs');
 const { runAdmin, assertScriptRejection, SOURCE_LABEL } = require('./coin-testnet-admin-run.cjs');
 const key = n => new tbc.PrivateKey(n.toString(16).padStart(64, '0'));
 
+test('durable signed plans reserve fee inputs before their first broadcast', () => {
+  const owner = key(1901), root = new tbc.Transaction();
+  root.uncheckedAddInput(new tbc.Transaction.Input({ prevTxId: Buffer.alloc(32, 17), outputIndex: 0, script: new tbc.Script() }));
+  for (let i = 0; i < 3; i++) root.to(owner.toAddress(), 20000);
+  const plans = [0, 1].map(vout => new tbc.Transaction().from(buildUTXO(root, vout)).to(owner.toAddress(), 19000));
+  const c = Object.create(Campaign.prototype);
+  c.key = owner; c.load = id => plans.find(tx => tx.id === id);
+  c.j = { chain: new Map([[root.id, root]]), spent: new Set(), events: [
+    { type: 'accepted', txid: root.id },
+    { type: 'signed-bundle', txids: [plans[0].id] },
+    { type: 'adversarial-plan', control: plans[1].id },
+  ] };
+  assert.equal(c.fee().outputIndex, 2);
+  c.j.spent.add(`${root.id}:2`);
+  assert.throws(() => c.fee(), /funded campaign fee output/);
+});
+
 function campaign(directory) {
   // Deliberately bypass the deployment constructor and localKey. Only public,
   // deterministic offline fixture keys and a mocked broadcast adapter are used.

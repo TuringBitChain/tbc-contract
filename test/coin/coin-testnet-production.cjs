@@ -90,6 +90,14 @@ class Campaign {
     const script = tbc.Script.buildPublicKeyHashOut(key.toAddress()).toHex();
     const candidates = [];
     const reserved = new Set(this.j.events.filter(e => e.type === 'future-reservation').flatMap(e => e.inputs));
+    // Every durable signed plan reserves its inputs, including a crash before
+    // the first broadcast. Other entry points cannot repurpose those fee UTXOs.
+    for (const event of this.j.events) {
+      const ids = event.type === 'signed-bundle' ? event.txids
+        : ['adversarial-plan', 'issuance-negative-plan', 'admin-adversarial-plan'].includes(event.type) ? [event.control] : [];
+      for (const id of ids) for (const input of this.load(id).inputs)
+        reserved.add(`${input.prevTxId.toString('hex')}:${input.outputIndex}`);
+    }
     for (const e of this.j.events.filter(e => e.type === 'accepted')) {
       const tx = this.j.chain.get(e.txid);
       tx.outputs.forEach((out, vout) => {
