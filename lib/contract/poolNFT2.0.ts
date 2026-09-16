@@ -7,7 +7,7 @@ import {
   getInputsTxdata,
   getCurrentTxOutputsDataforPool2,
   getSize,
-} from "../util/poolnftunlock";
+} from "../util/poolnft/poolnftunlock";
 import {
   fetchInBatches,
   getOpCode,
@@ -16,7 +16,7 @@ import {
   safeJSONParse,
   parseDecimalToBigInt,
   isCoinCodeScript,
-} from "../util/util";
+} from "../util/common/util";
 import {
   FT_V1_CODE_LENGTH,
   FT_V2_CODE_LENGTH,
@@ -25,7 +25,7 @@ import {
   getFTPartialOffset,
   getFTVersion,
   type FTVersion,
-} from "../util/ftscript";
+} from "../util/ft/ftscript";
 const API = require("../api/api");
 const FT = require("./ft");
 const partial_sha256 = require("tbc-lib-js/lib/util/partial-sha256");

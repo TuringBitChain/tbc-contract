@@ -3,15 +3,15 @@ import {
   getPreTxdata,
   getCurrentTxOutputsData,
   getLengthHex,
-} from "../util/orderbookunlock";
+} from "../util/orderbook/orderbookunlock";
 import {
   buildUTXO,
   fetchInBatches,
   _isValidSHA256Hash,
   _isValidHexString,
   isCoinCodeScript,
-} from "../util/util";
-import { getFTPartialOffset, getFTVersion } from "../util/ftscript";
+} from "../util/common/util";
+import { getFTPartialOffset, getFTVersion } from "../util/ft/ftscript";
 const API = require("../api/api");
 const FT = require("./ft");
 const stableCoin = require("./stableCoin");

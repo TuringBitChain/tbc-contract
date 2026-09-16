@@ -1,5 +1,5 @@
 import * as tbc from "tbc-lib-js";
-import { parseDecimalToBigInt } from "../util/util";
+import { parseDecimalToBigInt } from "../util/common/util";
 const API = require("../api/api");
 
 class piggyBank {

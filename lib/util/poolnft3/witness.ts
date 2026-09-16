@@ -4,7 +4,7 @@ import {
   encodeTBC20UnsignedLE,
   getTBC20CurrentInputsData,
   getTBC20PartialScriptData,
-} from '../tbc20unlock';
+} from '../tbc20/tbc20unlock';
 
 /** Pool.main options; option 3 consumes exactly two auxiliary input proofs. */
 export type PoolOperation = 1 | 2 | 3 | 4;

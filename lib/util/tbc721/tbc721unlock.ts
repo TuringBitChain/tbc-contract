@@ -1,7 +1,7 @@
 import * as tbc from 'tbc-lib-js';
 
 // Compiled from apc-contract/src/tbc721.ct with --asa (without padding).
-const artifact = require('./tbc721.json');
+const artifact = require('./artifacts/tbc721.json');
 const placeholder = '<self.OriginalUTXO36>';
 const [prefixHex, suffixHex] = artifact.lock.hex.split(placeholder);
 const prefix = Buffer.from(prefixHex, 'hex');

@@ -1,6 +1,6 @@
 import * as tbc from "tbc-lib-js";
-import { parseDecimalToBigInt } from "../util/util";
-import { getFTVersion, isCoinCodeScript } from "../util/ftscript";
+import { parseDecimalToBigInt } from "../util/common/util";
+import { getFTVersion, isCoinCodeScript } from "../util/ft/ftscript";
 const FT = require("./ft");
 const stableCoin = require("./stableCoin");
 

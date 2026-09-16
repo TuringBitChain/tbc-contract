@@ -5,7 +5,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const tbc = require('tbc-lib-js');
-const { CoinTBC20: Coin } = require('../lib/contract/coinTbc20.js');
+const { CoinTBC20: Coin } = require('../lib/util/coinTbc20Code.js');
 const { buildCoinTBC20UnlockScript: unlock, buildCoinTBC20UnlockScriptWithSignature: unlockSigned } =
   require('../lib/util/coinTbc20unlock.js');
 const key = n => new tbc.PrivateKey(n.toString(16).padStart(64, '0'));

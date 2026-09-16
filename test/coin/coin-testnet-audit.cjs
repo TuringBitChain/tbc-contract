@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const tbc = require('tbc-lib-js');
-const { CoinTBC20: Coin } = require('../../lib/contract/coinTbc20.js');
+const { CoinTBC20: Coin } = require('../../lib/util/coinTbc20Code.js');
 const TBC721 = require('../../lib/contract/tbc721.js');
 
 const ROOT = path.resolve(__dirname, '../..');

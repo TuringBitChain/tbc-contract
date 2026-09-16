@@ -1,12 +1,12 @@
 import * as tbc from "tbc-lib-js";
-import { getPrePreTxdata } from "../util/ftunlock";
-import { findMinFiveSum } from "../util/utxoSelect";
+import { getPrePreTxdata } from "../util/ft/ftunlock";
+import { findMinFiveSum } from "../util/common/utxoSelect";
 import {
   fetchInBatches,
   fetchTBCLockTime,
   safeJSONParse,
   parseDecimalToBigInt,
-} from "../util/util";
+} from "../util/common/util";
 
 interface NFTInfo {
   collectionId: string;

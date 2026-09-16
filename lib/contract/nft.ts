@@ -5,8 +5,8 @@ import {
   getPrePreTxdata,
   getLengthHex,
   getOutputsData,
-} from "../util/nftunlock";
-import { parseDecimalToBigInt } from "../util/util";
+} from "../util/nft/nftunlock";
+import { parseDecimalToBigInt } from "../util/common/util";
 interface NFTInfo {
   collectionId: string;
   collectionIndex: number;

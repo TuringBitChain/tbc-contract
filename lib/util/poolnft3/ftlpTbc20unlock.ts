@@ -1,5 +1,5 @@
 import * as tbc from 'tbc-lib-js';
-import { FTLPTBC20 } from '../contract/ftlpTbc20';
+import { FTLPTBC20 } from '../../contract/ftlpTbc20';
 import {
   encodeTBC20UnsignedLE,
   getTBC20ContractTxData,
@@ -8,8 +8,8 @@ import {
   getTBC20PrePreTxArray,
   getTBC20PreTxData,
   readTBC20TapeAmounts,
-} from './tbc20unlock';
-import type { FTLPCodeDescriptor } from '../contract/ftlpTbc20';
+} from '../tbc20/tbc20unlock';
+import type { FTLPCodeDescriptor } from '../../contract/ftlpTbc20';
 import type {
   TBC20ContractTxData,
   TBC20OutputData,
@@ -19,7 +19,7 @@ import type {
   TBC20TransactionResolver,
   TBC20UnlockWithPrivateKeyOptions,
   TBC20UnlockWithSignatureOptions,
-} from './tbc20unlock';
+} from '../tbc20/tbc20unlock';
 
 export type FTLPUnlockWithSignatureOptions = TBC20UnlockWithSignatureOptions;
 export type FTLPUnlockWithPrivateKeyOptions = TBC20UnlockWithPrivateKeyOptions;

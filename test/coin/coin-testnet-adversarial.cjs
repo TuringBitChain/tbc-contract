@@ -5,7 +5,7 @@
 // these candidates before their valid counterpart consumes the shared inputs.
 const assert = require('node:assert/strict');
 const tbc = require('tbc-lib-js');
-const { CoinTBC20: Coin } = require('../../lib/contract/coinTbc20.js');
+const { CoinTBC20: Coin } = require('../../lib/util/coinTbc20Code.js');
 const artifact = require('../../lib/util/coin_tbc20.json');
 const {
   encodeTBC20UnsignedLE,

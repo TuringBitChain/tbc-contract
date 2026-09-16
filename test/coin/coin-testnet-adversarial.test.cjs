@@ -3,8 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const tbc = require('tbc-lib-js');
-const StableCoin = require('../../lib/contract/stableCoin.js');
-const { CoinTBC20: Coin } = require('../../lib/contract/coinTbc20.js');
+const Coin = require('../../lib/contract/coinTbc20.js');
+const { CoinTBC20: CoinCodec } = require('../../lib/util/coinTbc20Code.js');
 const { buildUTXO } = require('../../lib/util/util.js');
 const {
   prepareCoinAdversarial, validateCoinTransaction, COIN_ADVERSARIAL_CASES,
@@ -33,7 +33,7 @@ function createFixture({ multiple = false, lockTime = 0 } = {}) {
     script: tbc.Script.buildPublicKeyHashOut(owner.toAddress()), satoshis: 1000000,
   }));
   chain.set(root.id, root);
-  const sdk = new StableCoin({ name: 'Adversarial offline fixture', symbol: 'ADF', amount: '100', decimal: 0 });
+  const sdk = new Coin({ name: 'Adversarial offline fixture', symbol: 'ADF', amount: '100', decimal: 0 });
   let nextFee = 0;
   const funding = () => buildUTXO(root, nextFee++);
   const attach = raw => {

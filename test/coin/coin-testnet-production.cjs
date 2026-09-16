@@ -7,8 +7,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const tbc = require('tbc-lib-js');
-const StableCoin = require('../../lib/contract/stableCoin.js');
-const { CoinTBC20 } = require('../../lib/contract/coinTbc20.js');
+const Coin = require('../../lib/contract/coinTbc20.js');
+const { CoinTBC20 } = require('../../lib/util/coinTbc20Code.js');
 const { buildUTXO } = require('../../lib/util/util.js');
 const { TestnetJournal, localKey, silent, BASE, ADDRESS } = require('../pool3/pool3-testnet-runner.cjs');
 const { validatePool3Transaction } = require('../../lib/validator/poolnft3.js');
@@ -23,7 +23,7 @@ const addr = key => key.toAddress().toString();
 const ownerId = key => tbc.crypto.Hash.sha256ripemd160(key.publicKey.toBuffer()).toString('hex') + '00';
 const human = (raw, decimal) => decimal ? `${raw / 10n ** BigInt(decimal)}.${(raw % 10n ** BigInt(decimal)).toString().padStart(decimal, '0')}` : String(raw);
 const coins = tx => tx.outputs.flatMap((out, vout) => out.script.toBuffer().subarray(-MARKER.length).equals(MARKER)
-  ? [{ tx, vout, utxo: StableCoin.buildUTXO(tx, vout), ...CoinTBC20.parseTape(tx.outputs[vout + 1].script),
+  ? [{ tx, vout, utxo: Coin.buildUTXO(tx, vout), ...CoinTBC20.parseTape(tx.outputs[vout + 1].script),
     controller: CoinTBC20.parseCode(out.script).controller.toString('hex') }] : []);
 const supply = tx => BigInt(JSON.parse(tx.outputs[2].script.chunks.at(-2).buf.toString()).coinTotalSupply);
 
@@ -147,7 +147,11 @@ class Campaign {
       const parent = await this.j.parent(selected.txid);
       assert.equal(parent.outputs[selected.index].satoshis, 1000000);
       assert.equal(parent.outputs[selected.index].script.toHex(), tbc.Script.buildPublicKeyHashOut(ADDRESS).toHex());
-      const files = ['lib/contract/stableCoin.js', 'lib/contract/coinTbc20.js', 'lib/util/coinTbc20unlock.js', 'lib/contract/stableCoinLegacy.js'];
+      // Record the current implementation, including the extracted codec.
+      // Existing journal fingerprints remain unchanged; the frozen SDK
+      // archive is required to reproduce the historical r1 campaign.
+      const files = ['lib/contract/stableCoin.js', 'lib/contract/coinTbc20.js', 'lib/util/coinTbc20unlock.js',
+        'lib/util/coinTbc20Code.ts', 'lib/util/coinTbc20Code.js'];
       this.j.append({ type: 'campaign-init', network: 'testnet', endpoint: BASE, funding: selected, allocatedSat: 1000000,
         wallet: ADDRESS, node, artifactFile: 'lib/util/coin_tbc20.json', artifactSHA: sha(fs.readFileSync(path.join(ROOT, 'lib/util/coin_tbc20.json'))),
         sdkFiles: Object.fromEntries(files.map(f => [f, sha(fs.readFileSync(path.join(ROOT, f)))])),
@@ -171,10 +175,10 @@ class Campaign {
   }
   async create(label, definition) {
     const [issuer, first] = await this.bundle(`${label}:create`, () => {
-      const sdk = new StableCoin(definition), fee = this.fee(this.key, 50000);
+      const sdk = new Coin(definition), fee = this.fee(this.key, 50000);
       return this.finalize(sdk.createCoin(this.admin, this.key, ADDRESS, fee, this.j.chain.get(fee.txId), `${RUN} ${label}`), `${label}:create`);
     });
-    const sdk = new StableCoin(first.id);
+    const sdk = new Coin(first.id);
     sdk.initialize({ ...definition, contractTxid: first.id, totalSupply: supply(first), codeScript: first.outputs[3].script.toHex(), tapeScript: first.outputs[4].script.toHex() });
     return { sdk, issuer, first };
   }

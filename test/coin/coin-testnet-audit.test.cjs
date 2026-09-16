@@ -9,10 +9,10 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const tbc = require('tbc-lib-js');
-const StableCoin = require('../../lib/contract/stableCoin.js');
-const LegacyStableCoin = require('../../lib/contract/stableCoinLegacy.js');
+const Coin = require('../../lib/contract/coinTbc20.js');
+const LegacyStableCoin = require('../../lib/contract/stableCoin.js');
 const TBC721 = require('../../lib/contract/tbc721.js');
-const { CoinTBC20: Coin } = require('../../lib/contract/coinTbc20.js');
+const { CoinTBC20: CoinCodec } = require('../../lib/util/coinTbc20Code.js');
 const { buildCoinTBC20UnlockScript } = require('../../lib/util/coinTbc20unlock.js');
 const { buildUTXO } = require('../../lib/util/util.js');
 const { auditCoinJournal } = require('./coin-testnet-audit.cjs');
@@ -32,7 +32,7 @@ function fixture(t, { transfer = true, legacyIssuer = false } = {}) {
   root.uncheckedAddInput(new tbc.Transaction.Input({ prevTxId: Buffer.alloc(32, 0x7a), outputIndex: 0,
     sequenceNumber: 0xffffffff, script: new tbc.Script() }));
   root.addOutput(new tbc.Transaction.Output({ script: tbc.Script.buildPublicKeyHashOut(owner.toAddress()), satoshis: 1000000 }));
-  const sdk = new StableCoin({ name: 'Audit USD', symbol: 'AUD', amount: '100.25', decimal: 2 });
+  const sdk = new Coin({ name: 'Audit USD', symbol: 'AUD', amount: '100.25', decimal: 2 });
   const chain = new Map([[root.id, root]]), events = [], accepted = [];
   let epochMs = 1800000000000;
   const append = event => events.push({ at: new Date(epochMs).toISOString(), ...event });
@@ -59,7 +59,7 @@ function fixture(t, { transfer = true, legacyIssuer = false } = {}) {
   append({ type: 'campaign-init', network: 'testnet', endpoint, wallet: owner.toAddress().toString(),
     funding: { txid: root.id, index: 0, value: 1000000 }, allocatedSat: 1000000,
     artifactSHA: sha(fs.readFileSync(path.join(ROOT, 'lib/util/coin_tbc20.json'))),
-    sdkFiles: Object.fromEntries(['lib/contract/stableCoin.js', 'lib/contract/coinTbc20.js'].map(file => [file, sha(fs.readFileSync(path.join(ROOT, file)))])),
+    sdkFiles: Object.fromEntries(['lib/contract/coinTbc20.js', 'lib/util/coinTbc20Code.js'].map(file => [file, sha(fs.readFileSync(path.join(ROOT, file)))])),
     signerPublicKeys: { administrator: publicKey.toString('hex'), owner: owner.publicKey.toString() } });
   // Reproduce the historical Coin TBC20 + coinNft combination through the
   // retained legacy issuer builder and the facade's Coin script factory.
@@ -129,8 +129,8 @@ test('audit derives fee inputs from actual prevouts when fee precedes Coin', t =
   tx.inputs.reverse();
   for (const input of tx.inputs) input.output = h.chain.get(input.prevTxId.toString('hex')).outputs[input.outputIndex];
   for (const vout of [1, 3]) {
-    const tape = Coin.parseTape(tx.outputs[vout].script);
-    tx.outputs[vout].setScript(Coin.replaceTapeAmounts(tx.outputs[vout].script, [0n, tape.balance, 0n, 0n, 0n, 0n]));
+    const tape = CoinCodec.parseTape(tx.outputs[vout].script);
+    tx.outputs[vout].setScript(CoinCodec.replaceTapeAmounts(tx.outputs[vout].script, [0n, tape.balance, 0n, 0n, 0n, 0n]));
   }
   tx.inputs[1].setScript(buildCoinTBC20UnlockScript({ currentTx: tx, inputIndex: 1, preTx: h.mint, preTxVout: 3,
     outputGroups: [{ codeVout: 0, tapeVout: 1 }, { codeVout: 2, tapeVout: 3 }, { codeVout: 4 }],
@@ -208,7 +208,7 @@ test('audit rejects altered artifact and SDK provenance', t => {
   const h = fixture(t), init = h.events.find(event => event.type === 'campaign-init');
   const original = init.artifactSHA; init.artifactSHA = '00'.repeat(32); h.write();
   assert.throws(() => auditCoinJournal(h.directory), /artifact SHA256/);
-  init.artifactSHA = original; init.sdkFiles['lib/contract/stableCoin.js'] = '00'.repeat(32); h.write();
+  init.artifactSHA = original; init.sdkFiles['lib/contract/coinTbc20.js'] = '00'.repeat(32); h.write();
   assert.throws(() => auditCoinJournal(h.directory), /recorded SDK file differs/);
 });
 

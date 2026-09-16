@@ -7,9 +7,9 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const tbc = require('tbc-lib-js');
-const StableCoin = require('../../lib/contract/stableCoin.js');
-const LegacyStableCoin = require('../../lib/contract/stableCoinLegacy.js');
-const { CoinTBC20 } = require('../../lib/contract/coinTbc20.js');
+const Coin = require('../../lib/contract/coinTbc20.js');
+const LegacyStableCoin = require('../../lib/contract/stableCoin.js');
+const { CoinTBC20 } = require('../../lib/util/coinTbc20Code.js');
 const { buildUTXO, buildFtPrePreTxData } = require('../../lib/util/util.js');
 
 // Match tbc-lib-js Transaction.Input.verify: the bare interpreter retains
@@ -76,7 +76,7 @@ function makeHarness({ amount = '100', decimal = 2, legacy = false } = {}) {
     }
   }
   chain.set(root.id, root);
-  const Class = legacy ? LegacyStableCoin : StableCoin;
+  const Class = legacy ? LegacyStableCoin : Coin;
   const sdk = new Class({ name: 'Local USD', symbol: 'LUSD', amount, decimal });
 
   function funding(k = owner) {
@@ -149,6 +149,30 @@ function makeHarness({ amount = '100', decimal = 2, legacy = false } = {}) {
   const [source, first] = finalize(prepared, 'createCoin');
   return { sdk, root, source, first, chain, funding, check, signatures, finalize };
 }
+
+test('package exports keep Coin, legacy stableCoin, and the low-level Coin codec distinct', () => {
+  const sdk = require('../..');
+  assert.equal(sdk.Coin, Coin);
+  assert.equal(sdk.Coin.name, 'Coin');
+  assert.equal(Object.hasOwn(sdk, 'coin'), false);
+  assert.equal(sdk.stableCoin, LegacyStableCoin);
+  assert.equal(sdk.CoinTBC20, CoinTBC20);
+  assert.notEqual(sdk.Coin, sdk.stableCoin);
+  assert.notEqual(sdk.Coin, sdk.CoinTBC20);
+  assert.equal(typeof sdk.Coin.prototype.createCoin, 'function');
+  assert.equal(typeof sdk.CoinTBC20.instantiateCode, 'function');
+});
+
+test('new and legacy stablecoin initialization reject the other contract family', { concurrency: false }, () => quiet(() => {
+  const modern = makeHarness(), legacy = makeHarness({ legacy: true });
+  const info = h => ({ name: 'Local USD', symbol: 'LUSD', decimal: 2, totalSupply: nftSupply(h.first),
+    codeScript: h.first.outputs[3].script.toHex(), tapeScript: h.first.outputs[4].script.toHex() });
+  const modernState = modern.sdk.codeScript, legacyState = legacy.sdk.codeScript;
+  assert.throws(() => modern.sdk.initialize(info(legacy)), /coin|legacy|family|code|template/i);
+  assert.throws(() => legacy.sdk.initialize(info(modern)), /coin|family|code|template|stable/i);
+  assert.equal(modern.sdk.codeScript, modernState, 'failed import preserves the initialized new Coin');
+  assert.equal(legacy.sdk.codeScript, legacyState, 'failed import preserves the initialized legacy Coin');
+}));
 
 test('SDK creates the real issuer NFT, renews issuance, and keeps supply in atomic units', { concurrency: false }, () => quiet(() => {
   const h = makeHarness({ amount: '100.25' });
@@ -290,7 +314,7 @@ test('SDK preserves amounts above Number.MAX_SAFE_INTEGER and decimal-zero initi
   const h = makeHarness({ amount: '9007199254740993', decimal: 0 });
   assert.equal(h.sdk.totalSupply, 9007199254740993n);
   assert.equal(nftSupply(h.first), 9007199254740993n);
-  const restored = new StableCoin(h.sdk.contractTxid);
+  const restored = new Coin(h.sdk.contractTxid);
   restored.initialize({ name: h.sdk.name, symbol: h.sdk.symbol, decimal: 0, totalSupply: h.sdk.totalSupply.toString(),
     codeScript: h.sdk.codeScript, tapeScript: h.sdk.tapeScript });
   assert.equal(restored.totalSupply, 9007199254740993n);
@@ -327,27 +351,27 @@ test('SDK rejects legacy ancestor bytes and a signer who does not control the se
   assert.throws(() => h.sdk.transfer(bob, address(carol), '1', [input.utxo], h.funding(bob), [h.first], h.chain), /control|owner|public|address|sign|holder/i);
 }));
 
-test('new facade spends and administrates initialized legacy stablecoins with legacy ancestry proofs', { concurrency: false }, () => quiet(() => {
+test('legacy stableCoin spends and administrates its own family with legacy ancestry proofs', { concurrency: false }, () => quiet(() => {
   const h = makeHarness({ legacy: true });
   assert.equal(h.first.outputs[3].script.toBuffer().length, 2076);
   assert.equal(h.first.outputs[3].script.chunks.at(-1).buf.toString(), '2Code');
   assert.equal(h.first.outputs[4].script.chunks.at(-1).buf.toString(), 'FTape');
-  const restored = new StableCoin(h.first.id);
+  const restored = new LegacyStableCoin(h.first.id);
   restored.initialize({ name: 'Local USD', symbol: 'LUSD', decimal: 2, totalSupply: nftSupply(h.first),
     codeScript: h.first.outputs[3].script.toHex(), tapeScript: h.first.outputs[4].script.toHex() });
   const sent = h.check(restored.transfer(owner, address(bob), '12', [buildUTXO(h.first, 3, true)], h.funding(),
-    [h.first], [buildFtPrePreTxData(h.first, 3, [h.source])]), 'legacy transfer through current facade');
+    [h.first], [buildFtPrePreTxData(h.first, 3, [h.source])]), 'legacy transfer through stableCoin');
   assert.equal(buildUTXO(sent, 0, true).ftBalance, 1200n);
   assert.equal(sent.outputs[0].script.toBuffer().length, 2076, 'legacy spend retains its deployed code family');
-  assert.equal(StableCoin.getAddressFromCode(sent.outputs[0].script.toHex()).address, ownedBy(bob).slice(0, 40));
+  assert.equal(LegacyStableCoin.getAddressFromCode(sent.outputs[0].script.toHex()).address, ownedBy(bob).slice(0, 40));
   // The legacy path restricts nonzero freezes to timestamps. A zero-lock
   // administrator renewal verifies compatibility without importing new rules.
   const frozen = h.finalize(restored.freezeCoinUTXO(adminPublicKey, owner, 0, [buildUTXO(sent, 0, true)],
     h.funding(), [sent], [buildFtPrePreTxData(sent, 0, [h.first])]), 'legacy administrator zero-lock renewal');
   const thawed = h.finalize(restored.unfreezeCoinUTXO(adminPublicKey, owner, [buildUTXO(frozen, 0, true)], h.funding(),
     [frozen], [buildFtPrePreTxData(frozen, 0, [sent])]), 'legacy administrator unfreeze');
-  assert.equal(StableCoin.getLockTimeFromTape(thawed.outputs[1].script), 0);
-  assert.equal(StableCoin.getAddressFromCode(thawed.outputs[0].script.toHex()).address, ownedBy(bob).slice(0, 40));
+  assert.equal(LegacyStableCoin.getLockTimeFromTape(thawed.outputs[1].script), 0);
+  assert.equal(LegacyStableCoin.getAddressFromCode(thawed.outputs[0].script.toHex()).address, ownedBy(bob).slice(0, 40));
   const onward = h.check(restored.transfer(bob, address(carol), '12', [buildUTXO(thawed, 0, true)], h.funding(bob),
     [thawed], [buildFtPrePreTxData(thawed, 0, [frozen])]), 'legacy holder spends after administrative renewal');
   assert.equal(buildUTXO(onward, 0, true).ftBalance, 1200n);
@@ -362,9 +386,9 @@ test('new facade spends and administrates initialized legacy stablecoins with le
   assert.equal(buildUTXO(result, 0, true).ftBalance, 10000n);
 }));
 
-test('legacy facade batches seven receivers and converges a merge of more than five inputs', { concurrency: false }, () => quiet(() => {
+test('legacy stableCoin batches seven receivers and converges a merge of more than five inputs', { concurrency: false }, () => quiet(() => {
   const h = makeHarness({ legacy: true });
-  const restored = new StableCoin(h.first.id);
+  const restored = new LegacyStableCoin(h.first.id);
   restored.initialize({ name: 'Local USD', symbol: 'LUSD', decimal: 2, totalSupply: nftSupply(h.first),
     codeScript: h.first.outputs[3].script.toHex(), tapeScript: h.first.outputs[4].script.toHex() });
   const batches = restored.batchTransfer(owner, Array.from({ length: 7 }, () => ({ address: address(owner), amount: '1.25' })),
@@ -383,7 +407,7 @@ test('legacy facade batches seven receivers and converges a merge of more than f
 
 test('failed issuance preparation restores state and pending issuance rejects reinitialization', { concurrency: false }, () => quiet(() => {
   const h = makeHarness();
-  const fresh = new StableCoin({ name: 'Retry USD', symbol: 'RETRY', amount: '100.25', decimal: 2 });
+  const fresh = new Coin({ name: 'Retry USD', symbol: 'RETRY', amount: '100.25', decimal: 2 });
   const state = coin => ({ codeScript: coin.codeScript, tapeScript: coin.tapeScript, totalSupply: coin.totalSupply, contractTxid: coin.contractTxid });
   const before = state(fresh);
   const fee = h.funding();

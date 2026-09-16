@@ -2,10 +2,10 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const StableCoin = require('../../lib/contract/stableCoin.js');
-const LegacyStableCoin = require('../../lib/contract/stableCoinLegacy.js');
+const Coin = require('../../lib/contract/coinTbc20.js');
+const LegacyStableCoin = require('../../lib/contract/stableCoin.js');
 const TBC721 = require('../../lib/contract/tbc721.js');
-const { CoinTBC20 } = require('../../lib/contract/coinTbc20.js');
+const { CoinTBC20 } = require('../../lib/util/coinTbc20Code.js');
 const { tbc, owner, bob, admin, stranger, address, sha, quiet, makeHarness, buildUTXO } = require('../tbc721/helpers.cjs');
 
 const adminPublicKey = admin.publicKey.toBuffer().subarray(1);
@@ -32,7 +32,7 @@ function finish(h, pending, label) {
   return Array.isArray(result) ? result.map((raw, i) => h.check(raw, `${label} ${i}`)) : h.check(result, label);
 }
 
-function fixture(Class = StableCoin) {
+function fixture(Class = Coin) {
   const h = makeHarness();
   const sdk = new Class({ name: 'TBC721 USD', symbol: 'TUSD', amount: Class === LegacyStableCoin ? '10' : '10.25', decimal: 2 });
   const fee = h.funding();
@@ -122,8 +122,8 @@ test('initialized Coin TBC20 with an existing coinNft issuer can still mint with
   assert.equal(TBC721.isTBC721Code(issuer.outputs[0].script), false);
   const metadata = new tbc.Script().add(Buffer.from([2])).add(Buffer.from('Existing USD')).add(Buffer.from('EUSD')).toBuffer();
   const tape = CoinTBC20.buildTape({ amounts: [0n, 0n, 0n, 0n, 0n, 0n], tapeSize: 66 + metadata.length, lockTime: 0, metadata });
-  const code = StableCoin.getCoinMintCode(adminHash, address(owner), sha(issuer.outputs[0].script.toBuffer()).toString('hex'), tape.toBuffer().length);
-  const sdk = new StableCoin(issuer.id);
+  const code = Coin.getCoinMintCode(adminHash, address(owner), sha(issuer.outputs[0].script.toBuffer()).toString('hex'), tape.toBuffer().length);
+  const sdk = new Coin(issuer.id);
   sdk.initialize({ name: 'Existing USD', symbol: 'EUSD', decimal: 2, totalSupply: 0n,
     codeScript: code.toHex(), tapeScript: tape.toHex() });
   const minted = finish(h, sdk.mintCoin(adminPublicKey, owner, address(owner), '10', h.funding(), issuer, h.root), 'old-certificate Coin issuance');
@@ -135,15 +135,15 @@ test('initialized Coin TBC20 with an existing coinNft issuer can still mint with
   assert.equal(CoinTBC20.parseTape(sent.outputs[1].script).balance, 100n);
 }));
 
-test('legacy stablecoin issuance retains coinNft and remains mintable through the current facade', () => quiet(() => {
+test('legacy stablecoin issuance retains coinNft and remains mintable through stableCoin', () => quiet(() => {
   const h = fixture(LegacyStableCoin);
   assert.equal(TBC721.isTBC721Code(h.source.outputs[0].script), false);
   assert.equal(h.source.outputs[0].script.chunks.at(-1).buf.toString(), '3Code');
   assert.equal(h.minted.outputs[3].script.chunks.at(-1).buf.toString(), '2Code');
-  const restored = new StableCoin(h.minted.id);
+  const restored = new LegacyStableCoin(h.minted.id);
   restored.initialize({ name: 'TBC721 USD', symbol: 'TUSD', decimal: 2, totalSupply: supply(h.minted),
     codeScript: h.minted.outputs[3].script.toHex(), tapeScript: h.minted.outputs[4].script.toHex() });
-  const renewed = finish(h, restored.mintCoin(adminPublicKey, owner, address(owner), '1', h.funding(), h.minted, h.source), 'legacy mint through facade');
+  const renewed = finish(h, restored.mintCoin(adminPublicKey, owner, address(owner), '1', h.funding(), h.minted, h.source), 'legacy mint through stableCoin');
   assert.equal(renewed.outputs[0].script.toHex(), h.source.outputs[0].script.toHex());
   assert.equal(renewed.outputs[3].script.chunks.at(-1).buf.toString(), '2Code');
   assert.equal(supply(renewed), 1100n);

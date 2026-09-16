@@ -3,8 +3,8 @@ const assert = require('node:assert/strict');
 const tbc = require('tbc-lib-js');
 const { Campaign, run, coins, human, addr, BASE, withCampaignLock } = require('./coin-testnet-production.cjs');
 const { prepareCoinAdversarial, validateCoinTransaction } = require('./coin-testnet-adversarial.cjs');
-const { CoinTBC20 } = require('../../lib/contract/coinTbc20.js');
-const StableCoin = require('../../lib/contract/stableCoin.js');
+const { CoinTBC20 } = require('../../lib/util/coinTbc20Code.js');
+const Coin = require('../../lib/contract/coinTbc20.js');
 const { silent } = require('../pool3/pool3-testnet-runner.cjs');
 const sha = b => tbc.crypto.Hash.sha256(b);
 const hash160 = b => tbc.crypto.Hash.sha256ripemd160(b);
@@ -48,13 +48,13 @@ function contractSpend(c, sdk, coin) {
   const tx = new tbc.Transaction().from(fee);
   tx.addInputFromPrevTx(coin.tx, coin.vout); tx.setInputSequence(1, 0xfffffffe);
   tx.setLockTime(coin.lockTime);
-  tx.addOutput(output(StableCoin.buildFTtransferCode(sdk.codeScript, addr(c.key)), 500));
+  tx.addOutput(output(Coin.buildFTtransferCode(sdk.codeScript, addr(c.key)), 500));
   tx.addOutput(output(CoinTBC20.setLockTime(CoinTBC20.replaceTapeAmounts(coin.tx.outputs[coin.vout + 1].script,
     [0n, coin.balance, 0n, 0n, 0n, 0n]), 0), 0));
   const feeSat = 1500;
   tx.addOutput(output(tbc.Script.buildPublicKeyHashOut(c.key.toAddress()), fee.satoshis - feeSat));
   tx.fee(feeSat); tx.seal();
-  tx.inputs[1].setScript(StableCoin.getUnlockScript({ currentTx: tx, inputIndex: 1, preTx: coin.tx, preTxVout: coin.vout,
+  tx.inputs[1].setScript(Coin.getUnlockScript({ currentTx: tx, inputIndex: 1, preTx: coin.tx, preTxVout: coin.vout,
     ancestorTransactions: c.j.chain, outputGroups: [{ codeVout: 0, tapeVout: 1 }, { codeVout: 2 }],
     contractController: { transaction: funding, currentInputIndex: 0 }, privateKey: c.key }));
   const sig = tbc.Transaction.sighash.sign(tx, c.key, 0x41, 0, tx.inputs[0].output.script, tx.inputs[0].output.satoshisBN).toTxFormat();

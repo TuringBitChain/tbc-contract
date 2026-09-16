@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const { Campaign, withCampaignLock, coins, addr } = require('./coin-testnet-production.cjs');
-const { CoinTBC20 } = require('../../lib/contract/coinTbc20.js');
+const { CoinTBC20 } = require('../../lib/util/coinTbc20Code.js');
 const { silent } = require('../pool3/pool3-testnet-runner.cjs');
 
 async function boundaries(c) {

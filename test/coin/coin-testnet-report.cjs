@@ -26,8 +26,11 @@ function report() {
   const accepted = events.filter(e => e.type === 'accepted').map(e => ({ label: e.label, txid: e.txid,
     feeSat: e.feeSat, bytes: prepared.get(e.txid).bytes, confirmations: latest.get(e.txid).confirmations,
     blockheight: latest.get(e.txid).blockheight, blockhash: latest.get(e.txid).blockhash }));
+  // Include the extracted codec when recording the current implementation.
+  // Archived reports and their historical source-hash keys remain unchanged.
   const artifactFiles = ['lib/api/api.ts', 'lib/api/api.js', 'lib/contract/stableCoin.ts', 'lib/contract/stableCoin.js',
-    'lib/contract/coinTbc20.ts', 'lib/contract/coinTbc20.js', 'lib/contract/stableCoinLegacy.js',
+    'lib/contract/coinTbc20.ts', 'lib/contract/coinTbc20.js',
+    'lib/util/coinTbc20Code.ts', 'lib/util/coinTbc20Code.js',
     'lib/util/coinTbc20unlock.ts', 'lib/util/coinTbc20unlock.js', 'lib/util/coin_tbc20.json'];
   const value = { generatedAt: new Date().toISOString(), network: 'testnet', endpoint: audit.endpoint,
     acceptance: { contractScenariosPassed: true, allAcceptedTransactionsConfirmed: true, indexerPassed: indexer.ready,

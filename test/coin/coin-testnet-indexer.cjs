@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const tbc = require('tbc-lib-js');
 const API = require('../../lib/api/api.js');
-const { CoinTBC20 } = require('../../lib/contract/coinTbc20.js');
+const { CoinTBC20 } = require('../../lib/util/coinTbc20Code.js');
 const { TestnetJournal } = require('../pool3/pool3-testnet-runner.cjs');
 const { DIRECTORY, BASE, coins } = require('./coin-testnet-production.cjs');
 const json = value => JSON.stringify(value, (_, item) => typeof item === 'bigint' ? item.toString() : item, 2);

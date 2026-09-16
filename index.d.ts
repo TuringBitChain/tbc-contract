@@ -2221,7 +2221,7 @@ export interface AdminSighash {
 }
 
 /**
- * Returned by admin-gated `stableCoin` methods. Callers run an external
+ * Returned by admin-gated `Coin` and `stableCoin` methods. Callers run an external
  * MuSig2 ceremony to produce one 64-byte Schnorr signature per entry in
  * `sighashes`, then call `finalize(sigs)` to get the serialized tx(s).
  */
@@ -2253,12 +2253,11 @@ export interface CoinInfo {
 
 /**
  * Current Coin inputs accept a shared transaction resolver or one resolver per input.
- * Legacy hex proof strings are accepted only for initialized legacy coins.
+ * Legacy hex proof strings belong to stableCoin and are not accepted by Coin.
  */
 export type CoinAncestors =
   | TBC20AncestorResolver
-  | readonly TBC20AncestorResolver[]
-  | string[];
+  | readonly TBC20AncestorResolver[];
 
 export type CoinScriptLike = Script | Buffer | string;
 export interface CoinCodeOptions {
@@ -2293,7 +2292,7 @@ export interface CoinTapeDescriptor {
   metadata: Buffer;
 }
 
-/** Strict current Coin Code/Tape codecs; these methods do not sign or broadcast. */
+/** Code/Tape codec tools, separate from the Coin business class; never sign or broadcast. */
 export class CoinTBC20 {
   static readonly codeSatoshis: 500;
   static readonly codeSize: 2981;
@@ -2345,13 +2344,15 @@ export interface CoinTBC20UnlockWithSignatureOptions extends CoinTBC20UnlockComm
   publicKey: string | Buffer | import("tbc-lib-js").PublicKey;
 }
 
-/** Explicit legacy FT-based stablecoin API; existing Code and FTape formats are unchanged. */
-export class stableCoinLegacy extends FT {
+/** Original FT-based stablecoin API; Code, FTape and coinNft issuance are unchanged. */
+export class stableCoin extends FT {
   constructor(
     txidOrParams:
       | string
       | { name: string; symbol: string; amount: number; decimal: number },
   );
+  /** Restores original FT stablecoin metadata; newer Coin TBC20 templates are rejected. */
+  initialize(info: CoinInfo): void;
   createCoin(
     aggPubkey32: Buffer,
     feePrivateKey: PrivateKey,
@@ -2394,7 +2395,7 @@ export class stableCoinLegacy extends FT {
     utxo: Transaction.IUnspentOutput,
     preTX: Transaction[],
     prepreTxData: string[],
-    localTX: Transaction[],
+    localTX?: Transaction[],
   ): Array<{ txraw: string }>;
   freezeCoinUTXO(
     aggPubkey32: Buffer,
@@ -2438,14 +2439,23 @@ export class stableCoinLegacy extends FT {
   };
 }
 
-/** Creates Coin TBC20 with a TBC721 issuer; existing certificate identities retain their mint path. */
-export class stableCoin extends stableCoinLegacy {
+/** Coin TBC20 business API; new issuance uses TBC721, existing issuer identities retain their mint path. */
+export class Coin {
+  name: string;
+  symbol: string;
+  decimal: number;
+  /** Cumulative supply in raw minimum units. */
+  totalSupply: bigint;
+  codeScript: string;
+  tapeScript: string;
+  /** First Coin mint transaction ID; unchanged by subsequent issuance. */
+  contractTxid: string;
   constructor(
     txidOrParams:
       | string
       | CoinDefinition,
   );
-  /** Restores trusted Code/Tape metadata. totalSupply is always in raw minimum units. */
+  /** Restores trusted Coin TBC20 Code/Tape only. totalSupply is in raw minimum units. */
   initialize(info: CoinInfo): void;
   createCoin(
     aggPubkey32: Buffer,
@@ -2559,9 +2569,22 @@ export class stableCoin extends stableCoinLegacy {
     address: string;
     type: "address" | "contract";
   };
+  /** Replaces the controller in a validated Coin TBC20 Code. */
+  static buildFTtransferCode(codeScript: string, address: string): Script;
+  /** Replaces all six amount slots in a validated Coin TBC20 Tape. */
+  static buildFTtransferTape(tapeScript: string, tapeAmountSetHex: string): Script;
+  static buildTapeAmount(
+    amountBN: bigint,
+    tapeAmountSet: bigint[],
+    ftInputIndex?: number,
+  ): { amountHex: string; changeHex: string };
+  static buildMultiTapeAmounts(
+    outputAmounts: bigint[],
+    tapeAmountSetIn: bigint[],
+  ): string[];
   /** Builds a validated current Coin UTXO with its authenticated ftBalance. */
   static buildUTXO(tx: Transaction, codeVout: number): Transaction.IUnspentOutput;
-  /** Reads raw balance from a validated current Coin Tape or a legacy FTape. */
+  /** Reads raw balance from a validated Coin TBC20 Tape. */
   static getBalanceFromTape(tape: string): bigint;
   /** Builds the fixed 123-field ABI for an address or contract-controlled Coin. */
   static getUnlockScript(options: CoinTBC20UnlockWithPrivateKeyOptions): Script;

@@ -1,5 +1,5 @@
 import * as tbc from 'tbc-lib-js';
-import { CoinTBC20 } from '../contract/coinTbc20';
+import { CoinTBC20 } from './coinTbc20Code';
 import {
   encodeTBC20UnsignedLE,
   getTBC20ContractTxData,
@@ -8,8 +8,8 @@ import {
   getTBC20PrePreTxArray,
   getTBC20PreTxData,
   readTBC20TapeAmounts,
-} from './tbc20unlock';
-import type { CoinCodeDescriptor } from '../contract/coinTbc20';
+} from '../tbc20/tbc20unlock';
+import type { CoinCodeDescriptor } from './coinTbc20Code';
 import type {
   TBC20ContractTxData,
   TBC20OutputData,
@@ -19,7 +19,7 @@ import type {
   TBC20TransactionResolver,
   TBC20UnlockWithPrivateKeyOptions,
   TBC20UnlockWithSignatureOptions,
-} from './tbc20unlock';
+} from '../tbc20/tbc20unlock';
 
 export type CoinTBC20UnlockWithSignatureOptions = TBC20UnlockWithSignatureOptions;
 export type CoinTBC20UnlockWithPrivateKeyOptions = TBC20UnlockWithPrivateKeyOptions;

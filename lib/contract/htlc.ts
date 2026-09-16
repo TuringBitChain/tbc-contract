@@ -5,13 +5,13 @@ import {
   parseDecimalToBigInt,
   getFtBalanceFromTape,
   isCoinCodeScript,
-} from "../util/util";
+} from "../util/common/util";
 import {
   FT_V2_CODE_LENGTH,
   FT_V4_CODE_LENGTH,
   LEGACY_COIN_CODE_LENGTH,
   getFTVersion,
-} from "../util/ftscript";
+} from "../util/ft/ftscript";
 const FT = require("./ft");
 const stableCoin = require("./stableCoin");
 

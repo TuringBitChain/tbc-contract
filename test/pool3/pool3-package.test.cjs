@@ -14,7 +14,7 @@ const publicPool3Exports = [
 ];
 const existingExports = [
   'version', 'versionGuard', 'FT', 'TBC20', 'TokenValidator', 'TokenValidationError',
-  'poolNFT', 'poolNFT2', 'API', 'NFT', 'TBC721', 'MultiSig', 'piggyBank', 'orderBook', 'HTLC', 'stableCoin', 'stableCoinLegacy', 'CoinTBC20',
+  'poolNFT', 'poolNFT2', 'API', 'NFT', 'TBC721', 'MultiSig', 'piggyBank', 'orderBook', 'HTLC', 'stableCoin', 'Coin', 'CoinTBC20',
   'buildUTXO', 'buildFtPrePreTxData', 'getFtBalanceFromTape', 'selectTXfromLocal', 'fetchInBatches',
   'fetchWithRetry', 'getOpCode', 'getLpCostAddress', 'getLpCostAmount', 'isLock', 'fetchTBCLockTime',
   'safeJSONParse', 'parseDecimalToBigInt', 'fillCharLengthInFT', 'isCoinCodeScript',
@@ -54,8 +54,13 @@ function typeCheck(ts, rootNames, virtual = new Map(), publicationRoot) {
   const publicationOnly = name => publicationRoot && name.startsWith(publicationRoot + path.sep);
   host.fileExists = name => virtual.has(name) || (!publicationOnly(name) && original.fileExists(name));
   host.readFile = name => virtual.get(name) ?? (publicationOnly(name) ? undefined : original.readFile(name));
-  host.directoryExists = name => [...virtual.keys()].some(file => file.startsWith(name + path.sep)) ||
-    (!publicationOnly(name) && !!original.directoryExists?.(name));
+  host.directoryExists = name => {
+    // Node16 resolves a package-root import to a directory with a trailing
+    // slash; normalize it before testing virtual descendants.
+    const directory = path.resolve(name);
+    return [...virtual.keys()].some(file => file.startsWith(directory + path.sep)) ||
+      (!publicationOnly(directory) && !!original.directoryExists?.(directory));
+  };
   host.getSourceFile = (name, languageVersion, onError, shouldCreate) => virtual.has(name)
     ? ts.createSourceFile(name, virtual.get(name), languageVersion, true)
     : publicationOnly(name) ? undefined : original.getSourceFile(name, languageVersion, onError, shouldCreate);
@@ -89,7 +94,7 @@ test('npm publication includes standalone declarations, compiled code and the fr
   assert.deepEqual([...files].filter(name => name.endsWith('.d.ts')), ['index.d.ts']);
   for (const name of ['lib/contract/poolNFT3.0.js', 'lib/contract/ftlpTbc20.js',
     'lib/util/poolnft3/transaction.js', 'lib/validator/poolnft3.js', 'lib/contract/stableCoin.js',
-    'lib/contract/stableCoinLegacy.js', 'lib/contract/coinTbc20.js', 'lib/util/coinTbc20unlock.js']) assert(files.has(name), name);
+    'lib/contract/coinTbc20.js', 'lib/util/coinTbc20Code.js', 'lib/util/coinTbc20unlock.js']) assert(files.has(name), name);
   assert(![...files].some(name => name.endsWith('.ts') && !name.endsWith('.d.ts')), 'TypeScript implementation sources must not be needed at runtime');
   assert(![...files].some(name => name.startsWith('tests/') || name.startsWith('test/')), 'Offline fixtures must not enter the npm package');
 
@@ -112,11 +117,14 @@ test('npm publication includes standalone declarations, compiled code and the fr
   const virtualRoot = path.join(os.tmpdir(), 'tbc-contract-pool3-publication-view');
   const virtual = new Map();
   for (const name of files) {
-    if (name.endsWith('.d.ts')) virtual.set(path.join(virtualRoot, name), fs.readFileSync(path.join(root, name), 'utf8'));
+    if (name.endsWith('.d.ts') || name === 'package.json')
+      virtual.set(path.join(virtualRoot, name), fs.readFileSync(path.join(root, name), 'utf8'));
   }
   const consumer = path.join(virtualRoot, 'test/pool3/pool3-types.test.ts');
   virtual.set(consumer, fs.readFileSync(path.join(__dirname, 'pool3-types.test.ts'), 'utf8'));
-  const program = typeCheck(ts, [consumer], virtual, virtualRoot);
+  const coinConsumer = path.join(virtualRoot, 'test/coin/coin.package.types.test.ts');
+  virtual.set(coinConsumer, fs.readFileSync(path.join(root, 'test/coin/coin.package.types.test.ts'), 'utf8'));
+  const program = typeCheck(ts, [consumer, coinConsumer], virtual, virtualRoot);
   const loadedTypes = program.getSourceFiles().filter(file => file.fileName.startsWith(virtualRoot + path.sep) && file.isDeclarationFile);
   assert.deepEqual(loadedTypes.map(file => file.fileName), [path.join(virtualRoot, 'index.d.ts')]);
 });

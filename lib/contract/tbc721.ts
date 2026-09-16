@@ -1,7 +1,7 @@
 import * as tbc from 'tbc-lib-js';
-import { buildTBC721Code, buildTBC721UnlockScript, parseTBC721Code } from '../util/tbc721unlock';
-import type { TBC721CodeDescriptor } from '../util/tbc721unlock';
-import { parseDecimalToBigInt } from '../util/util';
+import { buildTBC721Code, buildTBC721UnlockScript, parseTBC721Code } from '../util/tbc721/tbc721unlock';
+import type { TBC721CodeDescriptor } from '../util/tbc721/tbc721unlock';
+import { parseDecimalToBigInt } from '../util/common/util';
 
 const NFT = require('./nft');
 

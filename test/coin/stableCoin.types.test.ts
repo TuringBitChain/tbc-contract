@@ -1,8 +1,8 @@
 /** Compile-only package-root consumer fixture; no network or runtime execution. */
 import { PrivateKey, Transaction, Script } from "tbc-lib-js";
 import {
+  Coin,
   stableCoin,
-  stableCoinLegacy,
   CoinTBC20,
   type AdminPrepared,
   type CoinAncestors,
@@ -16,7 +16,7 @@ import type {
   CoinTBC20UnlockWithPrivateKeyOptions as DeepPrivateKeyOptions,
   CoinTBC20UnlockWithSignatureOptions as DeepSignatureOptions,
 } from "../../lib/util/coinTbc20unlock";
-import type { CoinTBC20 as DeepCodec } from "../../lib/contract/coinTbc20";
+import type { CoinTBC20 as DeepCodec } from "../../lib/util/coinTbc20Code";
 
 declare const key: PrivateKey;
 declare const admin: Buffer;
@@ -26,7 +26,7 @@ declare const parent: Transaction;
 declare const ancestor: Transaction;
 declare const signature64: Buffer;
 
-const coin = new stableCoin({ name: "Zero Decimal", symbol: "ZERO", amount: "123", decimal: 0 });
+const coin = new Coin({ name: "Zero Decimal", symbol: "ZERO", amount: "123", decimal: 0 });
 coin.initialize({
   codeScript: "00", tapeScript: "00", totalSupply: "123", decimal: 0,
   name: "Zero Decimal", symbol: "ZERO", contractTxid: "00",
@@ -66,9 +66,9 @@ CoinTBC20.replaceTapeAmounts(tape, parsed.amounts);
 CoinTBC20.setLockTime(tape, 500000001);
 CoinTBC20.getRequiredLockTime([0, 500000001]);
 CoinTBC20.verifyInputLock(parent, 0, tape, descriptor, true);
-const coinUTXO: Transaction.IUnspentOutput = stableCoin.buildUTXO(parent, 0);
-const balance: bigint = stableCoin.getBalanceFromTape(tape.toHex());
-const nftOutputs: Transaction.Output[] = stableCoin.buildCoinNftOutput(code, code, tape);
+const coinUTXO: Transaction.IUnspentOutput = Coin.buildUTXO(parent, 0);
+const balance: bigint = Coin.getBalanceFromTape(tape.toHex());
+const nftOutputs: Transaction.Output[] = Coin.buildCoinNftOutput(code, code, tape);
 
 const unlockOptions: CoinTBC20UnlockWithPrivateKeyOptions = {
   currentTx: parent, inputIndex: 0, preTx: ancestor, preTxVout: 0,
@@ -76,11 +76,11 @@ const unlockOptions: CoinTBC20UnlockWithPrivateKeyOptions = {
   ancestorTransactions: sharedMap, privateKey: key,
   contractController: { transaction: ancestor, currentInputIndex: 1 },
 };
-const unlock: Script = stableCoin.getUnlockScript(unlockOptions);
+const unlock: Script = Coin.getUnlockScript(unlockOptions);
 const externalOptions: CoinTBC20UnlockWithSignatureOptions = {
   ...unlockOptions, signature: Buffer.alloc(65), publicKey: admin,
 };
-const external: Script = stableCoin.getUnlockScriptWithSignature(externalOptions);
+const external: Script = Coin.getUnlockScriptWithSignature(externalOptions);
 const deepPrivate: DeepPrivateKeyOptions = unlockOptions;
 const deepSignature: DeepSignatureOptions = externalOptions;
 const roundTripPrivate: CoinTBC20UnlockWithPrivateKeyOptions = deepPrivate;
@@ -88,10 +88,14 @@ const roundTripSignature: CoinTBC20UnlockWithSignatureOptions = deepSignature;
 const deepCodec: typeof DeepCodec = CoinTBC20;
 const publicCodec: typeof CoinTBC20 = deepCodec;
 
-const legacy = new stableCoinLegacy({ name: "Legacy", symbol: "OLD", amount: 1, decimal: 1 });
+const legacy = new stableCoin({ name: "Legacy", symbol: "OLD", amount: 1, decimal: 1 });
 const legacyPrepared: AdminPrepared<string[]> = legacy.createCoin(admin, key, address, utxo, parent);
 const oldRaw: string = legacy.transfer(key, address, "1", [utxo], utxo, [parent], ["57"]);
 const initializedLegacy = new stableCoin("00");
 const oldCompatible: string = initializedLegacy.transfer(key, address, "1", [utxo], utxo, [parent], ["57"]);
 void [issued, minted, coinUTXO, balance, nftOutputs, unlock, external, roundTripPrivate,
   roundTripSignature, publicCodec, legacyPrepared, oldRaw, oldCompatible];
+
+// New and old APIs must retain distinct ancestor proof types.
+// @ts-expect-error coin accepts actual ancestors, never old serialized FT proofs.
+coin.transfer(key, address, "1", [utxo], utxo, [parent], ["57"]);
