@@ -14,7 +14,7 @@ const publicPool3Exports = [
 ];
 const existingExports = [
   'version', 'versionGuard', 'FT', 'TBC20', 'TokenValidator', 'TokenValidationError',
-  'poolNFT', 'poolNFT2', 'API', 'NFT', 'MultiSig', 'piggyBank', 'orderBook', 'HTLC', 'stableCoin',
+  'poolNFT', 'poolNFT2', 'API', 'NFT', 'MultiSig', 'piggyBank', 'orderBook', 'HTLC', 'stableCoin', 'stableCoinLegacy', 'CoinTBC20',
   'buildUTXO', 'buildFtPrePreTxData', 'getFtBalanceFromTape', 'selectTXfromLocal', 'fetchInBatches',
   'fetchWithRetry', 'getOpCode', 'getLpCostAddress', 'getLpCostAmount', 'isLock', 'fetchTBCLockTime',
   'safeJSONParse', 'parseDecimalToBigInt', 'fillCharLengthInFT', 'isCoinCodeScript',
@@ -78,16 +78,18 @@ test('CommonJS root exposes only the supported Pool3 API and preserves every exi
   assert.equal(sdk.calculateSwapFees(1000000n, sdk.resolveSwapFeePolicy()).totalFeeSat, 3500n);
 });
 
-test('npm publication needs only index.d.ts, compiled code and the four frozen artifacts', () => {
+test('npm publication includes standalone declarations, compiled code and the frozen Pool3/Coin artifacts', () => {
   const data = JSON.parse(execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'],
     { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }))[0];
   const files = new Set(data.files.map(file => file.path));
   for (const name of ['pool', 'pool_hash_lock', 'ftlp_tbc20', 'ftlp_tbc20_locktime']) {
     assert(files.has(`lib/util/poolnft3/artifacts/${name}.json`));
   }
+  assert(files.has('lib/util/coin_tbc20.json'));
   assert.deepEqual([...files].filter(name => name.endsWith('.d.ts')), ['index.d.ts']);
   for (const name of ['lib/contract/poolNFT3.0.js', 'lib/contract/ftlpTbc20.js',
-    'lib/util/poolnft3/transaction.js', 'lib/validator/poolnft3.js']) assert(files.has(name), name);
+    'lib/util/poolnft3/transaction.js', 'lib/validator/poolnft3.js', 'lib/contract/stableCoin.js',
+    'lib/contract/stableCoinLegacy.js', 'lib/contract/coinTbc20.js', 'lib/util/coinTbc20unlock.js']) assert(files.has(name), name);
   assert(![...files].some(name => name.endsWith('.ts') && !name.endsWith('.d.ts')), 'TypeScript implementation sources must not be needed at runtime');
   assert(![...files].some(name => name.startsWith('tests/') || name.startsWith('test/')), 'Offline fixtures must not enter the npm package');
 

@@ -1,460 +1,287 @@
-> **v1.6 Breaking change**：`createCoin` / `mintCoin` / `freezeCoinUTXO` / `unfreezeCoinUTXO`
-> 的管理员鉴权从 ECDSA 迁移到 BIP327 **MuSig2 n-of-n Schnorr**。
->
-> - 第一参数从 `privateKey_admin` 改为 `aggPubkey32`（32 字节 x-only 聚合公钥，
->   由所有管理员私钥按 BIP327 `keyAgg` 聚合得到），第二参数新增 `feePrivateKey`
->   （任何可付 fee 的普通 ECDSA 私钥，不必是管理员）。
-> - 这四个方法不再直接返回 raw tx，而是返回 `AdminPrepared<R> = { tx, sighashes, finalize(schnorrSigs64) => R }`。
->   调用方须拿 `prepared.sighashes` 里的每个 32 字节 sighash 交给管理员们跑 MuSig2
->   仪式产出 64 字节 Schnorr 签名，再调 `prepared.finalize(sigs)` 拿到最终 raw tx 广播。
-> - 其余方法（transfer / batchTransfer / mergeCoin 等）接口未变。
->
-> 下方示例内联了一个 `runMuSigCeremony` 辅助函数演示单机聚合；生产环境中每个
-> 管理员必须在各自的机器上本地生成 `secnonce` 并严格保证一次性使用。
+# StableCoin：Coin TBC20 SDK
+
+`stableCoin` 默认创建基于 `coin_tbc20.ct` 的稳定币。发行凭证仍使用 coinNFT，管理员仍以 MuSig2 聚合公钥和外部 Schnorr 签名完成首次发行、增发、冻结、解冻。
+
+当前 Coin Code 为 **2981 字节**，解锁脚本采用固定 **123 字段 ABI**。Tape 使用 `TBC20TAPE` 标记，支持区块高度和时间戳锁。普通 FT 的旧解锁脚本和祖交易证明字符串不能用于新 Coin。
+
+本页的构造和签名流程可以离线运行，不会自动广播。现有 `API.fetchCoinInfo`、余额、UTXO 等服务对新 Code/Tape 标记的索引支持尚未验证；不能据此假定服务端已经上线。接入前应确认索引器支持，或者自行保存原始交易与 Coin 元数据。
+
+## 导出与兼容
 
 ```ts
 import * as tbc from "tbc-lib-js";
 import {
-  API,
   stableCoin,
+  stableCoinLegacy,
+  CoinTBC20,
   buildUTXO,
-  buildFtPrePreTxData,
-  fetchInBatches,
-  parseDecimalToBigInt,
+  type CoinAncestors,
+  type AdminPrepared,
 } from "tbc-contract";
+```
 
+| 导出 | 用途 |
+| --- | --- |
+| `stableCoin` | 默认创建新 Coin；初始化旧 Coin Code 后按旧逻辑转账、增发及管理 |
+| `stableCoinLegacy` | 显式使用原 FT 实现，包括继续创建旧版本 Coin |
+| `CoinTBC20` | 新版 Code/Tape 的严格解析、构造、控制权替换与锁条件检查 |
+| `stableCoin.getUnlockScript` | 私钥签名的新 Coin 底层 ABI 构造器 |
+| `stableCoin.getUnlockScriptWithSignature` | 外部签名的新 Coin 底层 ABI 构造器 |
+
+新 Code 不会改变已发行旧币的合约身份。旧币的 `FTape`、解锁格式和 `prepreTxData: string[]` 继续保留在 legacy 路径。混合新旧 Coin 输入不能合并为同一种资产。
+
+新 Coin 的祖证明参数由 `string[]` 改为 `CoinAncestors`，其他常用方法仍使用原来的位置参数及返回形式。`mergeCoin` 的 `localTX` 参数现在可省略。新实例的 `totalSupply` 是原始最小单位数量；`createCoin`、`mintCoin`、转账及批量收款参数中的金额是显示单位，建议始终传十进制字符串。`decimal` 支持 `0..18`，不接受科学计数法或超出精度的有效小数位。
+
+## 管理员 MuSig2 签名
+
+四个管理员方法返回：
+
+```ts
+interface AdminPrepared<R> {
+  tx: tbc.Transaction;
+  sighashes: { inputIndex: number; sighash: Buffer }[];
+  finalize(schnorrSigs64: Buffer[]): R;
+}
+```
+
+`aggPubkey32` 是 32 字节 x-only 聚合公钥，链上管理员身份为其 `HASH160`。`sighash` 是可直接用于 BIP340 签名的 32 字节消息；`finalize` 接收与 `sighashes` 顺序相同的 64 字节签名，SDK 追加 `0x41` 哈希类型字节。手续费输入使用独立普通私钥进行 ECDSA 签名。
+
+SDK 在输出及费用确定后给出 sighash。获取 `prepared` 后不要修改交易、输入所引用的 UTXO、输出或锁时间；新 Coin 路径会拒绝被修改的签名上下文、无效签名和重复 finalize。
+
+下面演示 2-of-2 或一般 n-of-n 的完整聚合过程，不包含任何密钥。单机函数仅用于测试签名协议：生产流程应让各签名方分别保存私钥和秘密 nonce，并且每个秘密 nonce 只使用一次。
+
+```ts
 const { MuSig2, Schnorr } = tbc.crypto;
 
-const network = "testnet";
-
-// ---------- 管理员（MuSig2 n-of-n，这里以 2-of-2 为例） ----------
-// 线上应分别保存在不同签名方；两个 WIF 示例仅用于说明。
-const adminSk1 = tbc.PrivateKey.fromString("");
-const adminSk2 = tbc.PrivateKey.fromString("");
-
-// ---------- 付手续费的 ECDSA 私钥（可以与 admin 无关） ----------
-const feePrivateKey = tbc.PrivateKey.fromString("");
-const feeAddress = feePrivateKey.toAddress().toString();
-
-// ---------- 普通用户私钥（用于 transfer / batchTransfer 等） ----------
-const privateKeyA = tbc.PrivateKey.fromString("");
-const addressA = tbc.Address.fromPrivateKey(privateKeyA).toString();
-const addressB = "1FhSD1YezTXbdRGWzNbNvUj6qeKQ6gZDMq";
-
-const coinName = "USD Test";
-const coinSymbol = "USDT";
-const coinDecimal = 6;
-const coinSupply = 1000000000; // 精度6，初次供应量10亿
-const coinContractTxid = ""; // createCoin 后获得
-
-// ----------------------------------------------------------------------
-// MuSig2 工具
-// ----------------------------------------------------------------------
-
-/** 按字节序排序后聚合 n-of-n 管理员公钥，返回 keyAggCtx 和 32 字节 x-only aggPubkey。 */
-function buildAdminKeyAgg(sks: tbc.PrivateKey[]) {
-  const pubkeys33Raw: Buffer[] = sks.map((sk) =>
-    MuSig2.pubkeyFromSk(sk.toBuffer())
+function buildAdminKeyAgg(keys: tbc.PrivateKey[]) {
+  const pubkeys = MuSig2.keySort(
+    keys.map(key => MuSig2.pubkeyFromSk(key.toBuffer())),
   );
-  const pubkeys33 = MuSig2.keySort(pubkeys33Raw);
-  const keyAggCtx = MuSig2.keyAgg(pubkeys33);
-  const aggPubkey32: Buffer = MuSig2.getAggPubkey(keyAggCtx);
-  return { keyAggCtx, aggPubkey32 };
+  const keyAggCtx = MuSig2.keyAgg(pubkeys);
+  return { keyAggCtx, aggPubkey32: MuSig2.getAggPubkey(keyAggCtx) };
 }
 
-/**
- * 模拟多个管理员共同对一批 sighash 签名，返回同长度的 64 字节 Schnorr 签名数组。
- * 实际部署中，secnonce 必须只使用一次且本地保存，禁止跨 sighash / 跨会话复用。
- */
 function runMuSigCeremony(
-  sks: tbc.PrivateKey[],
+  keys: tbc.PrivateKey[],
   keyAggCtx: tbc.crypto.MuSig2KeyAggCtx,
   aggPubkey32: Buffer,
-  sighashes: Buffer[]
+  messages: Buffer[],
 ): Buffer[] {
-  const skBufs = sks.map((sk) => sk.toBuffer());
-  const pubkeys33 = skBufs.map((sk) => MuSig2.pubkeyFromSk(sk));
-  const sigs: Buffer[] = [];
-  for (const msg of sighashes) {
-    // Round 1: 每个签名方为当前 msg 生成 (secnonce, pubnonce)
-    const nonces = skBufs.map((sk, i) =>
-      MuSig2.nonceGen({
-        pk: pubkeys33[i],
-        sk,
-        aggpk: aggPubkey32,
-        msg,
-      })
-    );
-    const aggnonce = MuSig2.nonceAgg(nonces.map((n) => n.pubnonce));
-    // Round 2: 根据聚合 nonce 构建会话并生成 partial sig
+  const secrets = keys.map(key => key.toBuffer());
+  const pubkeys = secrets.map(secret => MuSig2.pubkeyFromSk(secret));
+  return messages.map(msg => {
+    // 第一轮：每个参与者为这一个消息生成新的 nonce 对。
+    const nonces = secrets.map((sk, i) => MuSig2.nonceGen({
+      pk: pubkeys[i], sk, aggpk: aggPubkey32, msg,
+    }));
+    const aggnonce = MuSig2.nonceAgg(nonces.map(nonce => nonce.pubnonce));
     const session = MuSig2.buildSession(keyAggCtx, aggnonce, msg);
-    const psigs = skBufs.map((sk, i) =>
-      MuSig2.partialSign(nonces[i].secnonce, sk, session)
+    // 第二轮：参与者分别签名，协调方合并 partial signatures。
+    const partials = secrets.map((sk, i) =>
+      MuSig2.partialSign(nonces[i].secnonce, sk, session),
     );
-    const sig64 = MuSig2.partialSigAgg(psigs, session);
-    // 本地 BIP340 校验，提前拦住仪式配置错误
-    if (!Schnorr.verify(msg, sig64, aggPubkey32)) {
-      throw new Error("Schnorr.verify 本地校验失败");
+    const signature = MuSig2.partialSigAgg(partials, session);
+    if (!Schnorr.verify(msg, signature, aggPubkey32)) {
+      throw new Error("MuSig2 aggregate signature failed verification");
     }
-    sigs.push(sig64);
-  }
-  return sigs;
+    return signature;
+  });
 }
-
-async function main() {
-  try {
-    const { keyAggCtx, aggPubkey32 } = buildAdminKeyAgg([adminSk1, adminSk2]);
-
-    // CreateCoin（发行稳定币合约，仅需执行一次）
-    // stableCoin 继承自 FT，构造方式与 FT 相同
-    {
-      const newCoin = new stableCoin({
-        name: coinName,
-        symbol: coinSymbol,
-        amount: coinSupply,
-        decimal: coinDecimal,
-      });
-
-      const utxo = await API.fetchUTXO(feePrivateKey, 0.01, network); // 手续费 utxo
-      const utxoTX = await API.fetchTXraw(utxo.txId, network);
-      const mintMessage = "SourceChain: BSC, TXID: 34434..."; // 一般为跨链信息：起始链名称 + 交易 id
-
-      // 第一阶段：组装交易并返回需要管理员 MuSig2 签名的 sighash 列表
-      const prepared = newCoin.createCoin(
-        aggPubkey32,
-        feePrivateKey,
-        feeAddress, // 初始接收地址（示例放到 fee 地址名下，可改为任意地址）
-        utxo,
-        utxoTX,
-        mintMessage
-      );
-
-      // 第二阶段：管理员共同对每个 sighash 生成 64B Schnorr 签名
-      const sighashes = prepared.sighashes.map((x) => x.sighash);
-      const sigs = runMuSigCeremony(
-        [adminSk1, adminSk2],
-        keyAggCtx,
-        aggPubkey32,
-        sighashes
-      );
-
-      // 合成最终 raw tx 并依次广播：coinNft → coinMint
-      const [coinNftTXRaw, coinMintTXRaw] = prepared.finalize(sigs);
-      const contractTxid = await API.broadcastTXraw(coinNftTXRaw, network);
-      console.log("StableCoin Contract ID (= coinNft txid):", contractTxid);
-      await API.broadcastTXraw(coinMintTXRaw, network);
-    }
-
-    // MintCoin（增发稳定币，仅管理员可操作）
-    {
-      const mintAmount = 50000; // 增发数量，number 或 string（大数请使用 string）
-      const Coin = new stableCoin(coinContractTxid);
-      const CoinInfo = await API.fetchCoinInfo(Coin.contractTxid, network);
-      Coin.initialize(CoinInfo.coinInfo);
-
-      const utxo = await API.fetchUTXO(feePrivateKey, 0.01, network);
-      // 获取 coinNFT 的父交易和爷交易
-      const nftPreTX = await API.fetchTXraw(CoinInfo.nftTXID, network);
-      const nftPrePreTX = await API.fetchTXraw(
-        nftPreTX.inputs[0].prevTxId.toString("hex"),
-        network
-      );
-
-      const mintMessage = "SourceChain: BSC, TXID: 34434...";
-
-      const prepared = Coin.mintCoin(
-        aggPubkey32,
-        feePrivateKey,
-        addressA, // 接收新铸稳定币的地址
-        mintAmount,
-        utxo,
-        nftPreTX,
-        nftPrePreTX,
-        mintMessage
-      );
-      const sighashes = prepared.sighashes.map((x) => x.sighash);
-      const sigs = runMuSigCeremony(
-        [adminSk1, adminSk2],
-        keyAggCtx,
-        aggPubkey32,
-        sighashes
-      );
-      const mintTXRaw = prepared.finalize(sigs);
-      await API.broadcastTXraw(mintTXRaw, network);
-    }
-
-    // Transfer（转移稳定币）
-    {
-      const transferAmount = 1000;
-      const Coin = new stableCoin(coinContractTxid);
-      const CoinInfo = await API.fetchCoinInfo(Coin.contractTxid, network);
-      Coin.initialize(CoinInfo.coinInfo);
-
-      const tbc_amount = 0; // 如果同时转 tbc 和稳定币可设置此值，只转稳定币可忽略
-      const utxo = await API.fetchUTXO(privateKeyA, tbc_amount + 0.01, network);
-      const transferAmountBN = parseDecimalToBigInt(transferAmount, Coin.decimal);
-
-      const coinutxo_codeScript = stableCoin
-        .buildFTtransferCode(Coin.codeScript, addressA)
-        .toBuffer()
-        .toString("hex");
-      const coinutxos = await API.fetchCoinUTXOs(
-        Coin.contractTxid,
-        addressA,
-        transferAmountBN,
-        coinutxo_codeScript,
-        network,
-        5 // 转移交易 coinUTXO 数量上限 5 个
-      );
-
-      let preTXs: tbc.Transaction[] = [];
-      let prepreTxDatas: string[] = [];
-      for (let i = 0; i < coinutxos.length; i++) {
-        preTXs.push(await API.fetchTXraw(coinutxos[i].txId, network));
-        prepreTxDatas.push(
-          await API.fetchFtPrePreTxData(preTXs[i], coinutxos[i].outputIndex, network)
-        );
-      }
-
-      const transferTXRaw = Coin.transfer(
-        privateKeyA,
-        addressB,
-        transferAmount,
-        coinutxos,
-        utxo,
-        preTXs,
-        prepreTxDatas
-        // tbc_amount  // 可选，同时转 tbc
-      );
-      await API.broadcastTXraw(transferTXRaw, network);
-    }
-
-    // BatchTransfer（批量转移稳定币到多个地址，每笔交易最多 5 人，超过自动链式拆分，支持重复地址）
-    {
-      const receivers: { address: string; amount: number | string }[] = [
-        { address: addressA, amount: 500 },
-        { address: addressB, amount: 700 },
-        // ... 最多可添加任意数量，每 5 人一笔交易
-      ];
-      const totalAmount = 500 + 700;
-
-      const Coin = new stableCoin(coinContractTxid);
-      const CoinInfo = await API.fetchCoinInfo(Coin.contractTxid, network);
-      Coin.initialize(CoinInfo.coinInfo);
-
-      const batchCount = Math.ceil(receivers.length / 5);
-      const transferFee = 0.005 * batchCount;
-      const utxo = await API.fetchUTXO(privateKeyA, transferFee, network);
-      const totalAmountBN = parseDecimalToBigInt(totalAmount, Coin.decimal);
-
-      const coinutxo_codeScript = stableCoin
-        .buildFTtransferCode(Coin.codeScript, addressA)
-        .toBuffer()
-        .toString("hex");
-      const coinutxos = await API.fetchCoinUTXOs(
-        Coin.contractTxid,
-        addressA,
-        totalAmountBN,
-        coinutxo_codeScript,
-        network
-      );
-
-      let preTXs: tbc.Transaction[] = [];
-      let prepreTxDatas: string[] = [];
-      for (let i = 0; i < coinutxos.length; i++) {
-        preTXs.push(await API.fetchTXraw(coinutxos[i].txId, network));
-        prepreTxDatas.push(
-          await API.fetchFtPrePreTxData(preTXs[i], coinutxos[i].outputIndex, network)
-        );
-      }
-
-      const transferTXs = Coin.batchTransfer(
-        privateKeyA,
-        receivers,
-        coinutxos,
-        utxo,
-        preTXs,
-        prepreTxDatas
-      );
-      transferTXs.length > 0
-        ? await API.broadcastTXsraw(transferTXs, network)
-        : console.log("BatchTransfer failed");
-    }
-
-    // MergeCoin（合并稳定币 UTXO，要求所有 coinutxo 均已上链）
-    {
-      const Coin = new stableCoin(coinContractTxid);
-      const CoinInfo = await API.fetchCoinInfo(Coin.contractTxid, network);
-      Coin.initialize(CoinInfo.coinInfo);
-
-      const coinutxo_codeScript = stableCoin
-        .buildFTtransferCode(Coin.codeScript, addressA)
-        .toBuffer()
-        .toString("hex");
-      const coinutxos = await API.fetchCoinUTXOList(
-        Coin.contractTxid,
-        addressA,
-        coinutxo_codeScript,
-        network
-      );
-
-      const mergeFee = 0.005 * coinutxos.length;
-      const utxo = await API.fetchUTXO(privateKeyA, mergeFee, network);
-
-      let localTX: tbc.Transaction[] = [];
-      let preTXs: tbc.Transaction[] = [];
-      let prepreTxDatas: string[] = [];
-
-      const batchSize = 300;
-      preTXs = await fetchInBatches<tbc.Transaction.IUnspentOutput, tbc.Transaction>(
-        coinutxos,
-        batchSize,
-        (batch) => Promise.all(batch.map((u) => API.fetchTXraw(u.txId, network))),
-        "fetchFtPreTXData"
-      );
-      prepreTxDatas = await fetchInBatches<tbc.Transaction.IUnspentOutput, string>(
-        coinutxos,
-        batchSize,
-        (batch) =>
-          Promise.all(
-            batch.map((u) => {
-              const globalIndex = coinutxos.indexOf(u);
-              return API.fetchFtPrePreTxData(
-                preTXs[globalIndex],
-                u.outputIndex,
-                network
-              );
-            })
-          ),
-        "fetchFtPrePreTxData"
-      );
-
-      const mergeTXs = Coin.mergeCoin(
-        privateKeyA,
-        coinutxos,
-        utxo,
-        preTXs,
-        prepreTxDatas,
-        localTX
-      );
-      mergeTXs.length > 0
-        ? await API.broadcastTXsraw(mergeTXs, network)
-        : console.log("Merge success");
-    }
-
-    // FreezeCoinUTXO（冻结指定地址的稳定币 UTXO，仅管理员可操作）
-    // 冻结后，持有者须等到 lock_time 之后才能再使用该 UTXO
-    // 注意：本次最多处理 5 个 UTXO，超过会抛错（v1.6 从静默截断改为显式报错）
-    {
-      const lock_time = 1774410989; // 冻结至 unix 时间 1774410989
-      const Coin = new stableCoin(coinContractTxid);
-      const CoinInfo = await API.fetchCoinInfo(Coin.contractTxid, network);
-      Coin.initialize(CoinInfo.coinInfo);
-
-      // 被冻结地址的稳定币 utxo（所有输入须属于同一地址）
-      const targetAddress = addressB;
-      const coinutxo_codeScript = stableCoin
-        .buildFTtransferCode(Coin.codeScript, targetAddress)
-        .toBuffer()
-        .toString("hex");
-      const coinutxos = (
-        await API.fetchCoinUTXOList(
-          Coin.contractTxid,
-          targetAddress,
-          coinutxo_codeScript,
-          network
-        )
-      ).slice(0, 5); // 每次最多 5 个
-
-      const utxo = await API.fetchUTXO(feePrivateKey, 0.01, network);
-
-      let preTXs: tbc.Transaction[] = [];
-      let prepreTxDatas: string[] = [];
-      for (let i = 0; i < coinutxos.length; i++) {
-        preTXs.push(await API.fetchTXraw(coinutxos[i].txId, network));
-        prepreTxDatas.push(
-          await API.fetchFtPrePreTxData(preTXs[i], coinutxos[i].outputIndex, network)
-        );
-      }
-
-      const prepared = Coin.freezeCoinUTXO(
-        aggPubkey32,
-        feePrivateKey,
-        lock_time,
-        coinutxos,
-        utxo,
-        preTXs,
-        prepreTxDatas
-      );
-      // freeze 每个 ftutxo 都需要一个 admin Schnorr 签名（N 条 sighash）
-      const sighashes = prepared.sighashes.map((x) => x.sighash);
-      const sigs = runMuSigCeremony(
-        [adminSk1, adminSk2],
-        keyAggCtx,
-        aggPubkey32,
-        sighashes
-      );
-      const freezeTXRaw = prepared.finalize(sigs);
-      await API.broadcastTXraw(freezeTXRaw, network);
-    }
-
-    // UnfreezeCoinUTXO（解冻指定地址的稳定币 UTXO，仅管理员可操作）
-    // 同样最多 5 个 UTXO
-    {
-      const Coin = new stableCoin(coinContractTxid);
-      const CoinInfo = await API.fetchCoinInfo(Coin.contractTxid, network);
-      Coin.initialize(CoinInfo.coinInfo);
-
-      const targetAddress = addressB;
-      const coinutxo_codeScript = stableCoin
-        .buildFTtransferCode(Coin.codeScript, targetAddress)
-        .toBuffer()
-        .toString("hex");
-      const allUtxos = await API.fetchCoinUTXOList(
-        Coin.contractTxid,
-        targetAddress,
-        coinutxo_codeScript,
-        network
-      );
-      // 只选 lock_time 未到期的（已被冻结的）
-      const nowTs = Math.floor(Date.now() / 1000);
-      const coinutxos = allUtxos
-        .filter((u: any) => Number(u.lockTime) > nowTs)
-        .slice(0, 5);
-
-      const utxo = await API.fetchUTXO(feePrivateKey, 0.01, network);
-
-      let preTXs: tbc.Transaction[] = [];
-      let prepreTxDatas: string[] = [];
-      for (let i = 0; i < coinutxos.length; i++) {
-        preTXs.push(await API.fetchTXraw(coinutxos[i].txId, network));
-        prepreTxDatas.push(
-          await API.fetchFtPrePreTxData(preTXs[i], coinutxos[i].outputIndex, network)
-        );
-      }
-
-      const prepared = Coin.unfreezeCoinUTXO(
-        aggPubkey32,
-        feePrivateKey,
-        coinutxos,
-        utxo,
-        preTXs,
-        prepreTxDatas
-      );
-      const sighashes = prepared.sighashes.map((x) => x.sighash);
-      const sigs = runMuSigCeremony(
-        [adminSk1, adminSk2],
-        keyAggCtx,
-        aggPubkey32,
-        sighashes
-      );
-      const unfreezeTXRaw = prepared.finalize(sigs);
-      await API.broadcastTXraw(unfreezeTXRaw, network);
-    }
-  } catch (error: any) {
-    console.error("Error:", error);
-  }
-}
-
-main();
 ```
+
+## 首次发行与继续增发
+
+准备发行所需的付款 UTXO 和创建该 UTXO 的完整交易。`fundingTX` 与 `fundingUTXO.txId` 必须匹配，费用 UTXO 必须由 `feeKey` 控制。
+
+```ts
+function prepareIssuance(
+  aggPubkey32: Buffer,
+  feeKey: tbc.PrivateKey,
+  holderAddress: string,
+  fundingUTXO: tbc.Transaction.IUnspentOutput,
+  fundingTX: tbc.Transaction,
+) {
+  const coin = new stableCoin({
+    name: "USD Test", symbol: "USDT", amount: "1000000", decimal: 6,
+  });
+  const prepared = coin.createCoin(
+    aggPubkey32, feeKey, holderAddress, fundingUTXO, fundingTX,
+    "Source-chain deposit reference",
+  );
+  return { coin, prepared };
+}
+
+// 管理员分别完成每个消息的签名后：
+function finishIssuance(
+  coin: stableCoin,
+  prepared: AdminPrepared<string[]>,
+  signatures64: Buffer[],
+) {
+  const [issuerRaw, firstMintRaw] = prepared.finalize(signatures64);
+  const issuerTX = new tbc.Transaction(issuerRaw);
+  const firstMintTX = new tbc.Transaction(firstMintRaw);
+  // 沿用旧 SDK 的标识语义：contractTxid 是首笔 mint 交易 ID。
+  if (coin.contractTxid !== firstMintTX.id) throw new Error("contract ID mismatch");
+  const firstCoinUTXO = stableCoin.buildUTXO(firstMintTX, 3);
+  return { issuerRaw, firstMintRaw, issuerTX, firstMintTX, firstCoinUTXO };
+}
+```
+
+返回交易依赖顺序是 `issuerRaw → firstMintRaw`。如需广播，调用方按这个顺序发送。`coin.contractTxid` 为首次 mint 的交易 ID，后续增发不改变该标识；它与初始发行凭证交易 ID 不同。链上发行权限绑定的是完整 coinNFT Code 的 SHA256。首次 mint 和后续 mint 的输出 `0/1/2` 分别是 coinNFT Code/Hold/Tape，输出 `3/4` 是新发行 Coin Code/Tape。
+
+增发花费**最新**发行凭证的 Code 和 Hold：
+
+```ts
+function prepareNextMint(
+  coin: stableCoin,
+  aggPubkey32: Buffer,
+  feeKey: tbc.PrivateKey,
+  recipient: string,
+  feeUTXO: tbc.Transaction.IUnspentOutput,
+  latestIssuerTX: tbc.Transaction,
+  issuerAncestorTX: tbc.Transaction,
+) {
+  return coin.mintCoin(
+    aggPubkey32, feeKey, recipient, "50000", feeUTXO,
+    latestIssuerTX, issuerAncestorTX, "Additional deposit reference",
+  );
+}
+```
+
+`issuerAncestorTX` 是 `latestIssuerTX.inputs[0]` 引用的交易。对于第二次 mint，`latestIssuerTX` 就是首次 mint 交易，`issuerAncestorTX` 是初始 issuer 交易。累计供应从最新 coinNFT Tape 的 `coinTotalSupply` 读取，以原始最小单位相加，并在 finalize 成功后更新实例。
+
+恢复已有新 Coin 时，可从可信 Code/Tape 和发行凭证元数据初始化：
+
+```ts
+const restored = new stableCoin(firstMintTX.id);
+restored.initialize({
+  contractTxid: firstMintTX.id,
+  codeScript: firstMintTX.outputs[3].script.toHex(),
+  tapeScript: firstMintTX.outputs[4].script.toHex(),
+  name: "USD Test", symbol: "USDT", decimal: 6,
+  totalSupply: "1000000000000", // raw，等于 1000000 * 10^6
+});
+```
+
+`initialize` 校验当前 Code 模板和 Tape 结构；调用方仍需保证输入数据来自可信链上交易，并用最新发行凭证获得当前累计供应。
+
+## 祖交易数据
+
+每个 Coin 输入需要 `parentTxs[i]`，即创建该 UTXO 的完整交易。还需要该父交易 Tape 中每个**非零金额槽**对应输入的祖交易原文。槽 `k` 对应父交易 `inputs[k]`，不能删除中间的零槽后重新编号。
+
+`CoinAncestors` 接受以下任意一种新格式：
+
+- 所有输入共享的 `Transaction[]`。
+- 所有输入共享的 `ReadonlyMap<string, Transaction>`，键为小写交易 ID。
+- 同步函数 `(txid: string) => Transaction | undefined`。
+- 按 Coin 输入顺序排列的 resolver 数组，例如 `[input0Ancestors, input1Ancestors]`。
+
+下面的辅助函数使用外部提供的 `fetchTX` 获取原始交易；它不依赖新 Coin 索引接口，也可替换为本地数据库读取。
+
+```ts
+async function loadCoinAncestors(
+  utxos: tbc.Transaction.IUnspentOutput[],
+  parents: tbc.Transaction[],
+  fetchTX: (txid: string) => Promise<tbc.Transaction>,
+): Promise<Map<string, tbc.Transaction>> {
+  const result = new Map<string, tbc.Transaction>();
+  for (let i = 0; i < utxos.length; i++) {
+    const tape = CoinTBC20.parseTape(parents[i].outputs[utxos[i].outputIndex + 1].script);
+    for (let slot = 0; slot < 6; slot++) {
+      if (tape.amounts[slot] === 0n) continue;
+      const txid = parents[i].inputs[slot].prevTxId.toString("hex").toLowerCase();
+      if (!result.has(txid)) result.set(txid, await fetchTX(txid));
+    }
+  }
+  return result;
+}
+```
+
+离线首笔转账最简单的祖数据是 `new Map([[issuerTX.id, issuerTX]])`，父交易是 `firstMintTX`，Coin UTXO 位于输出 `3`。后续链式交易需要保存已构建的父交易；批量转账及合并方法会自动维护其内部链的祖数据。
+
+新 Coin 不接受 `API.fetchFtPrePreTxData()` 或 `buildFtPrePreTxData()` 返回的旧 proof 字符串。它们只能用于 legacy Coin。
+
+## 转账、批量转账与合并
+
+```ts
+const ancestors: CoinAncestors = new Map([[issuerTX.id, issuerTX]]);
+const coinUTXO = stableCoin.buildUTXO(firstMintTX, 3);
+
+// holderKey 同时签 Coin 输入及费用输入。
+const transferRaw = coin.transfer(
+  holderKey, recipientAddress, "10.5", [coinUTXO], feeUTXO,
+  [firstMintTX], ancestors,
+);
+
+// 下面是替代转账的另一个方案；不能与上面的交易重复花费同一组 UTXO。
+const batch = coin.batchTransfer(
+  holderKey,
+  [{ address: recipientA, amount: "10" }, { address: recipientB, amount: "20" }],
+  [coinUTXO], feeUTXO, [firstMintTX], ancestors,
+);
+```
+
+`transfer` 返回 raw hex；第八参数可附送显示单位的 TBC 数量。`transferWithAdditionalInfo` 的第八参数是追加独立 OP_RETURN 输出的 `Buffer`。`batchTransfer` 每笔最多处理 5 个接收人，超过时返回依赖有序的 `{ txraw }[]`。
+
+`mergeCoin(holderKey, coinUTXOs, feeUTXO, parentTxs, ancestors, localTX?)` 将多笔 UTXO 合并，返回依赖有序的 `{ txraw }[]`；`mergeFT` 是新 Coin 路径上的兼容别名。每笔交易最多 5 个 Coin 输入和 1 个费用输入。Coin 余额取自认证父交易 Tape，显式传入的 `ftBalance` 如不一致会被拒绝。
+
+Coin Tape 有 6 个金额槽，每槽最大 `2^63 - 1`。某个 UTXO 汇总余额若大于此值，不能在后续交易中用单槽表示其全部贡献。SDK 会拒绝单个输出槽的超限分配；调用方应将贡献拆到多个输出，当前高层方法不会自动拆分超限槽。
+
+## 冻结、解冻与成熟锁
+
+```ts
+const preparedFreeze = coin.freezeCoinUTXO(
+  aggPubkey32, feeKey, 900000, // 区块高度；也可传 Unix 时间戳
+  coinUTXOs, feeUTXO, parentTxs, ancestors,
+);
+const freezeRaw = preparedFreeze.finalize(freezeSignatures64);
+
+// 解冻需要使用上笔冻结后新产生的 UTXO、对应父交易和祖数据。
+const preparedThaw = coin.unfreezeCoinUTXO(
+  aggPubkey32, feeKey, frozenCoinUTXOs, nextFeeUTXO,
+  frozenParentTxs, frozenAncestors,
+);
+const thawRaw = preparedThaw.finalize(thawSignatures64);
+```
+
+锁值是无符号 32 位整数：`0` 表示无锁；`1..499999999` 是区块高度；`500000000..4294967295` 是 Unix 时间戳。普通持有人/合约控制分支要求父 Tape 的锁已被交易 `nLockTime` 满足，且非零锁必须和交易使用相同的高度/时间戳类别。高层转账拒绝把非零高度锁与时间戳锁放进同一笔普通转账。
+
+管理员不受父 Tape 成熟时间限制，可立即延长锁、冻结或解冻；SDK 的管理员交易使用 `nLockTime=0`。所有 Coin 输入，包括管理员输入和无锁输入，都使用非 final sequence。冻结/解冻按原控制权分组保留余额，多个持有人不会被合并到第一个地址；管理员仍需为每个 Coin 输入提供一个签名。
+
+普通转账在满足输入锁后，输出 Coin 的锁重置为 `0`。脚本验证只说明交易声明的 `nLockTime` 满足合约；交易能否立即进入内存池/区块还取决于当时链状态。
+
+Tape 长度固定为 `S`（`66..127`）：金额区从偏移 `3` 开始共 `48` 字节；元数据位于偏移 `51..S-16`；锁字段头 `04` 位于 `S-15`，锁值为 `S-14..S-11` 的 4 字节小端整数；最后是 `09` 和 `TBC20TAPE`。名称、符号和精度的 push 编码合计必须放进最多 61 字节的元数据区。
+
+## 合约控制与底层构造
+
+合约控制权仍是 `HASH160(SHA256(controllerCode)) || 01`，地址控制权为地址的 20 字节 HASH160 加 `00`。`CoinTBC20.replaceController` 保持 Coin 身份不变；改变管理员、发行凭证或固定 Tape 长度会改变 Coin 身份。
+
+合约控制的花费必须同时包含正在花费的控制合约输入，并通过 `contractController` 指明其来源交易和当前输入位置。高级调用方可以使用：
+
+```ts
+const unlock = stableCoin.getUnlockScript({
+  currentTx: tx,
+  inputIndex: coinVin,
+  preTx: parentCoinTX,
+  preTxVout: coinVout,
+  ancestorTransactions: ancestors,
+  outputGroups, // 顺序覆盖每个物理输出；Coin 使用 {codeVout, tapeVout}
+  privateKey: signingKey,
+  contractController: {
+    transaction: controllerParentTX,
+    currentInputIndex: controllerVin,
+  },
+});
+```
+
+在所有输入、输出、sequence、`nLockTime` 和费用确定后再构造签名；如使用会重新计算找零的交易 API，应通过回调重新生成解锁脚本。外部签名调用 `getUnlockScriptWithSignature`，将 `privateKey` 替换为 `signature` 与 `publicKey`；签名必须含 `0x41`。
+
+新 Coin 上的旧 `getFTunlock`、`getFTunlockSwap`、`getFTmintCode`、`MintFT` 和弃用的 `transferContract` 会拒绝调用。请使用上述 Coin ABI 或 `createCoin` / `mintCoin`。
+
+## 本地回归
+
+```sh
+npm run test:coin
+```
+
+该命令构建 SDK 后运行 `test/coin/*.test.cjs` 和 `test/coinTbc20.local.test.cjs`，覆盖新的 ABI、Code/Tape 编码与离线签名流程，不访问链或广播交易。旧 `test/stableCoin.schnorr.test.ts` 是在线操作示例，包含广播调用，不是本命令的测试入口。

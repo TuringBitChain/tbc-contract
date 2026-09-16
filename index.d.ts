@@ -2190,7 +2190,122 @@ export interface AdminPrepared<R> {
   finalize: (schnorrSigs64: Buffer[]) => R;
 }
 
-export class stableCoin extends FT {
+/** New stablecoins use Coin TBC20; decimal amounts should be passed as exact strings. */
+export interface CoinDefinition {
+  name: string;
+  symbol: string;
+  amount: number | string;
+  /** Integer from 0 to 18. */
+  decimal: number;
+}
+
+export interface CoinInfo {
+  codeScript: string;
+  tapeScript: string;
+  /** Cumulative supply in raw minimum units, normally obtained from the issuance NFT. */
+  totalSupply: bigint | string;
+  decimal: number;
+  name: string;
+  symbol: string;
+  contractTxid?: string;
+}
+
+/**
+ * Current Coin inputs accept a shared transaction resolver or one resolver per input.
+ * Legacy hex proof strings are accepted only for initialized legacy coins.
+ */
+export type CoinAncestors =
+  | TBC20AncestorResolver
+  | readonly TBC20AncestorResolver[]
+  | string[];
+
+export type CoinScriptLike = Script | Buffer | string;
+export interface CoinCodeOptions {
+  /** SHA256 of the complete issuance NFT Code at ancestor vout 0. */
+  coinNftCodeHash: Buffer;
+  /** HASH160 of the exact signing public key bytes; 32-byte x-only for MuSig2. */
+  adminPubKeyHash: Buffer;
+  /** Integer from 66 to 127. */
+  tapeSize: number;
+  /** 20-byte HASH160 followed by 00 (address) or 01 (contract). */
+  controller: Buffer;
+}
+export interface CoinCodeDescriptor extends CoinCodeOptions {
+  identity: Buffer;
+  codeSize: number;
+}
+export interface CoinTapeOptions {
+  /** Exactly six nonnegative bigint values, each at most 2^63 - 1. */
+  amounts: readonly bigint[];
+  tapeSize: number;
+  /** Unsigned uint32: zero, block height or Unix timestamp. */
+  lockTime: number;
+  /** Complete push-only script fragment; remaining capacity is filled with OP_0. */
+  metadata?: Buffer;
+}
+export interface CoinTapeDescriptor {
+  amounts: readonly bigint[];
+  balance: bigint;
+  tapeSize: number;
+  lockTime: number;
+  /** Includes OP_0 padding. */
+  metadata: Buffer;
+}
+
+/** Strict current Coin Code/Tape codecs; these methods do not sign or broadcast. */
+export class CoinTBC20 {
+  static readonly codeSatoshis: 500;
+  static readonly codeSize: 2981;
+  static readonly partialOffset: 2944;
+  static readonly maxSlotAmount: bigint;
+  static readonly lockTimeThreshold: 500000000;
+  static instantiateCode(options: CoinCodeOptions): Script;
+  static parseCode(value: CoinScriptLike): CoinCodeDescriptor;
+  static validateCode(value: CoinScriptLike, expected?: Partial<CoinCodeOptions>): CoinCodeDescriptor;
+  static getCodeIdentity(value: CoinScriptLike): Buffer;
+  static replaceController(value: CoinScriptLike, controller: Buffer): Script;
+  static buildTape(options: CoinTapeOptions): Script;
+  static parseTape(value: CoinScriptLike, profile?: { tapeSize?: number }): CoinTapeDescriptor;
+  static replaceTapeAmounts(value: CoinScriptLike, amounts: readonly bigint[]): Script;
+  static setLockTime(value: CoinScriptLike, lockTime: number): Script;
+  /** Rejects mixed nonzero block-height and timestamp locks. */
+  static getRequiredLockTime(lockTimes: readonly number[]): number;
+  /** Checks script lock requirements; transaction finality needs current chain state. */
+  static verifyInputLock(
+    tx: Transaction,
+    inputIndex: number,
+    tape: CoinScriptLike,
+    profile?: { tapeSize?: number },
+    administrator?: boolean,
+  ): void;
+}
+
+export interface CoinTBC20UnlockCommonOptions {
+  currentTx: Transaction;
+  inputIndex: number;
+  preTx: Transaction;
+  preTxVout: number;
+  /** Ordered groups must cover every physical output exactly once. */
+  outputGroups: readonly { codeVout: number; tapeVout?: number }[];
+  ancestorTransactions: TBC20AncestorResolver;
+  contractController?: {
+    /** Transaction that created the controlling contract UTXO. */
+    transaction: Transaction;
+    /** Current vin spending that controlling contract UTXO. */
+    currentInputIndex: number;
+  };
+}
+export interface CoinTBC20UnlockWithPrivateKeyOptions extends CoinTBC20UnlockCommonOptions {
+  privateKey: PrivateKey;
+}
+export interface CoinTBC20UnlockWithSignatureOptions extends CoinTBC20UnlockCommonOptions {
+  /** Includes the SIGHASH_ALL | SIGHASH_FORKID byte (0x41). */
+  signature: string | Buffer;
+  publicKey: string | Buffer | import("tbc-lib-js").PublicKey;
+}
+
+/** Explicit legacy FT-based stablecoin API; existing Code and FTape formats are unchanged. */
+export class stableCoinLegacy extends FT {
   constructor(
     txidOrParams:
       | string
@@ -2260,7 +2375,7 @@ export class stableCoin extends FT {
   static buildCoinNftOutput(
     nftCodeScript: Script,
     nftHoldScript: Script,
-    data: coinNftData,
+    nftTapeScript: Script,
   ): Transaction.Output[];
   static buildCoinNftTX(
     feePrivateKey: PrivateKey,
@@ -2280,6 +2395,137 @@ export class stableCoin extends FT {
     address: string;
     type: "address" | "contract";
   };
+}
+
+/** Creates Coin TBC20 by default; initialized legacy Code continues through the legacy path. */
+export class stableCoin extends stableCoinLegacy {
+  constructor(
+    txidOrParams:
+      | string
+      | CoinDefinition,
+  );
+  /** Restores trusted Code/Tape metadata. totalSupply is always in raw minimum units. */
+  initialize(info: CoinInfo): void;
+  createCoin(
+    aggPubkey32: Buffer,
+    feePrivateKey: PrivateKey,
+    address_to: string,
+    utxo: Transaction.IUnspentOutput,
+    utxoTX: Transaction,
+    mintMessage?: string,
+  ): AdminPrepared<string[]>;
+  mintCoin(
+    aggPubkey32: Buffer,
+    feePrivateKey: PrivateKey,
+    address_to: string,
+    mintAmount: number | string,
+    utxo: Transaction.IUnspentOutput,
+    nftPreTX: Transaction,
+    nftPrePreTX: Transaction,
+    mintMessage?: string,
+  ): AdminPrepared<string>;
+  transfer(
+    privateKey_from: PrivateKey,
+    address_to: string,
+    ft_amount: number | string,
+    ftutxo_a: Transaction.IUnspentOutput[],
+    utxo: Transaction.IUnspentOutput,
+    preTX: Transaction[],
+    ancestors: CoinAncestors,
+    tbc_amount?: number | string,
+  ): string;
+  batchTransfer(
+    privateKey_from: PrivateKey,
+    receivers: { address: string; amount: number | string }[],
+    ftutxo: Transaction.IUnspentOutput[],
+    utxo: Transaction.IUnspentOutput,
+    preTX: Transaction[],
+    ancestors: CoinAncestors,
+  ): Array<{ txraw: string }>;
+  transferWithAdditionalInfo(
+    privateKey: PrivateKey,
+    recipient: string,
+    humanAmount: number | string,
+    tokenUTXOs: Transaction.IUnspentOutput[],
+    feeUTXO: Transaction.IUnspentOutput,
+    parentTxs: Transaction[],
+    ancestors: CoinAncestors,
+    additionalInfo: Buffer,
+  ): string;
+  /** Alias for mergeCoin; supports the current Coin ancestry format. */
+  mergeFT(
+    privateKey: PrivateKey,
+    tokenUTXOs: Transaction.IUnspentOutput[],
+    feeUTXO: Transaction.IUnspentOutput,
+    parentTxs: Transaction[],
+    ancestors: CoinAncestors,
+    localTX?: Transaction[],
+  ): Array<{ txraw: string }>;
+  /** @deprecated Use batchTransfer with a receiver array. */
+  batchTransfer_old(
+    privateKey: PrivateKey,
+    receivers: Map<string, number | string>,
+    tokenUTXOs: Transaction.IUnspentOutput[],
+    feeUTXO: Transaction.IUnspentOutput,
+    parentTxs: Transaction[],
+    ancestors: CoinAncestors,
+  ): Array<{ txraw: string }>;
+  mergeCoin(
+    privateKey_from: PrivateKey,
+    ftutxo: Transaction.IUnspentOutput[],
+    utxo: Transaction.IUnspentOutput,
+    preTX: Transaction[],
+    ancestors: CoinAncestors,
+    localTX?: Transaction[],
+  ): Array<{ txraw: string }>;
+  freezeCoinUTXO(
+    aggPubkey32: Buffer,
+    feePrivateKey: PrivateKey,
+    lock_time: number,
+    ftutxo: Transaction.IUnspentOutput[],
+    utxo: Transaction.IUnspentOutput,
+    preTX: Transaction[],
+    ancestors: CoinAncestors,
+  ): AdminPrepared<string>;
+  unfreezeCoinUTXO(
+    aggPubkey32: Buffer,
+    feePrivateKey: PrivateKey,
+    ftutxo: Transaction.IUnspentOutput[],
+    utxo: Transaction.IUnspentOutput,
+    preTX: Transaction[],
+    ancestors: CoinAncestors,
+  ): AdminPrepared<string>;
+  static buildCoinNftOutput(
+    nftCodeScript: Script,
+    nftHoldScript: Script,
+    nftTapeScript: Script,
+  ): Transaction.Output[];
+  static buildCoinNftTX(
+    feePrivateKey: PrivateKey,
+    adminPubHashHex: string,
+    utxo: Transaction.IUnspentOutput,
+    data: coinNftData,
+  ): Transaction;
+  static getCoinMintCode(
+    adminPubHashHex: string,
+    receiveAddress: string,
+    codeHash: string,
+    tapeSize: number,
+  ): Script;
+  static setLockTimeInTape(tapeScript: Script, lockTime: number): Script;
+  static getLockTimeFromTape(tapeScript: Script): number;
+  static getAddressFromCode(codeScript: string): {
+    address: string;
+    type: "address" | "contract";
+  };
+  /** Builds a validated current Coin UTXO with its authenticated ftBalance. */
+  static buildUTXO(tx: Transaction, codeVout: number): Transaction.IUnspentOutput;
+  /** Reads raw balance from a validated current Coin Tape or a legacy FTape. */
+  static getBalanceFromTape(tape: string): bigint;
+  /** Builds the fixed 123-field ABI for an address or contract-controlled Coin. */
+  static getUnlockScript(options: CoinTBC20UnlockWithPrivateKeyOptions): Script;
+  /** Accepts an ECDSA transaction signature or a 65-byte Schnorr signature with 0x41. */
+  static getUnlockScriptWithSignature(options: CoinTBC20UnlockWithSignatureOptions): Script;
 }
 
 export function buildUTXO(

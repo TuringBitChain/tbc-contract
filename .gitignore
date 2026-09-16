@@ -5,6 +5,12 @@ test/*
 test/pool3/*
 !test/pool3/*.cjs
 !test/pool3/*.test.ts
+!test/coin/
+test/coin/*
+!test/coin/*.cjs
+!test/coin/*.test.ts
+!test/coin/coin-testnet-network-evidence.json
+!test/coinTbc20.local.test.cjs
 test.*
 dev/
 lib/**/*.d.ts

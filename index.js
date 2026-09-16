@@ -41,6 +41,8 @@ contract.piggyBank = require("./lib/contract/piggyBank.js");
 contract.orderBook = require("./lib/contract/orderBook.js");
 contract.HTLC = require("./lib/contract/htlc.js");
 contract.stableCoin = require("./lib/contract/stableCoin.js");
+contract.stableCoinLegacy = require("./lib/contract/stableCoinLegacy.js");
+contract.CoinTBC20 = require("./lib/contract/coinTbc20.js").CoinTBC20;
 
 contract.buildUTXO = require("./lib/util/util").buildUTXO;
 contract.buildFtPrePreTxData = require("./lib/util/util").buildFtPrePreTxData;
