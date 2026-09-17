@@ -1,6 +1,7 @@
 import * as tbc from 'tbc-lib-js';
 import { validatePool3Transaction } from '../../validator/poolnft3';
 import type { Pool3ValidationReport } from '../../validator/poolnft3';
+import { POOL3_MIN_TBC_OUTPUT_SAT } from './fees';
 
 export type Pool3SignerRole = 'funding' | 'pool-controller' | 'pool-ft' | 'user-ft' | 'lp-owner';
 export interface Pool3InputReference {
@@ -30,6 +31,7 @@ export interface Pool3SignedInput extends Pool3InputReference {
 export interface Pool3FeePolicy {
   satoshisPerKb?: bigint;
   minimumFeeSat?: bigint;
+  /** Defaults to 10 sat; may be increased, but never lowered below 10 sat. */
   changeDustSat?: bigint;
 }
 export interface Pool3Signature {
@@ -121,7 +123,13 @@ export function p2pkhInputPlan(reference: Pool3SignedInput): Pool3InputPlan {
   };
 }
 export function addPool3Output(script: tbc.Script, amountSat: bigint): tbc.Transaction.Output {
-  return new tbc.Transaction.Output({ script, satoshis: safeSatoshis(amountSat) });
+  const satoshis = safeSatoshis(amountSat);
+  assertP2pkhOutputAmount(script, amountSat);
+  return new tbc.Transaction.Output({ script, satoshis });
+}
+function assertP2pkhOutputAmount(script: tbc.Script, amountSat: bigint): void {
+  if (script.isPublicKeyHashOut() && amountSat < POOL3_MIN_TBC_OUTPUT_SAT)
+    pool3Fail('P2PKH output must be at least 10 sat');
 }
 function cloneTx(tx: tbc.Transaction): tbc.Transaction {
   const copy = new tbc.Transaction(tx.uncheckedSerialize());
@@ -163,7 +171,7 @@ export class PreparedPool3Transaction {
       pool3Fail('transaction requires 1–6 inputs; consolidate funding explicitly');
     const rate = plan.feePolicy?.satoshisPerKb ?? 80n;
     const minimum = plan.feePolicy?.minimumFeeSat ?? 80n;
-    const dust = plan.feePolicy?.changeDustSat ?? 42n;
+    const dust = plan.feePolicy?.changeDustSat ?? POOL3_MIN_TBC_OUTPUT_SAT;
     for (const [name, value] of [
       ['satoshisPerKb', rate],
       ['minimumFeeSat', minimum],
@@ -172,6 +180,7 @@ export class PreparedPool3Transaction {
       safeSatoshis(value, name);
       if (value === 0n) pool3Fail(`${name} must be positive`);
     }
+    if (dust < POOL3_MIN_TBC_OUTPUT_SAT) pool3Fail('changeDustSat must be at least 10 sat');
     if (
       plan.lockTime !== undefined &&
       (!Number.isInteger(plan.lockTime) || plan.lockTime < 0 || plan.lockTime > 0xffffffff)
@@ -212,6 +221,7 @@ export class PreparedPool3Transaction {
       plan.outputs.reduce((sum, output) => {
         if (!Number.isSafeInteger(output.satoshis) || output.satoshis < 0)
           pool3Fail('invalid output satoshis');
+        assertP2pkhOutputAmount(output.script, BigInt(output.satoshis));
         return sum + BigInt(output.satoshis);
       }, 0n);
     if (available < 0n) pool3Fail('insufficient TBC for fixed outputs');

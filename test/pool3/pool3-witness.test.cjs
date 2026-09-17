@@ -94,20 +94,20 @@ function scenario(option, { locked = false, tokenChange = false, tbcChange = fal
   const fee = zeroFee ? 0n : 10n;
   if (option === 1) {
     const dT = 10000n, newV = old.V + dT;
-    const ratio = (newV - POOL3_CODE_DUST) * 1000000n / dT;
-    dA = first ? 20000n : old.A * 1000000n / ratio;
-    dL = first ? dT : old.L * 1000000n / ratio;
+    dL = first ? dT : dT * old.L / (old.V - POOL3_CODE_DUST);
+    dA = first ? 20000n : (old.A * dL + old.L - 1n) / old.L;
     next = { L: old.L + dL, A: old.A + dA, T: old.T + dT, V: newV };
   } else if (option === 2) {
     dL = 10000n; dA = 20000n; payment = 10000n;
     next = { L: old.L - dL, A: old.A - dA, T: old.T - payment, V: old.V - payment };
   } else if (option === 3) {
-    const newT = old.T + 10000n, newA = old.T * old.A / newT;
-    dA = old.A - newA;
+    const newT = old.T + 10000n;
+    dA = old.A * 10000n / newT;
+    const newA = old.A - dA;
     next = { ...old, A: newA, T: newT, V: old.V + 10001n };
   } else {
     dA = 10000n;
-    const newT = old.T * old.A / (old.A + dA), codeDecrease = old.T - newT - 1n;
+    const newT = old.T - old.T * dA / (old.A + dA), codeDecrease = old.T - newT - 1n;
     payment = codeDecrease - fee;
     next = { ...old, A: old.A + dA, T: newT, V: old.V - codeDecrease };
   }

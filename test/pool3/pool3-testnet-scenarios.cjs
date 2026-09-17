@@ -12,7 +12,6 @@ const { FTLPTBC20: LP } = require('../../lib/contract/ftlpTbc20.js');
 const { getTBC20Controller } = require('../../lib/util/tbc20unlock.js');
 const { getPoolUnlockLeafCount } = require('../../lib/util/poolnft3/witness.js');
 
-const PRECISION = 1_000_000n;
 // Independent oracle constant, pinned to both current Pool source contracts.
 const DUST = 1500n;
 const OPTIONS = { addLP: 1, removeLP: 2, swapFT: 3, swapTBC: 4 };
@@ -32,36 +31,37 @@ function expectedOperation(operation, previous, args) {
   const s = mathState(previous), expected = { ...s };
   let deltas = {};
   if (operation === 'addLP') {
-    const d = args.incrementSat;
     const first = s.ftLpAmount === 0n && s.ftAAmount === 0n && s.tbcAmount === 0n;
-    const ratio = first ? undefined : d <= s.tbcAmount
-      ? (s.poolValue + d - DUST) * PRECISION / d
-      : d * PRECISION / (s.poolValue + d - DUST);
-    const lp = first ? d : d <= s.tbcAmount ? s.ftLpAmount * PRECISION / ratio : s.ftLpAmount * ratio / PRECISION;
-    const ft = first ? args.firstFtAmountRaw : d <= s.tbcAmount ? s.ftAAmount * PRECISION / ratio : s.ftAAmount * ratio / PRECISION;
-    Object.assign(expected, { poolValue: s.poolValue + d, tbcAmount: s.tbcAmount + d,
+    const ceil = (n, d) => (n + d - 1n) / d;
+    const lp = first ? args.incrementSat : args.incrementFtRaw !== undefined
+      ? args.incrementFtRaw * s.ftLpAmount / s.ftAAmount
+      : args.incrementSat * s.ftLpAmount / (s.poolValue - DUST);
+    const d = first ? args.incrementSat : ceil((s.poolValue - DUST) * lp, s.ftLpAmount);
+    const ft = first ? args.firstFtAmountRaw : ceil(s.ftAAmount * lp, s.ftLpAmount);
+    const reserve = first ? d : ceil(s.tbcAmount * lp, s.ftLpAmount);
+    Object.assign(expected, { poolValue: s.poolValue + d, tbcAmount: s.tbcAmount + reserve,
       ftLpAmount: s.ftLpAmount + lp, ftAAmount: s.ftAAmount + ft });
-    deltas = { ftLpIncrementRaw: lp, ftAIncrementRaw: ft, isFirstAddLP: first, ratio };
+    deltas = { ftLpIncrementRaw: lp, ftAIncrementRaw: ft, isFirstAddLP: first,
+      tbcIncrementSat: d, tbcReserveIncrementSat: reserve };
   } else if (operation === 'removeLP') {
-    const ratio = s.ftLpAmount * PRECISION / args.burnAmountRaw;
-    const ft = s.ftAAmount * PRECISION / ratio;
-    const reserve = s.tbcAmount * PRECISION / ratio;
-    const payout = (s.poolValue - DUST) * PRECISION / ratio;
+    const ft = s.ftAAmount * args.burnAmountRaw / s.ftLpAmount;
+    const reserve = s.tbcAmount * args.burnAmountRaw / s.ftLpAmount;
+    const payout = (s.poolValue - DUST) * args.burnAmountRaw / s.ftLpAmount;
     Object.assign(expected, { poolValue: s.poolValue - payout, tbcAmount: s.tbcAmount - reserve,
       ftLpAmount: s.ftLpAmount - args.burnAmountRaw, ftAAmount: s.ftAAmount - ft });
-    deltas = { ratio, ftADecrementRaw: ft, tbcDecrementSat: reserve, poolValueDecrementSat: payout };
+    deltas = { ftADecrementRaw: ft, tbcDecrementSat: reserve, poolValueDecrementSat: payout };
   } else {
     // This scenario uses plan 1: total 35 bps, LP 25 bps. The service
     // component is the difference of two floors, not floor(base * 10 bps).
     const base = operation === 'swapFT' ? args.inputTbcSat
-      : s.tbcAmount - s.tbcAmount * s.ftAAmount / (s.ftAAmount + args.inputFtRaw);
+      : s.tbcAmount * args.inputFtRaw / (s.ftAAmount + args.inputFtRaw);
     const total = base * 35n / 10000n, lp = base * 25n / 10000n;
     const service = total - lp >= 10n ? total - lp : 0n;
     if (operation === 'swapFT') {
       expected.poolValue += base - service;
       expected.tbcAmount += base - total;
-      expected.ftAAmount = s.tbcAmount * s.ftAAmount / expected.tbcAmount;
-      deltas.ftOutRaw = s.ftAAmount - expected.ftAAmount;
+      deltas.ftOutRaw = s.ftAAmount * (base - total) / expected.tbcAmount;
+      expected.ftAAmount = s.ftAAmount - deltas.ftOutRaw;
     } else {
       expected.poolValue -= base - total + service;
       expected.tbcAmount -= base;

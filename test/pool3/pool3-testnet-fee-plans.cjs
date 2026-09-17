@@ -46,11 +46,11 @@ function swapOracle(previous, operation, input, lpPlan) {
     const fee = fees(input, lpPlan);
     next.poolValue += input - fee.serviceFeePaidSat;
     next.tbcAmount += fee.netAmountSat;
-    next.ftAAmount = previous.tbcAmount * previous.ftAAmount / next.tbcAmount;
+    next.ftAAmount = previous.ftAAmount - previous.ftAAmount * fee.netAmountSat / next.tbcAmount;
     return { nextState: next, fees: fee, ftOutRaw: previous.ftAAmount - next.ftAAmount };
   }
   next.ftAAmount += input;
-  next.tbcAmount = previous.tbcAmount * previous.ftAAmount / next.ftAAmount;
+  next.tbcAmount = previous.tbcAmount - previous.tbcAmount * input / next.ftAAmount;
   const gross = previous.tbcAmount - next.tbcAmount, fee = fees(gross, lpPlan);
   next.poolValue -= fee.netAmountSat + fee.serviceFeePaidSat;
   return { nextState: next, fees: fee, tbcOutSat: fee.netAmountSat, grossTbcOutSat: gross };
@@ -247,7 +247,7 @@ async function runFeePlan({ lane, lpPlan, tapeSize, ftGenesisTx, userFT: initial
   const beforeRemove = stateOf(currentPool.nextState);
   const removed = await pool.removeLP({ ...common(), userLP: heldLP, burnAmountRaw: FIRST_TBC,
     receiverAddress: ownerAddress, minFtOutRaw: 1n, minTbcOutSat: 80n });
-  assert.equal(removed.quote.ratio, 1_000_000n);
+  assert.equal(removed.quote.ftLpBurnRaw, beforeRemove.ftLpAmount);
   assert.equal(asset(removed, 'user-ft').amountRaw, beforeRemove.ftAAmount);
   assert.equal(BigInt(removed.transaction.outputs[removed.layout.userTbcVout].satoshis), beforeRemove.poolValue - DUST);
   assert.deepEqual(stateOf(removed.nextState), { ftLpAmount: 0n, ftAAmount: 0n, tbcAmount: 0n, poolValue: DUST });

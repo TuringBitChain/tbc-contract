@@ -29,7 +29,7 @@ test('frozen JSON and template checksums match the published manifest', () => {
   assert.equal(artifacts.POOL3_ARTIFACT_MANIFEST.sourceCommit, null);
   assert.equal(artifacts.POOL3_ARTIFACT_MANIFEST.sourceRevision, 'worktree');
   assert.match(artifacts.POOL3_ARTIFACT_MANIFEST.sourceBaseCommit, /^[0-9a-f]{40}$/);
-  assert.deepEqual(artifacts.POOL3_ARTIFACT_MANIFEST.sourceChanges, ['src/pool.ct', 'src/pool_hash_lock.ct']);
+  assert.deepEqual(artifacts.POOL3_ARTIFACT_MANIFEST.sourceChanges, ['src/pool_hash_lock.ct']);
   for (const name of ['pool', 'pool_hash_lock', 'ftlp_tbc20', 'ftlp_tbc20_locktime']) {
     const artifact = artifacts.getPool3Artifact(name);
     const manifest = artifacts.POOL3_ARTIFACT_MANIFEST.artifacts[name];
@@ -51,7 +51,8 @@ test('ordinary and 1-5-controller Pool templates round-trip all supported Tape s
       const params = { ...parameters(authorization), ftTapeSize: size };
       const code = artifacts.instantiatePoolCode(params);
       const parsed = artifacts.parsePoolCode(code);
-      assert.equal(code.toBuffer().length, count === 0 ? 5203 : 5228 + 27 * (count - 1));
+      const template = artifacts.POOL3_ARTIFACT_MANIFEST.artifacts[count === 0 ? 'pool' : 'pool_hash_lock'];
+      assert.equal(code.toBuffer().length, template.codeBytes + 27 * Math.max(0, count - 1));
       assert.deepEqual(parsed.originalUTXO, params.originalUTXO);
       assert.deepEqual(parsed.tbcFeeScriptHash, params.tbcFeeScriptHash);
       assert.equal(parsed.ftTapeSize, size);
@@ -210,61 +211,181 @@ test('Tape parser rejects truncation, padding, invalid headers, invalid flags an
   assert.throws(() => tape.assertPoolTapeConfigurationUnchanged(encoded, changedConfig), /cannot change/);
 });
 
-test('AddLP preserves first-mint FT input and both current ratio branches', () => {
+test('all Pool variants reject extra bytes between the state and marker even with valid framing at both ends', () => {
+  for (const locked of [false, true]) for (const timed of [false, true]) {
+    const encoded = tape.encodePoolTape(fields(locked, timed));
+    const padded = Buffer.concat([encoded.subarray(0, 134), Buffer.from([0]), encoded.subarray(134)]);
+    assert.equal(padded.length, 144);
+    assert.deepEqual(padded.subarray(0, 134), encoded.subarray(0, 134));
+    assert.deepEqual(padded.subarray(-9), encoded.subarray(-9));
+    assert.throws(() => tape.decodePoolTape(padded), /exactly 143 bytes/);
+    assert.throws(() => tape.decodePoolTape(tbc.Script.fromBuffer(padded)), /exactly 143 bytes/);
+  }
+});
+
+test('AddLP preserves first-mint FT input and prices subsequent LP against old reserves', () => {
   const first = math.quoteAddLP(initial, 100000000n, 200000000n);
   assert(first.isFirstAddLP);
   assert.equal(first.ftLpIncrementRaw, 100000000n);
   assert.equal(first.ftAIncrementRaw, 200000000n);
+  assert.equal(first.tbcReserveIncrementSat, 100000000n);
   assert.deepEqual(first.nextState, funded);
   const lower = math.quoteAddLP(funded, 100000000n);
-  assert.equal(lower.ratio, 2000000n);
-  assert.equal(lower.ftLpIncrementRaw, 50000000n);
-  assert.equal(lower.ftAIncrementRaw, 100000000n);
+  assert.equal(lower.ftLpIncrementRaw, 100000000n);
+  assert.equal(lower.ftAIncrementRaw, 200000000n);
   const upper = math.quoteAddLP(funded, 200000000n);
-  assert.equal(upper.ratio, 666666n);
-  assert.equal(upper.ftLpIncrementRaw, 66666600n);
-  assert.equal(upper.ftAIncrementRaw, 133333200n);
+  assert.equal(upper.ftLpIncrementRaw, 200000000n);
+  assert.equal(upper.ftAIncrementRaw, 400000000n);
+  assert.equal(Object.hasOwn(upper, 'ratio'), false);
   assert.throws(() => math.quoteAddLP(initial, 1n), /initial FT/);
-  assert.throws(() => math.quoteAddLP(funded, 1n), /increment must be positive/);
+  assert.equal(math.quoteAddLP(funded, 1n).ftLpIncrementRaw, 1n);
   assert.throws(() => math.quoteAddLP(initial, 0n, 10n));
+  assert.throws(() => math.quoteAddLP({ ...initial, poolValue: 1501n }, 1n, 10n), /exactly 1500 sat/);
   assert.throws(() => math.quoteAddLP(funded, 100n, 10n), /only accepted/);
 });
 
-test('RemoveLP pays real Code balance, supports full exit and preserves known two-rounding behavior', () => {
+test('AddLP single-asset budgets buy the same LP with unused budget excluded from Pool outputs', () => {
+  const state = { ftLpAmount: 100n, ftAAmount: 200n, tbcAmount: 100n, poolValue: 1720n };
+  const byTbc = math.quoteAddLP(state, { incrementSat: 24n });
+  const byFt = math.quoteAddLP(state, { incrementFtRaw: 21n });
+  assert.deepEqual(byTbc, byFt);
+  assert.equal(byTbc.ftLpIncrementRaw, 10n);
+  assert.equal(byTbc.tbcIncrementSat, 22n);
+  assert.equal(byTbc.ftAIncrementRaw, 20n);
+  assert.equal(byTbc.tbcReserveIncrementSat, 10n);
+  assert.deepEqual(byTbc.nextState, { ftLpAmount: 110n, ftAAmount: 220n, tbcAmount: 110n, poolValue: 1742n });
+  assert.equal(24n - byTbc.tbcIncrementSat, 2n, 'TBC budget remainder is not donated');
+  assert.equal(21n - byFt.ftAIncrementRaw, 1n, 'FT budget remainder is not donated');
+  assert.deepEqual(math.quoteAddLP(state, 24n), byTbc, 'legacy bigint input is a TBC budget');
+});
+
+test('AddLP charges for retained-fee rights without feeding the entire payment into pricing reserves', () => {
+  const state = { ftLpAmount: 100n, ftAAmount: 100n, tbcAmount: 100n, poolValue: 1610n };
+  const q = math.quoteAddLP(state, { incrementSat: 11n });
+  assert.deepEqual(q, math.quoteAddLP(state, { incrementFtRaw: 10n }));
+  assert.equal(q.ftLpIncrementRaw, 10n);
+  assert.equal(q.tbcReserveIncrementSat, 10n);
+  assert.equal(q.nextState.poolValue - 1500n - q.nextState.tbcAmount, 11n);
+  assert.equal((q.nextState.poolValue - 1500n - q.nextState.tbcAmount) * state.ftLpAmount,
+    (state.poolValue - 1500n - state.tbcAmount) * q.nextState.ftLpAmount,
+    'old holders retain their proportional fee rights in this exactly divisible example');
+});
+
+test('AddLP rejects ambiguous budgets, zero-LP budgets and inactive or underfunded reserves', () => {
+  for (const input of [{}, { incrementSat: 10n, incrementFtRaw: 10n }, { incrementSat: 0n },
+    { incrementFtRaw: 0n }, { incrementSat: -1n }, { incrementFtRaw: 1.5 }]) {
+    assert.throws(() => math.quoteAddLP(funded, input));
+  }
+  assert.throws(() => math.quoteAddLP(initial, { incrementFtRaw: 100n }, 100n));
+  const tiny = { ...funded, ftLpAmount: 1n };
+  assert.throws(() => math.quoteAddLP(tiny, { incrementSat: 1n }));
+  assert.throws(() => math.quoteAddLP(tiny, { incrementFtRaw: 1n }));
+  for (const state of [{ ...funded, ftLpAmount: 0n }, { ...funded, ftAAmount: 0n },
+    { ...funded, tbcAmount: 0n }, { ...funded, poolValue: funded.tbcAmount + 1499n }]) {
+    assert.throws(() => math.quoteAddLP(state, 100n));
+  }
+});
+
+test('AddLP has no reciprocal-ratio overminting or independently rounded FT underpayment', () => {
+  const state = { ftLpAmount: 1000000000000n, ftAAmount: 1000000000000n,
+    tbcAmount: 1000000000000n, poolValue: 1000000001500n };
+  const budget = 999999000001n;
+  const q = math.quoteAddLP(state, budget);
+  assert.equal(q.ftLpIncrementRaw, budget, 'no old precision-ratio jump to 1000000000000 LP');
+  assert.equal(q.ftAIncrementRaw, budget);
+  const small = { ftLpAmount: 500000n, ftAAmount: 1000n, tbcAmount: 1000n, poolValue: 2501n };
+  const rounded = math.quoteAddLP(small, 2n);
+  assert.equal(rounded.ftLpIncrementRaw, 999n);
+  assert.equal(rounded.ftAIncrementRaw, 2n, 'ceil charges enough FT for all 999 LP');
+  assert(rounded.ftAIncrementRaw * small.ftLpAmount >= rounded.ftLpIncrementRaw * small.ftAAmount);
+});
+
+test('AddLP integer budgets reproduce contract LP recovery and never dilute existing asset claims', () => {
+  const ceil = (n, d) => (n + d - 1n) / d;
+  for (let supply = 1n; supply <= 9n; supply++) for (let reserve = 1n; reserve <= 9n; reserve++) {
+    const state = { ftLpAmount: supply, ftAAmount: 11n - reserve, tbcAmount: reserve,
+      poolValue: 1500n + reserve + 3n };
+    for (let budget = 1n; budget <= 13n; budget++) for (const side of ['incrementSat', 'incrementFtRaw']) {
+      const base = side === 'incrementSat' ? reserve + 3n : state.ftAAmount;
+      const lp = budget * supply / base;
+      if (lp === 0n) continue;
+      const q = math.quoteAddLP(state, { [side]: budget });
+      assert.equal(q.ftLpIncrementRaw, lp);
+      assert.equal(q.tbcIncrementSat, ceil((reserve + 3n) * lp, supply));
+      assert.equal(q.ftAIncrementRaw, ceil(state.ftAAmount * lp, supply));
+      assert.equal(q.tbcReserveIncrementSat, ceil(reserve * lp, supply));
+      const tbcLp = q.tbcIncrementSat * supply / (reserve + 3n);
+      const ftLp = q.ftAIncrementRaw * supply / state.ftAAmount;
+      assert.equal(tbcLp < ftLp ? tbcLp : ftLp, lp, 'contract independently recovers SDK LP');
+      assert((side === 'incrementSat' ? q.tbcIncrementSat : q.ftAIncrementRaw) <= budget);
+      assert((q.nextState.poolValue - 1500n) * supply >= (reserve + 3n) * q.nextState.ftLpAmount);
+      assert(q.nextState.ftAAmount * supply >= state.ftAAmount * q.nextState.ftLpAmount);
+      assert(q.nextState.poolValue - 1500n >= q.nextState.tbcAmount);
+    }
+  }
+});
+
+test('RemoveLP pays real Code balance with one floor and supports full exit', () => {
   const state = { ...funded, poolValue: funded.poolValue + 1000000n };
   const quote = math.quoteRemoveLP(state, 50000000n);
-  assert.equal(quote.ratio, 2000000n);
+  assert.equal(Object.hasOwn(quote, 'ratio'), false);
   assert.equal(quote.tbcDecrementSat, 50000000n);
   assert.equal(quote.poolValueDecrementSat, 50500000n);
   const full = math.quoteRemoveLP(state, state.ftLpAmount);
   assert.deepEqual(full.nextState, initial);
-  const rounding = math.quoteRemoveLP({ ftLpAmount: 1000002n, ftAAmount: 1000002n, tbcAmount: 1000002n, poolValue: 1001502n }, 1000001n);
-  assert.equal(rounding.ratio, 1000000n);
-  assert.equal(rounding.nextState.ftLpAmount, 1n);
-  assert.equal(rounding.nextState.ftAAmount, 0n); // Explicitly not repaired in this SDK version.
+  for (const amount of [1000002n, 1000000000002n, tape.POOL3_MAX_AMOUNT - 1500n]) {
+    const rounding = math.quoteRemoveLP({ ftLpAmount: amount, ftAAmount: amount,
+      tbcAmount: amount, poolValue: amount + 1500n }, amount - 1n);
+    assert.deepEqual(rounding.nextState, { ftLpAmount: 1n, ftAAmount: 1n, tbcAmount: 1n, poolValue: 1501n });
+    assert.equal(rounding.ftADecrementRaw, amount - 1n);
+    assert.equal(rounding.tbcDecrementSat, amount - 1n);
+    assert.equal(rounding.poolValueDecrementSat, amount - 1n);
+  }
   assert.throws(() => math.quoteRemoveLP(state, state.ftLpAmount + 1n));
   assert.throws(() => math.quoteRemoveLP(state, 0n));
+});
+
+test('RemoveLP quotes reject sub-10-sat payouts, including otherwise valid tiny full exits', () => {
+  for (const payout of [0n, 1n, 9n]) {
+    const state = { ftLpAmount: 10n, ftAAmount: 10n, tbcAmount: payout, poolValue: 1500n + payout };
+    assert.throws(() => math.quoteRemoveLP(state, 10n), /at least 10 sat/);
+  }
+  const state = { ftLpAmount: 10n, ftAAmount: 20n, tbcAmount: 10n, poolValue: 1510n };
+  assert.equal(math.quoteRemoveLP(state, 10n).poolValueDecrementSat, 10n);
+});
+
+test('SwapTBC quotes reject 9 sat at the dust guard but allow 10 sat through to the retained-fee guard', () => {
+  const state = { ftLpAmount: 100n, ftAAmount: 100n, tbcAmount: 100n, poolValue: 1600n };
+  assert.throws(() => math.quoteSwapTBC(state, 10n, fees.resolveSwapFeePolicy()), /at least 10 sat/);
+  // A 10-sat payout satisfies dust; this tiny default-plan quote still retains no fee.
+  assert.throws(() => math.quoteSwapTBC(state, 12n, fees.resolveSwapFeePolicy()), /strictly positive retained pool fee/);
 });
 
 test('BigInt quotes never lose precision above Number.MAX_SAFE_INTEGER and reject 2^63 overflow', () => {
   const large = { ...funded, ftAAmount: (1n << 62n) - 1n };
   const quote = math.quoteAddLP(large, 100000000n);
-  assert.equal(quote.ftAIncrementRaw, large.ftAAmount / 2n);
-  assert.equal(quote.nextState.ftAAmount, large.ftAAmount + large.ftAAmount / 2n);
+  assert.equal(quote.ftAIncrementRaw, large.ftAAmount);
+  assert.equal(quote.nextState.ftAAmount, large.ftAAmount * 2n);
   assert.throws(() => math.quoteAddLP({ ...large, ftAAmount: tape.POOL3_MAX_AMOUNT }, 100000000n), /2\^63/);
   assert.throws(() => math.quoteAddLP(initial, 1n << 63n, 1n));
+  assert.throws(() => math.quoteAddLP(funded, { incrementFtRaw: 1n << 63n }));
+  assert.throws(() => math.quoteAddLP({ ...funded, ftLpAmount: tape.POOL3_MAX_AMOUNT }, 100000000n), /2\^63/);
+  assert.throws(() => math.quoteAddLP({ ...funded, poolValue: tape.POOL3_MAX_AMOUNT },
+    { incrementFtRaw: funded.ftAAmount }), /2\^63/);
 });
 
-test('Swap quotes use opposite-direction fee bases, preserve reserve rounding and enforce contract strictness', () => {
+test('Swap quotes floor the amount paid out, preserve fee bases and enforce contract strictness', () => {
   const policy = fees.resolveSwapFeePolicy();
   const outFt = math.quoteSwapFT(funded, 1000000n, policy);
   assert.equal(outFt.effectiveTbcIncrementSat, 996500n);
   assert.equal(outFt.poolValueIncrementSat, 999000n);
-  assert.equal(outFt.nextState.ftAAmount, funded.tbcAmount * funded.ftAAmount / 100996500n);
+  assert.equal(outFt.nextState.ftAAmount, funded.ftAAmount - funded.ftAAmount * 996500n / 100996500n);
   assert.equal(outFt.ftOutRaw, funded.ftAAmount - outFt.nextState.ftAAmount);
+  assert.equal(outFt.ftOutRaw, 1973335n);
   const outTbc = math.quoteSwapTBC(funded, 1000000n, policy);
-  const gross = funded.tbcAmount - funded.tbcAmount * funded.ftAAmount / (funded.ftAAmount + 1000000n);
+  const gross = funded.tbcAmount * 1000000n / (funded.ftAAmount + 1000000n);
   assert.equal(outTbc.grossTbcOutSat, gross);
+  assert.equal(gross, 497512n);
   assert.equal(outTbc.fees.baseTbcSat, gross);
   assert.equal(outTbc.poolValueDecrementSat, outTbc.tbcOutSat + outTbc.fees.serviceFeePaidSat);
   assert(outTbc.poolValueDecrementSat < gross);
@@ -273,6 +394,50 @@ test('Swap quotes use opposite-direction fee bases, preserve reserve rounding an
   assert.throws(() => math.quoteSwapTBC(funded, 1000000n, policy, outTbc.tbcOutSat + 1n), /minTbcOutSat/);
   assert.throws(() => math.quoteSwapTBC(funded, funded.ftAAmount, policy), /strictly below/);
   assert.throws(() => math.quoteSwapFT(funded, funded.tbcAmount * 2n, policy), /strictly below/);
+});
+
+test('Swap rounding cannot buy a whole expensive FT raw unit with a sub-unit payment', () => {
+  const policy = fees.resolveSwapFeePolicy();
+  const expensiveFt = { ftLpAmount: 1000000n, ftAAmount: 10n, tbcAmount: 1000000n, poolValue: 1001500n };
+  assert.throws(() => math.quoteSwapFT(expensiveFt, 1000n, policy), /FT output.*positive/);
+  const tinyTbc = { ftLpAmount: 1000000n, ftAAmount: 1000000n, tbcAmount: 10n, poolValue: 1510n };
+  assert.throws(() => math.quoteSwapTBC(tinyTbc, 1n, policy), /positive/);
+});
+
+test('both Swap directions preserve pricing k and account for retained fees using integer output floors', () => {
+  const states = [funded, { ...funded, poolValue: funded.poolValue + 123456n },
+    { ftLpAmount: 1000000000000n, ftAAmount: 2000000000000n,
+      tbcAmount: 1000000000000n, poolValue: 1000000009999n }];
+  for (const state of states) for (let plan = 1; plan <= 6; plan++) {
+    const policy = fees.resolveSwapFeePolicy(plan);
+    for (const input of [10000n, 20000n, 1000000n, state.tbcAmount / 3n]) {
+      for (const direction of ['FT', 'TBC']) {
+        const q = direction === 'FT' ? math.quoteSwapFT(state, input, policy) : math.quoteSwapTBC(state, input, policy);
+        assert(q.nextState.tbcAmount * q.nextState.ftAAmount >= state.tbcAmount * state.ftAAmount);
+        assert.equal(q.nextState.ftLpAmount, state.ftLpAmount);
+        assert.equal(q.nextState.poolValue - q.nextState.tbcAmount,
+          state.poolValue - state.tbcAmount + q.fees.poolFeeRetainedSat);
+        if (direction === 'FT') assert.equal(q.ftOutRaw,
+          state.ftAAmount * q.effectiveTbcIncrementSat / (state.tbcAmount + q.effectiveTbcIncrementSat));
+        else assert.equal(q.grossTbcOutSat, state.tbcAmount * input / (state.ftAAmount + input));
+      }
+    }
+  }
+});
+
+test('Swap and RemoveLP reject invalid amounts and resulting signed-63-bit overflow', () => {
+  const policy = fees.resolveSwapFeePolicy();
+  for (const amount of [-1n, 0n, 1n << 63n]) {
+    assert.throws(() => math.quoteRemoveLP(funded, amount));
+    assert.throws(() => math.quoteSwapFT(funded, amount, policy));
+    assert.throws(() => math.quoteSwapTBC(funded, amount, policy));
+  }
+  assert.throws(() => math.quoteSwapFT({ ...funded, poolValue: tape.POOL3_MAX_AMOUNT }, 10000n, policy), /2\^63/);
+  assert.throws(() => math.quoteSwapFT({ ...funded, tbcAmount: tape.POOL3_MAX_AMOUNT - 1500n,
+    ftAAmount: tape.POOL3_MAX_AMOUNT,
+    poolValue: tape.POOL3_MAX_AMOUNT }, 10000n, policy), /2\^63/);
+  assert.throws(() => math.quoteSwapTBC({ ...funded, ftAAmount: tape.POOL3_MAX_AMOUNT },
+    tape.POOL3_MAX_AMOUNT / 2n, policy), /2\^63/);
 });
 
 test('six immutable fee plans reproduce legacy Pool2 integer fee decomposition', () => {
@@ -319,6 +484,7 @@ test('service fee floor-difference, payout threshold 9/10 and fixed output place
     assert.equal(output.satoshis, Number(paid));
     assert.equal(output.script.toHex(), paid === 0n ? '006a' : recipient.feeP2pkhScript25.toHex());
   }
+  assert.throws(() => fees.buildPoolServiceFeeOutput({ ...sample, serviceFeePaidSat: 9n }, recipient), /at least 10 sat/);
 });
 
 test('fee recipient is full P2PKH SHA256, never the 20-byte address hash', () => {

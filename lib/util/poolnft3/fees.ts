@@ -1,6 +1,9 @@
 import * as tbc from 'tbc-lib-js';
 import { assertPoolAmount } from './tape';
 
+/** Pool3 P2PKH outputs, including positive service fees, use the 10-sat floor. */
+export const POOL3_MIN_TBC_OUTPUT_SAT = 10n;
+
 export type Pool3FeePlan = 1 | 2 | 3 | 4 | 5 | 6;
 export interface SwapFeePolicy {
   readonly lpPlan: Pool3FeePlan;
@@ -30,7 +33,7 @@ const policy = (
     totalFeeBps,
     lpFeeBps,
     serviceFeeAddress,
-    servicePayoutThresholdSat: 10n,
+    servicePayoutThresholdSat: POOL3_MIN_TBC_OUTPUT_SAT,
   });
 
 export const POOL3_SWAP_FEE_POLICIES: Readonly<Record<Pool3FeePlan, SwapFeePolicy>> = Object.freeze(
@@ -59,7 +62,7 @@ function validatePolicy(supplied: SwapFeePolicy): SwapFeePolicy {
   if (
     supplied.lpFeeBps !== canonical.lpFeeBps ||
     supplied.serviceFeeAddress !== canonical.serviceFeeAddress ||
-    supplied.servicePayoutThresholdSat !== 10n
+    supplied.servicePayoutThresholdSat !== POOL3_MIN_TBC_OUTPUT_SAT
   ) {
     throw new Error('Pool3: unsupported or modified Swap fee policy');
   }
@@ -134,6 +137,8 @@ export function buildPoolServiceFeeOutput(
   recipient: FeeRecipient
 ): tbc.Transaction.Output {
   assertPoolAmount(fees.serviceFeePaidSat, 'serviceFeePaidSat');
+  if (fees.serviceFeePaidSat > 0n && fees.serviceFeePaidSat < POOL3_MIN_TBC_OUTPUT_SAT)
+    throw new Error('Pool3: positive service fee output must be at least 10 sat');
   if (fees.serviceFeePaidSat > BigInt(Number.MAX_SAFE_INTEGER))
     throw new Error('Pool3: service fee cannot be represented safely in Transaction.Output');
   const expected = deriveFeeRecipient(recipient.address);

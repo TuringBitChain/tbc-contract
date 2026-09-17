@@ -28,7 +28,14 @@ interface Interpreter {
   altstack: { length: number };
 }
 const Interpreter = (
-  tbc.Script as unknown as { Interpreter: { new (): Interpreter; DEFAULT_FLAGS: number } }
+  tbc.Script as unknown as {
+    Interpreter: {
+      new (): Interpreter;
+      DEFAULT_FLAGS: number;
+      MAXIMUM_ELEMENT_SIZE: number;
+      MAX_SCRIPT_ELEMENT_SIZE: number;
+    };
+  }
 ).Interpreter;
 
 /** Executes every previous locking script, not only the Pool state input. */
@@ -50,14 +57,28 @@ export function validatePool3Transaction(tx: tbc.Transaction): Pool3ValidationRe
       throw new Error('PoolNFT3 validation: missing or unsafe prevout');
     inputSat += BigInt(input.output.satoshis);
     const vm = new Interpreter();
-    const ok = vm.verify(
-      input.script,
-      input.output.script,
-      tx,
-      inputIndex,
-      Interpreter.DEFAULT_FLAGS,
-      input.output.satoshisBN
-    );
+    // Input.verify mutates this library-global BIN2NUM limit. Keep Pool3
+    // execution deterministic without changing other SDK validators. BN
+    // arithmetic remains unrestricted: proportional products can exceed 8 bytes.
+    const previousElementSize = Interpreter.MAXIMUM_ELEMENT_SIZE;
+    const previousScriptElementSize = Interpreter.MAX_SCRIPT_ELEMENT_SIZE;
+    let ok: boolean;
+    try {
+      Interpreter.MAXIMUM_ELEMENT_SIZE = 8;
+      // Match Input.verify for ordinary byte strings, independently of BIN2NUM.
+      Interpreter.MAX_SCRIPT_ELEMENT_SIZE = Number.MAX_SAFE_INTEGER;
+      ok = vm.verify(
+        input.script,
+        input.output.script,
+        tx,
+        inputIndex,
+        Interpreter.DEFAULT_FLAGS,
+        input.output.satoshisBN
+      );
+    } finally {
+      Interpreter.MAXIMUM_ELEMENT_SIZE = previousElementSize;
+      Interpreter.MAX_SCRIPT_ELEMENT_SIZE = previousScriptElementSize;
+    }
     // Current FTLP artifacts intentionally leave bookkeeping on altstack.
     // Acceptance requires the interpreter result and one main-stack result;
     // report altstack depth without inventing an extra consensus condition.

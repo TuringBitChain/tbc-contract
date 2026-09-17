@@ -46,16 +46,31 @@ export interface Pool3OperationOptions {
   /** Optional optimistic-concurrency guard from an earlier quote. */
   expectedSnapshotHash?: string;
 }
-export interface Pool3AddLPOptions extends Pool3OperationOptions {
+/** Select exactly one asset budget; the other asset is quoted automatically. */
+export type Pool3AddLPAmount =
+  | {
+      /** Maximum TBC contribution, excluding fees and output funding. First AddLP uses it in full. */
+      incrementSat: bigint;
+      incrementFtRaw?: never;
+      /** Required only for the first AddLP, whose initial price is user-defined. */
+      firstFtAmountRaw?: bigint;
+    }
+  | {
+      incrementSat?: never;
+      /** Maximum FT contribution in raw units; only available for an active pool. */
+      incrementFtRaw: bigint;
+      firstFtAmountRaw?: never;
+    };
+export type Pool3AddLPOptions = Pool3OperationOptions & Pool3AddLPAmount & {
   userFT: Pool3AssetInput;
-  incrementSat: bigint;
-  firstFtAmountRaw?: bigint;
   lpReceiverAddress: string;
   /** Required for timelocked pools, including explicit zero. */
   lpLockTime?: number;
   minLpOutRaw?: bigint;
   maxFtInRaw?: bigint;
-}
+  /** Maximum actual TBC contribution, excluding miner fees and output funding. */
+  maxTbcInSat?: bigint;
+};
 export interface Pool3RemoveLPOptions extends Pool3OperationOptions {
   userLP: Pool3AssetInput;
   burnAmountRaw: bigint;

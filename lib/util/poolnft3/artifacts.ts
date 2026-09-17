@@ -38,35 +38,35 @@ export interface Pool3Artifact {
   }[];
 }
 
-const SOURCE_BASE_COMMIT = 'dbe6d8ec3749c683e01f6ee22e045dba19978c3e';
+const SOURCE_BASE_COMMIT = 'f715aa5d5e4a03ba3b6517355e49f197969d0c59';
 const COMPILER_COMMIT = '8bc16116ce28868ccd671413026c545660b557cd';
 export const POOL3_ARTIFACT_MANIFEST = Object.freeze({
-  // Pool sources include uncommitted fixes; the base commit alone cannot reproduce them.
+  // The hash-lock Pool source includes an uncommitted fix beyond the base commit.
   sourceCommit: null,
   sourceBaseCommit: SOURCE_BASE_COMMIT,
   sourceRevision: 'worktree' as const,
-  sourceChanges: Object.freeze(['src/pool.ct', 'src/pool_hash_lock.ct']),
+  sourceChanges: Object.freeze(['src/pool_hash_lock.ct']),
   compiler: Object.freeze({ name: 'utxo_compiler', version: '1.0.0', commit: COMPILER_COMMIT }),
   whitelistProfile: POOL3_WHITELIST_PROFILE,
   artifacts: Object.freeze({
     pool: Object.freeze({
-      sourceSha256: '38ba78e4e1f39e5517968cc7cbb76d4230f1e3c3d33c992015f06f5c71fba156',
-      sourceArtifactSha256: 'd11738eb807aa0063d6923878f587632c57b74ac203ad93849a6e4453274955e',
-      artifactSha256: 'f94d407c2a1678ad586c60048e05038ebf133f5af709a77c2d0a50652e70c1ee',
-      canonicalArtifactSha256: '9288d5da5feea697b8ef5c7ad28608ee28cced98c27eaf9840e7dd071cad493b',
-      templateSha256: 'c54269ba2618058c98a4e67dd0da6a580c8b1accad11e2b5e2c8798b09540955',
+      sourceSha256: '84e54c34b69b11bdb360e52895a9d76d48ff4006ad63be4a3624c578d16d1ea4',
+      sourceArtifactSha256: '1c13ff9379ceb83ebd7c40a962c07136bc4ed59ff03b6eea035ca4a9444830e7',
+      artifactSha256: 'cb33cb440e611fb68c50f24aedf6168214cd5942ee490fc98e39c7aa39df547d',
+      canonicalArtifactSha256: '01182f693bcb21111bd44ca53ce505564cd7432f8e1479820a5ef6942589ed51',
+      templateSha256: 'c98ecae0a22452ce37bcaf24be0c836521d3de3a75aa8f16cef587b8b6f031b2',
       fill: false,
-      codeBytes: 5203,
+      codeBytes: 5289,
       activeAbiFields: Object.freeze([66, 76, 56, 68]),
     }),
     pool_hash_lock: Object.freeze({
-      sourceSha256: 'e32c03f2552fb0e181294e5176f95f6b7abc536365b81d502ab78cd4f306f529',
-      sourceArtifactSha256: '2bda35b8174e9cf0a23ca1d33eb43fc7b1db16b1a39d90ebfeded7523cf92fd2',
-      artifactSha256: '367274f4e0389a94e0ed0f56c5639265d20579a4e92c30aa5f3f34880f25aeb9',
-      canonicalArtifactSha256: 'a1afb0a5b2c5d2d8d658c32c06f7f4c793dca8d62359a78f9db81799e78dff44',
-      templateSha256: 'db78a594bc448cc7c2b8635a6ecc036fd551218579db17c49f42ff410e798f92',
+      sourceSha256: 'c999f2aa8b5d1a7c05736703abeb9c5a8d6ab9de73f1a52e723113d2e13b58d2',
+      sourceArtifactSha256: 'd40381b3a5ea56942eefa8e845a31c84fd27f41631966a83ae216d1cf723f112',
+      artifactSha256: '59244df222b013b62d1c754b1e15aa56e3ffd244b8e848cc206f3cde85e3b81d',
+      canonicalArtifactSha256: 'ecca9ef8ddedf1430cb5270a2a3c77e9e397889df337d9362c47074f291334ce',
+      templateSha256: 'cf7f95c0483b56ad24825591acbce6e82e37890aa0047fc63183d3fb7a7a4ffc',
       fill: false,
-      codeBytes: 5228,
+      codeBytes: 5314,
       activeAbiFields: Object.freeze([68, 78, 58, 70]),
     }),
     ftlp_tbc20: Object.freeze({

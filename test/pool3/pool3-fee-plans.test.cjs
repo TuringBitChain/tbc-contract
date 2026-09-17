@@ -83,7 +83,9 @@ for (let lpPlan = 1; lpPlan <= 6; lpPlan += 1) {
         'mint-source', 'mint-pool', 'first-add', 'swap-ft-paid', 'swap-tbc-paid',
         'swap-ft-zero-service', 'swap-tbc-zero-service', 'remove-all',
       ]);
-      assert.equal(result.smallInputTbcSat, [286n, 286n, 81n, 83n, 87n, 81n][lpPlan - 1]);
+      // Both outputs now round down, so the minimum valid two-way input is
+      // slightly larger than under the former reserve-floor formula.
+      assert.equal(result.smallInputTbcSat, [288n, 288n, 83n, 85n, 89n, 83n][lpPlan - 1]);
       assert.equal(result.totals.initialFTBalance, 2_000_000_000n);
       assert.equal(result.totals.recoveredFTBalance, 2_000_000_000n);
       assert.equal(result.totals.poolCodeLockedSat, 1500n);

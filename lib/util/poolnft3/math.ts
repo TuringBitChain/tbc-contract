@@ -1,9 +1,9 @@
 import { assertPoolAmount } from './tape';
-import { calculateSwapFees } from './fees';
+import { calculateSwapFees, POOL3_MIN_TBC_OUTPUT_SAT } from './fees';
 import type { PoolTapeAmounts } from './tape';
 import type { SwapFeeBreakdown, SwapFeePolicy } from './fees';
+import type { Pool3AddLPAmount } from './types';
 
-export const POOL3_PRECISION = 1_000_000n;
 export const POOL3_CODE_DUST = 1_500n;
 export interface PoolMathState extends PoolTapeAmounts {
   readonly poolValue: bigint;
@@ -11,14 +11,15 @@ export interface PoolMathState extends PoolTapeAmounts {
 export interface AddLPQuote {
   readonly nextState: PoolMathState;
   readonly isFirstAddLP: boolean;
-  readonly ratio: bigint | undefined;
+  /** Actual contribution to the Pool Code, not the caller's maximum budget. */
   readonly tbcIncrementSat: bigint;
+  /** Pricing-reserve increment; retained TBC earnings are not added to this reserve. */
+  readonly tbcReserveIncrementSat: bigint;
   readonly ftAIncrementRaw: bigint;
   readonly ftLpIncrementRaw: bigint;
 }
 export interface RemoveLPQuote {
   readonly nextState: PoolMathState;
-  readonly ratio: bigint;
   readonly ftLpBurnRaw: bigint;
   readonly ftADecrementRaw: bigint;
   readonly tbcDecrementSat: bigint;
@@ -64,47 +65,66 @@ function checkedState(state: PoolMathState, requireActive: boolean): PoolMathSta
   return Object.freeze(state);
 }
 
-/** Mirrors current AddLP, intentionally using the NEW Code balance in ratio. */
+/** Round positive proportional contributions up without an intermediate fixed-point ratio. */
+function ceilDiv(numerator: bigint, denominator: bigint): bigint {
+  return (numerator + denominator - 1n) / denominator;
+}
+
+/** Quote the maximum whole LP amount supported by one asset budget. */
 export function quoteAddLP(
   state: PoolMathState,
-  incrementSat: bigint,
+  amount: bigint | Pool3AddLPAmount,
   firstFtAmountRaw?: bigint
 ): AddLPQuote {
   assertPoolMathState(state);
-  positive(incrementSat, 'TBC increment');
-  const poolValue = state.poolValue + incrementSat;
-  assertPoolAmount(poolValue, 'new Pool Code value');
+  if (typeof amount !== 'bigint' && firstFtAmountRaw !== undefined)
+    throw new Error('Pool3: specify firstFtAmountRaw inside the AddLP amount object');
+  const input = typeof amount === 'bigint' ? { incrementSat: amount, firstFtAmountRaw } : amount;
+  if (!input || typeof input !== 'object')
+    throw new Error('Pool3: AddLP requires a TBC or FT budget');
+  const useTbc = input.incrementSat !== undefined;
+  if (useTbc === (input.incrementFtRaw !== undefined))
+    throw new Error('Pool3: specify exactly one of incrementSat or incrementFtRaw');
+  if (!useTbc && input.firstFtAmountRaw !== undefined)
+    throw new Error('Pool3: firstFtAmountRaw requires a TBC budget');
+  const budget = useTbc ? input.incrementSat! : input.incrementFtRaw!;
+  positive(budget, useTbc ? 'TBC increment' : 'FT increment');
   const isFirstAddLP = state.ftLpAmount === 0n && state.ftAAmount === 0n && state.tbcAmount === 0n;
-  let ratio: bigint | undefined;
+  let tbcIncrementSat: bigint;
+  let tbcReserveIncrementSat: bigint;
   let ftLpIncrementRaw: bigint;
   let ftAIncrementRaw: bigint;
   if (isFirstAddLP) {
-    if (firstFtAmountRaw === undefined)
+    if (state.poolValue !== POOL3_CODE_DUST)
+      throw new Error('Pool3: first AddLP requires exactly 1500 sat in the old Pool Code');
+    if (!useTbc)
+      throw new Error('Pool3: first AddLP requires a TBC budget and explicit initial FT amount');
+    if (input.firstFtAmountRaw === undefined)
       throw new Error('Pool3: first AddLP requires explicit initial FT amount');
-    positive(firstFtAmountRaw, 'initial FT amount');
-    ftLpIncrementRaw = incrementSat;
-    ftAIncrementRaw = firstFtAmountRaw;
+    positive(input.firstFtAmountRaw, 'initial FT amount');
+    tbcIncrementSat = budget;
+    tbcReserveIncrementSat = budget;
+    ftLpIncrementRaw = budget;
+    ftAIncrementRaw = input.firstFtAmountRaw;
   } else {
-    if (firstFtAmountRaw !== undefined)
+    if (input.firstFtAmountRaw !== undefined)
       throw new Error('Pool3: firstFtAmountRaw is only accepted for a fully empty pool');
-    if (incrementSat <= state.tbcAmount) {
-      ratio = ((poolValue - POOL3_CODE_DUST) * POOL3_PRECISION) / incrementSat;
-      if (ratio <= 0n) throw new Error('Pool3: AddLP ratio denominator is zero');
-      ftLpIncrementRaw = (state.ftLpAmount * POOL3_PRECISION) / ratio;
-      ftAIncrementRaw = (state.ftAAmount * POOL3_PRECISION) / ratio;
-    } else {
-      ratio = (incrementSat * POOL3_PRECISION) / (poolValue - POOL3_CODE_DUST);
-      if (ratio <= 0n) throw new Error('Pool3: AddLP ratio rounds to zero');
-      ftLpIncrementRaw = (state.ftLpAmount * ratio) / POOL3_PRECISION;
-      ftAIncrementRaw = (state.ftAAmount * ratio) / POOL3_PRECISION;
-    }
+    active(state);
+    const redeemableTbc = state.poolValue - POOL3_CODE_DUST;
+    if (redeemableTbc < state.tbcAmount)
+      throw new Error('Pool3: actual TBC reserve is below the pricing reserve');
+    ftLpIncrementRaw = (budget * state.ftLpAmount) / (useTbc ? redeemableTbc : state.ftAAmount);
+    positive(ftLpIncrementRaw, 'LP increment');
+    tbcIncrementSat = ceilDiv(redeemableTbc * ftLpIncrementRaw, state.ftLpAmount);
+    ftAIncrementRaw = ceilDiv(state.ftAAmount * ftLpIncrementRaw, state.ftLpAmount);
+    tbcReserveIncrementSat = ceilDiv(state.tbcAmount * ftLpIncrementRaw, state.ftLpAmount);
   }
   positive(ftLpIncrementRaw, 'LP increment');
   positive(ftAIncrementRaw, 'FT increment');
   const nextState = checkedState(
     {
-      poolValue,
-      tbcAmount: state.tbcAmount + incrementSat,
+      poolValue: state.poolValue + tbcIncrementSat,
+      tbcAmount: state.tbcAmount + tbcReserveIncrementSat,
       ftAAmount: state.ftAAmount + ftAIncrementRaw,
       ftLpAmount: state.ftLpAmount + ftLpIncrementRaw,
     },
@@ -113,23 +133,23 @@ export function quoteAddLP(
   return Object.freeze({
     nextState,
     isFirstAddLP,
-    ratio,
-    tbcIncrementSat: incrementSat,
+    tbcIncrementSat,
+    tbcReserveIncrementSat,
     ftAIncrementRaw,
     ftLpIncrementRaw,
   });
 }
 
-/** Preserves both divisions from the current RemoveLP contract verbatim. */
+/** Redeem each reserve directly against the burned LP share, rounding payouts down. */
 export function quoteRemoveLP(state: PoolMathState, burnRaw: bigint): RemoveLPQuote {
   assertPoolMathState(state);
   positive(burnRaw, 'LP burn amount');
   if (burnRaw > state.ftLpAmount) throw new Error('Pool3: LP burn amount exceeds Pool LP supply');
-  const ratio = (state.ftLpAmount * POOL3_PRECISION) / burnRaw;
-  if (ratio <= 0n) throw new Error('Pool3: RemoveLP ratio is zero');
-  const ftADecrementRaw = (state.ftAAmount * POOL3_PRECISION) / ratio;
-  const tbcDecrementSat = (state.tbcAmount * POOL3_PRECISION) / ratio;
-  const poolValueDecrementSat = ((state.poolValue - POOL3_CODE_DUST) * POOL3_PRECISION) / ratio;
+  const ftADecrementRaw = (state.ftAAmount * burnRaw) / state.ftLpAmount;
+  const tbcDecrementSat = (state.tbcAmount * burnRaw) / state.ftLpAmount;
+  const poolValueDecrementSat = ((state.poolValue - POOL3_CODE_DUST) * burnRaw) / state.ftLpAmount;
+  if (poolValueDecrementSat < POOL3_MIN_TBC_OUTPUT_SAT)
+    throw new Error('Pool3: RemoveLP TBC payout must be at least 10 sat');
   const nextState = checkedState(
     {
       poolValue: state.poolValue - poolValueDecrementSat,
@@ -141,7 +161,6 @@ export function quoteRemoveLP(state: PoolMathState, burnRaw: bigint): RemoveLPQu
   );
   return Object.freeze({
     nextState,
-    ratio,
     ftLpBurnRaw: burnRaw,
     ftADecrementRaw,
     tbcDecrementSat,
@@ -149,7 +168,7 @@ export function quoteRemoveLP(state: PoolMathState, burnRaw: bigint): RemoveLPQu
   });
 }
 
-/** TBC -> FT. The contract floors the new FT reserve, then subtracts it. */
+/** TBC -> FT. Round the FT output down before subtracting it from the old reserve. */
 export function quoteSwapFT(
   state: PoolMathState,
   inputTbcSat: bigint,
@@ -169,9 +188,9 @@ export function quoteSwapFT(
   if (poolValueIncrementSat <= effectiveTbcIncrementSat)
     throw new Error('Pool3: Swap requires a strictly positive retained pool fee');
   const tbcAmount = state.tbcAmount + effectiveTbcIncrementSat;
-  const ftAAmount = (state.tbcAmount * state.ftAAmount) / tbcAmount;
-  const ftOutRaw = state.ftAAmount - ftAAmount;
+  const ftOutRaw = (state.ftAAmount * effectiveTbcIncrementSat) / tbcAmount;
   positive(ftOutRaw, 'Swap FT output');
+  const ftAAmount = state.ftAAmount - ftOutRaw;
   if (ftOutRaw < minFtOutRaw) throw new Error('Pool3: FT output is below minFtOutRaw');
   const nextState = checkedState(
     {
@@ -192,7 +211,7 @@ export function quoteSwapFT(
   });
 }
 
-/** FT -> TBC. Fees use the theoretical TBC output, not the input FT amount. */
+/** FT -> TBC. Round the theoretical TBC output down, then apply the unchanged fee policy. */
 export function quoteSwapTBC(
   state: PoolMathState,
   inputFtRaw: bigint,
@@ -205,10 +224,13 @@ export function quoteSwapTBC(
   if (inputFtRaw >= state.ftAAmount)
     throw new Error('Pool3: Swap FT increment must be strictly below the old FT reserve');
   const ftAAmount = state.ftAAmount + inputFtRaw;
-  const tbcAmount = (state.tbcAmount * state.ftAAmount) / ftAAmount;
-  const grossTbcOutSat = state.tbcAmount - tbcAmount;
+  const grossTbcOutSat = (state.tbcAmount * inputFtRaw) / ftAAmount;
+  positive(grossTbcOutSat, 'Swap gross TBC output');
+  const tbcAmount = state.tbcAmount - grossTbcOutSat;
   const fees = calculateSwapFees(grossTbcOutSat, feePolicy);
   const tbcOutSat = fees.netAmountSat;
+  if (tbcOutSat < POOL3_MIN_TBC_OUTPUT_SAT)
+    throw new Error('Pool3: Swap TBC payout must be at least 10 sat');
   const poolValueDecrementSat = tbcOutSat + fees.serviceFeePaidSat;
   if (poolValueDecrementSat <= 0n || poolValueDecrementSat >= grossTbcOutSat)
     throw new Error(

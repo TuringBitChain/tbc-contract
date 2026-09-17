@@ -50,6 +50,7 @@ import type {
 } from '../util/poolnft3/transaction';
 import type {
   PoolNFT3Config,
+  Pool3AddLPAmount,
   Pool3AddLPOptions,
   Pool3RemoveLPOptions,
   Pool3SwapFTOptions,
@@ -272,10 +273,23 @@ export class PoolNFT3 {
     };
   }
 
-  quoteAddLP(poolTx: tbc.Transaction, incrementSat: bigint, firstFtAmountRaw?: bigint) {
+  quoteAddLP(
+    poolTx: tbc.Transaction,
+    incrementSat: bigint,
+    firstFtAmountRaw?: bigint
+  ): ReturnType<typeof quoteAddLP> & Pick<Pool3State, 'outpoint' | 'snapshotHash'>;
+  quoteAddLP(
+    poolTx: tbc.Transaction,
+    amount: Pool3AddLPAmount
+  ): ReturnType<typeof quoteAddLP> & Pick<Pool3State, 'outpoint' | 'snapshotHash'>;
+  quoteAddLP(
+    poolTx: tbc.Transaction,
+    amount: bigint | Pool3AddLPAmount,
+    firstFtAmountRaw?: bigint
+  ) {
     const state = this.readPoolState(poolTx);
     return {
-      ...quoteAddLP(state, incrementSat, firstFtAmountRaw),
+      ...quoteAddLP(state, amount, firstFtAmountRaw),
       outpoint: state.outpoint,
       snapshotHash: state.snapshotHash,
     };
@@ -527,8 +541,7 @@ export class PoolNFT3 {
       ),
     ];
   }
-  private payment(address: string, value: bigint, dust = 42n): tbc.Transaction.Output {
-    if (value < dust) pool3Fail('required TBC payout is below dust');
+  private payment(address: string, value: bigint): tbc.Transaction.Output {
     ownerController(address);
     return addPool3Output(tbc.Script.buildPublicKeyHashOut(address), value);
   }
@@ -615,7 +628,7 @@ export class PoolNFT3 {
 
   prepareAddLP(options: Pool3AddLPOptions): PreparedPool3Operation {
     const state = this.readPoolState(options.pool.parentTx);
-    const quote = quoteAddLP(state, options.incrementSat, options.firstFtAmountRaw);
+    const quote = quoteAddLP(state, options);
     if (options.minLpOutRaw !== undefined) {
       assertPoolAmount(options.minLpOutRaw, 'minLpOutRaw');
       if (quote.ftLpIncrementRaw < options.minLpOutRaw) pool3Fail('LP output is below minLpOutRaw');
@@ -623,6 +636,11 @@ export class PoolNFT3 {
     if (options.maxFtInRaw !== undefined) {
       assertPoolAmount(options.maxFtInRaw, 'maxFtInRaw');
       if (quote.ftAIncrementRaw > options.maxFtInRaw) pool3Fail('FT input exceeds maxFtInRaw');
+    }
+    if (options.maxTbcInSat !== undefined) {
+      assertPoolAmount(options.maxTbcInSat, 'maxTbcInSat');
+      if (quote.tbcIncrementSat > options.maxTbcInSat)
+        pool3Fail('TBC input exceeds maxTbcInSat');
     }
     const user = this.validateFT(options.userFT);
     const pool = this.validateFT(options.poolFT, state);

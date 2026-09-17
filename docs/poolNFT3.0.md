@@ -1,6 +1,10 @@
 # PoolNFT 3.0
 
-验收状态（2026-09-11，R2）：已同步用户重编译的两份 Pool 模板，采用标准 `006a4c82` Tape 和 **1500 sat** Pool Code 保留额。上一轮四版本创建时的 `64: dust` 阻断已解除；本轮四种版本、1–5 人白名单及六种费用计划均已在真实测试网完成生命周期。测试结果、区块确认、资金对账及仍未解决的经济风险见[生产前复测报告](</home/ubuntu/projects/apc-contract/doc/PoolNFT3.0 生产前测试复测报告.md>)。技术验收不等于对尚未修复的合约经济性质作资金安全承诺。
+本次更新（2026-09-17）：在直接比例 AddLP/RemoveLP 和向下取整 Swap 输出的基础上，统一普通 TBC 输出下限为 10 sat，SwapTBC 用户实收至少 10 sat；首次 AddLP 要求旧 Pool Code 恰好为 1500 sat。先更新普通/哈希锁合约，再同步 SDK 报价、输出构造及编译模板。本地验证固定采用 8 字节 BIN2NUM 数值范围，不再依赖其他交易是否先调用过验证器。手续费率仍不纳入链上校验，增撤池组合的账面漂移尚未修复。新模板改变 Pool Code hash，仅适用于新模板创建的池，不能直接升级或操作旧模板池。
+
+本轮最终离线回归：合约仓库 `node --test tests/*.test.cjs` 为 284/284；SDK `npm run build` 成功后，`node --test test/pool3/pool3-*.test.cjs` 为 181/181，`node --test test/tbc20.local.test.js` 为 23/23。覆盖四版本 9/10/11 sat 边界、非标准空池余额拒绝、独立新进程的大额交易、8 字节数值边界以及执行后全局参数恢复；新增哈希锁版四操作当前 Tape 及首次 AddLP 父 Tape 的 144/145 字节拒绝测试和 SDK 非规范长度解析测试。源码、根目录编译产物和 SDK 冻结模板/哈希已核对一致；离线脚本验证不等同于目标节点已接受交易，本轮未广播。
+
+历史验收（2026-09-11，R2）：当时的四种版本、1–5 人白名单及六种费用计划已在真实测试网完成生命周期，见[生产前复测报告](</home/ubuntu/projects/apc-contract/doc/PoolNFT3.0 生产前测试复测报告.md>)。该报告不覆盖本次新模板；本次离线回归不替代新模板的测试网验收，也不表示其他经济风险已消除。
 
 PoolNFT 3.0 面向当前 `TBC20 + FTLPTBC20` 合约，不接受旧 FT/旧 FTLP 作为同一协议资产。统一接口支持普通池、公钥哈希白名单池，以及两者各自的 LP 锁仓版本。
 
@@ -168,7 +172,27 @@ const added = await pool.addLP({
 });
 ```
 
-首次 FT 投入和 TBC 投入分别给出：以上发行 LP 为 `100_000_000n`，FT 投入是 `200_000_000n`，二者不必相等。首次也必须消费 Genesis 创建的零余额池 FT 输入。再次 AddLP 时省略 `firstFtAmountRaw`，由现有合约的分段比例计算 FT/LP 增量。
+首次 FT 投入和 TBC 投入分别给出：以上发行 LP 为 `100_000_000n`，FT 投入是 `200_000_000n`，二者不必相等。首次也必须消费 Genesis 创建的零余额池 FT 输入，并要求旧 Pool Code 恰好为 1500 sat；不能先向空池预存额外 TBC，再把这部分余额归入首批 LP。
+
+非首次省略 `firstFtAmountRaw`，只输入 TBC 或 FT 中的一项预算；SDK 自动计算另一项和 LP 数量。`incrementSat` 与 `incrementFtRaw` 互斥，均表示原始整数单位的最大预算，实际投入可能因 LP 整数精度略小于预算，余量留在找零中。另一项资产不足时拒绝构造，不自动降低 LP 数量。
+
+```ts
+// 两种报价入口二选一；旧 quoteAddLP(tx, 100_000_000n) 调用仍可用。
+const byTbc = pool.quoteAddLP(currentPoolTx, { incrementSat: 100_000_000n });
+const byFt = pool.quoteAddLP(currentPoolTx, { incrementFtRaw: 200_000_000n });
+
+const nextAdd = await pool.addLP({
+  pool: freshPoolReference, poolFT: freshPoolFT,
+  userFT: freshUserFT, funding: freshFunding,
+  incrementFtRaw: 200_000_000n,
+  lpReceiverAddress: receiverAddress,
+  minLpOutRaw: minimumAcceptableLpRaw,
+  maxTbcInSat: maximumAcceptableTbcSat,
+  expectedSnapshotHash: byFt.snapshotHash,
+});
+```
+
+`minLpOutRaw` 限制最少收到的 LP；`maxFtInRaw` 和 `maxTbcInSat` 限制两侧实际投入。报价的 `tbcIncrementSat` 是实际入池 TBC，`tbcReserveIncrementSat` 是 Tape 账面 TBC 增量，两者不能混用。AddLP 不再返回中间 `ratio`。
 
 锁仓池每次 AddLP 必须显式提供 `lpLockTime`，包括选择 `0`；可直接发行未来锁值 LP。哈希锁池还必须提供 `controllerSigner`。
 
@@ -215,6 +239,8 @@ const removed = await pool.removeLP({
 
 RemoveLP 的用户 TBC 兑付按 Pool Code 的真实可分配余额计算，不只是 Tape 账面 TBC，因此可包含累积留池费用。销毁、LP 找零、池 FT 找零均保持各自原始身份；池 FT 对始终存在，即使全额撤池后余额为零。全撤后 Pool 保留 1500 sat，可重新首次注入。
 
+RemoveLP 的必需 TBC 付款至少为 **10 sat**，报价阶段即拒绝 0–9 sat。该输出必须精确等于按 LP 比例计算的金额，不能添加 funding 将它补至 10 sat；`changeDustSat` 也不改变此规则。降低旧 SDK 的 42 sat 门槛解决了 10–41 sat 的构造限制，但未解决不足 10 sat 的残余 LP 退出；需要在应用层明确提示，不能承诺任意极小余额均可全退。
+
 ### 固定金额来源
 
 FT/LP Tape 的六槽是本次交易绝对 vin 的来源分配，不能只编码输出总量。SDK 自动建立并返回 `layout.assetOutputs[].amountsByInput`：
@@ -228,13 +254,52 @@ FT/LP Tape 的六槽是本次交易绝对 vin 的来源分配，不能只编码�
 
 ### 当前整数公式边界
 
-本版报价逐步匹配固定编译合约，不擅自改成通常 AMM 公式。AddLP 使用新 Pool Code 余额参与分段比例；RemoveLP 保留两次除法取整；Swap 先向下取整新储备，再相减计算理论换出量。
+本版报价匹配固定编译合约。非首次 AddLP 定义旧真实可分配 TBC 为 `R = poolValue - 1500`，旧账面 TBC、FT 和 LP 分别为 `T、A、L`，要求 `R >= T > 0`、`A > 0`、`L > 0`：
 
-用户已决定后续在合约中修复 AddLP 定价和 RemoveLP 双重取整问题，本 SDK 本期不修补这些链上经济性质，也不承诺它们已经消除。大整数避免浮点误差，但不消除整数取整、小额手续费为零和零增量等边界。合约不允许的情况直接报错，不偷偷提高投入或补出 1 个单位。
+```text
+TBC 预算 x：m = floor(x × L / R)
+FT 预算 y： m = floor(y × L / A)
+实际 TBC 投入 dR = ceil(R × m / L)
+实际 FT 投入  dA = ceil(A × m / L)
+账面 TBC 增量 dT = ceil(T × m / L)
+L' = L + m，A' = A + dA，T' = T + dT，poolValue' = poolValue + dR
+```
+
+`m` 必须大于零，否则预算不足以获得一个原始 LP 单位。整数上取整使用 `(乘积 + 分母 - 1) / 分母`，不使用浮点或中间固定精度比例。合约不信任 SDK 的预算：从实际输出恢复 `dR、dA`，计算 `min(floor(dR×L/R), floor(dA×L/A))`，再验证上述各项精确相等及实际 FT/LP 输出。这样 LP 按真实 TBC（含留池收益）和 FT 双边足额发行，账面储备仍按其自身比例增长；不会把全部真实 TBC 增量直接计入定价储备。三项上取整可能保留极小整数余量，不保证报价比例绝对不变。
+
+RemoveLP 以实际销毁 LP 数量 `b` 为依据，要求 `0 < b <= L`，直接按份额计算：
+
+```text
+取出 FT       = floor(A × b / L)
+账面 TBC 减少 = floor(T × b / L)
+实际 TBC 付款 = floor(R × b / L)
+```
+
+三项分别先乘后除、仅向下取整一次，不再计算倒数比例。实际兑付包含留池收益，不能用账面减少量代替；部分赎回不会将原本为正的某项储备取光，全额赎回则准确退还全部可分配余额。`RemoveLPQuote` 不再返回 `ratio`，其余金额字段不变。
+
+账面 T 的组合取整仍是未解决的经济边界，不能泛称“每轮最多差 1 sat”。例如旧 `R=200000000、T=100000001、A=L=100000000`，先销毁 `99999999 LP`，余 `R=T=2、A=L=1`；再投入刚取出的 `199999998 sat + 99999999 raw FT`，铸回相同 LP，最终 `R、A、L` 恢复但 `T=200000000`。原因是接近全撤后，残余账面值的取整误差被后续添加放大；本轮不修改此公式，也不把这个案例直接等同于已证明的可获利盗取。
+
+两个 Swap 改为先向下取整理论换出量，再从旧储备扣除：
+
+```text
+TBC → FT：d 为参与定价的账面 TBC 增量
+  qFT = floor(A × d / (T + d))
+  T' = T + d，A' = A - qFT，L' = L
+
+FT → TBC：f 为实际入池 FT 增量
+  grossTbcOut = floor(T × f / (A + f))
+  A' = A + f，T' = T - grossTbcOut，L' = L
+```
+
+定价仍用账面 T，不混入真实余额 R 中的留池收益；有效输入下账面乘积 `T' × A' >= T × A`。合约和 SDK 均拒绝零理论换出量，不将不足1个单位的报价补成1。原有“输入增量严格小于旧同侧储备”、最小成交边界和严格正留池差额保持不变。SwapTBC 继续以理论换出的 TBC 计算现有手续费，但基数为修正后的向下取整结果。
+
+仍未修复的组合边界：AddLP 的 ceil 与 RemoveLP 的 floor 可能使添加后立即撤出的账面 T 残留1个最小单位。例如 `R=10000、T=1、A=L=100`，投入 `100 sat + 1 FT` 获得 `1 LP` 后撤出，可拿回相同实际资产而 T 变为2；这会影响后续定价，本轮不宣称解决该问题。大整数也不消除小额手续费为零等边界。合约不允许的情况直接报错，不偷偷提高投入。
 
 ## 6. Swap 手续费
 
 手续费语义与 PoolNFT 2.0 相同，使用一份不可变计划表；Tape 的 `serviceFeeRate` 实际表示总 Swap 费率。费率均以万分比计。
+
+本次按要求不把手续费金额计算纳入链上校验。下述费率计算是 SDK 的构造政策；链上原有的费用输出位置、脚本绑定和留池差额条件保持不变，不应理解为合约已强制执行整张费率表。
 
 | lpPlan | 总费率 | LP 费率 |
 | --- | --- | --- |
@@ -257,7 +322,7 @@ const recipient = deriveFeeRecipient(policy.serviceFeeAddress);
 
 服务方份额达到 10 sat 才实际支付。小于 10 时，用户仍承担完整 Swap 费用，未支付份额留在 Pool Code，不退给用户、不算矿工费、也不是服务方以后可独立领取的欠款。两种 Swap 均要求严格正的留池差额，费用取整导致不满足该条件时拒绝报价。
 
-新合约固定费用输出位置：实付正值使用计划对应的 P2PKH；实付零值仍保留 `0 sat + OP_FALSE OP_RETURN`，不能像 Pool2 那样省略输出。10 sat 业务门槛不因底层库 `DUST_AMOUNT=42` 自动变化；10..41 sat 费用输出需要单独确认目标节点接收策略，SDK 不自动免除或补足。
+新合约固定费用输出位置：SDK 的实付正值使用计划对应的 P2PKH，金额至少 10 sat；实付零值仍保留 `0 sat + OP_FALSE OP_RETURN`，不能像 Pool2 那样省略输出。按本次确认，两份合约对正手续费仅绑定收款脚本哈希，不校验手续费 dust 或具体费率；10 sat 的手续费门槛仅由 SDK 执行。Pool3 普通 P2PKH 付款及找零至少 10 sat，SwapTBC 用户实收同样至少 10 sat，这两项由合约和 SDK 共同检查，还须满足所选费用计划、正留池差额及用户的最小成交量。SDK 不修改底层库的全局 `DUST_AMOUNT`，目标节点的接收策略仍需独立验证。
 
 Pool3 的 `TbcFeeScriptHash` 是完整 25 字节 P2PKH 锁脚本的 **SHA256，32 字节**。Pool2 的构造信息使用地址的公钥哈希，二者不能混用。
 
@@ -269,7 +334,7 @@ address -> pubKeyHash[20]
 
 `recipient.feePubKeyHash20`、`feeP2pkhScript25`、`feeScriptHash32` 刻意区分命名。创建和恢复池时都验证固定计划与 Code 脚本哈希一致，不能每次 Swap 临时替换收款方。
 
-矿工费独立设置为 `feePolicy: { satoshisPerKb, minimumFeeSat, changeDustSat }`，默认分别为 `80n、80n、42n`。按最大签名长度预留费用，再收集真实签名；不在签名后修改输出找零以节省几字节费用。
+矿工费独立设置为 `feePolicy: { satoshisPerKb, minimumFeeSat, changeDustSat }`，默认分别为 `80n、80n、10n`。找零门槛可提高但不可低于 10 sat；不足找零门槛的余款计入矿工费，不影响必需付款的精确值。按最大签名长度预留费用，再收集真实签名；不在签名后修改输出找零以节省几字节费用。
 
 ## 7. LP 转移与解锁
 
@@ -343,6 +408,8 @@ const result = prepared.finalize(signatures);
 
 SDK 对所有输入执行本地脚本验证，包括 Pool、池 FT、用户 FT/LP 和资金输入，不只验证 Pool 分支。`validation.success` 仍不代表网络接收：`nodeAcceptanceChecked` 恒为 `false`，不证明 UTXO 未被花费、祖先已经被节点接收、时间锁已成熟或该节点的 dust/标准性规则满足。若从 raw 重建交易后手工调用 `validatePool3Transaction`，必须先给每个输入挂上可信 previous output。
 
+每次同步脚本执行期间，验证器把 `MAXIMUM_ELEMENT_SIZE` 固定为 `8`，按脚本数字符号位语义支持非负金额 `0..2^63−1`；`OP_BIN2NUM` 不接受需要 9 字节表示的正数。普通字节串的 `MAX_SCRIPT_ELEMENT_SIZE` 独立沿用库 `Input.verify()` 的配置，不将长见证限制为 8 字节。两项全局参数均通过 `try/finally` 恢复，即使验证失败或抛异常也不污染其他协议。中间乘积继续使用大整数，允许超过 8 字节；TBC 实际输出还受 `Transaction.Output` 的 JavaScript 安全整数范围约束，不能与 FT Tape 的数值范围混淆。
+
 当前 FTLP 编译产物的部分成功路径会在副栈保留 2 个记账项；验证报告如实返回 `altStackDepth`，SDK 不额外把“副栈必须为零”当成共识条件。此处保留当前源码/产物行为，没有将其包装成已经通过 SDK 修复的合约风险。
 
 广播由应用单独执行，并按 Source/Genesis/后续操作的依赖顺序处理；父交易失败不能继续子交易。本 SDK 不自动修改客户端“最新池状态”。同一 Pool outpoint 无法并发花费，冲突后应重读状态、重报价、重签名。
@@ -360,6 +427,8 @@ console.log(tape.flag, tape.variant, tape.suffixData);
 ```
 
 Pool Tape 为严格 **143 字节**：`006a4c82 + 连续130字节 + 08POOLTAPE`，即 `OP_FALSE OP_RETURN OP_PUSHDATA1 0x82 <130字节> <POOLTAPE>`。其中 92 字节身份/储备区和 38 字节配置区直接相连，不能插入额外 push。SDK 使用固定 Buffer 偏移识别所有字段；旧的 `006a82` / 142 字节形式被明确拒绝。
+
+普通版和哈希锁版合约均校验 Pool Tape 总长恰好 143 字节；哈希锁版新增长度断言后的编译模板已同步。SDK 原有编码与解析规则无需变更，1–5 个控制者及 LP 锁仓的组合继续使用相同格式。新模板会改变哈希锁 Pool Code hash，不会自动升级旧池。
 
 金额是 8 字节小端；serviceFeeRate 为 uint16LE；布尔标志是一字节 00/01；FT contractId 使用显示 txid 的字节顺序，不按 outpoint 自动反转。构造器内部只修改三个金额，保留两种 identity 和整个配置区；应用不需要直接改写 Tape。
 

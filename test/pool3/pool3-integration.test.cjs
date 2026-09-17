@@ -5,15 +5,19 @@
 // and executed. No network/indexer mocks or OP_TRUE asset scripts are used.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { execFileSync } = require('node:child_process');
+const path = require('node:path');
 const tbc = require('tbc-lib-js');
 const { PoolNFT3 } = require('../../lib/contract/poolNFT3.0.js');
 const TBC20 = require('../../lib/contract/tbc20.js');
 const { FTLPTBC20: LP } = require('../../lib/contract/ftlpTbc20.js');
 const { privateKeySigner } = require('../../lib/util/poolnft3/transaction.js');
 const { buildTBC20UnlockScriptWithSignature, replaceTBC20TapeAmounts } = require('../../lib/util/tbc20unlock.js');
+const { buildFTLPUnlockScriptWithSignature } = require('../../lib/util/ftlpTbc20unlock.js');
 const { buildPoolUnlockScript, getPoolUnlockLeafCount } = require('../../lib/util/poolnft3/witness.js');
 const { validatePool3Transaction } = require('../../lib/validator/poolnft3.js');
 const { POOL3_CODE_DUST } = require('../../lib/util/poolnft3/math.js');
+const { decodePoolTape, encodePoolTape } = require('../../lib/util/poolnft3/tape.js');
 
 const key = n => new tbc.PrivateKey(n.toString(16).padStart(64, '0'));
 const owner = key(101), lpOwner = key(102), funder = key(103), poolFtSigner = key(104), lpRecipient = key(105);
@@ -30,7 +34,40 @@ async function quiet(fn) {
   try { return await fn(); } finally { console.log = log; }
 }
 
-async function createHarness({ timelocked = false, controllerCount = 0 } = {}) {
+function validateInFreshProcess(result) {
+  function run() {
+    const assert = require('node:assert/strict');
+    const tbc = require('tbc-lib-js');
+    const { validatePool3Transaction } = require('./lib/validator/poolnft3');
+    const { txraw, prevouts } = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+    const Interpreter = tbc.Script.Interpreter;
+    assert.equal(Interpreter.MAXIMUM_ELEMENT_SIZE, 4);
+    assert.equal(Interpreter.MAX_SCRIPT_ELEMENT_SIZE, 520);
+    const tx = new tbc.Transaction(txraw);
+    tx.inputs.forEach((input, vin) => {
+      input.output = new tbc.Transaction.Output({
+        script: tbc.Script.fromHex(prevouts[vin].script), satoshis: prevouts[vin].satoshis,
+      });
+    });
+    const log = console.log;
+    console.log = () => {};
+    const report = validatePool3Transaction(tx);
+    assert.equal(report.success, true, JSON.stringify(report));
+    assert(report.inputs.every(input => input.success && input.stackDepth === 1));
+    assert.equal(Interpreter.MAXIMUM_ELEMENT_SIZE, 4);
+    assert.equal(Interpreter.MAX_SCRIPT_ELEMENT_SIZE, 520);
+    log(JSON.stringify({ inputs: report.inputs.length, success: report.success }));
+  }
+  const output = execFileSync(process.execPath, ['-e', `(${run.toString()})()`], {
+    cwd: path.resolve(__dirname, '../..'), encoding: 'utf8',
+    input: JSON.stringify({ txraw: result.txraw, prevouts: result.transaction.inputs.map(input => ({
+      script: input.output.script.toHex(), satoshis: input.output.satoshis,
+    })) }),
+  });
+  assert.deepEqual(JSON.parse(output), { inputs: result.transaction.inputs.length, success: true });
+}
+
+async function createHarness({ timelocked = false, controllerCount = 0, ftSupplyRaw = 2_000_000_000n } = {}) {
   const chain = new Map(), signatures = [], history = [], spent = new Set();
   const signer = (k, label) => {
     const delegate = privateKeySigner(k);
@@ -56,7 +93,7 @@ async function createHarness({ timelocked = false, controllerCount = 0 } = {}) {
   // A valid independent push in the FT extension makes Tape 66 bytes, leaving
   // enough room for the separate LP lock field without rewriting FT metadata.
   const token = new TBC20({ extensionData: Buffer.from('040102030409', 'hex') });
-  const ftMint = token.mint(owner, address(owner), 2_000_000_000n, {
+  const ftMint = token.mint(owner, address(owner), ftSupplyRaw, {
     txId: root.id, outputIndex: 0, script: root.outputs[0].script.toHex(), satoshis: root.outputs[0].satoshis,
   });
   register(ftMint.sourceTransaction); register(ftMint.transaction);
@@ -133,7 +170,7 @@ async function createHarness({ timelocked = false, controllerCount = 0 } = {}) {
     return { parentTx: result.transaction, outputIndex: result.changeVout, signer: signers.funding };
   };
   let currentPool = minted, currentFunding = fundingFrom(minted);
-  let userFT = { parentTx: ftMint.transaction, outputIndex: 0, signer: signers.owner, ancestors: chain, amountRaw: 2_000_000_000n };
+  let userFT = { parentTx: ftMint.transaction, outputIndex: 0, signer: signers.owner, ancestors: chain, amountRaw: ftSupplyRaw };
   function common(controllerIndex = 0) {
     const ancestor = chain.get(currentPool.transaction.inputs[0].prevTxId.toString('hex'));
     assert(ancestor);
@@ -166,6 +203,53 @@ async function createHarness({ timelocked = false, controllerCount = 0 } = {}) {
   }
   return { pool, token, chain, signers, signatures, history, timelocked, controllerCount, minted, asset, common, run, add,
     get userFT() { return userFT; }, get currentPool() { return currentPool; }, get funding() { return currentFunding; } };
+}
+
+/** Rebuild all output commitments and signatures; only economic checks may fail. */
+function verifyMutatedOperation(h, valid, common, mutate) {
+  const tx = new tbc.Transaction(valid.txraw);
+  tx.inputs.forEach((input, vin) => { input.output = valid.transaction.inputs[vin].output; });
+  mutate(tx);
+  const option = optionByOperation[valid.layout.operation];
+  const paired = new Set([0, ...valid.layout.assetOutputs.map(asset => asset.codeVout)]);
+  const groups = [];
+  for (let vout = 0; vout < tx.outputs.length; vout++) {
+    if (paired.has(vout)) { groups.push({ codeVout: vout, tapeVout: vout + 1 }); vout++; }
+    else groups.push({ codeVout: vout });
+  }
+  const sig = (vin, k) => tbc.Transaction.sighash.sign(tx, k, 0x41, vin,
+    tx.inputs[vin].output.script, tx.inputs[vin].output.satoshisBN).toTxFormat();
+  tx.inputs[0].setScript(buildPoolUnlockScript({ tx, preTx: common.pool.parentTx,
+    prePreTx: common.pool.ancestorTx, inputTxs: tx.inputs.slice(1).map(input => h.chain.get(input.prevTxId.toString('hex'))),
+    option, ...(h.controllerCount ? { signature: sig(0, memberKeys[0]), publicKey: memberKeys[0].publicKey.toBuffer() } : {}) }));
+  for (let vin = 1; vin < tx.inputs.length; vin++) {
+    const input = tx.inputs[vin], role = valid.layout.inputRoles[vin];
+    if (role === 'funding') {
+      input.setScript(new tbc.Script().add(sig(vin, funder)).add(funder.publicKey.toBuffer()));
+      continue;
+    }
+    const signer = role === 'pool-ft' ? poolFtSigner : role === 'lp-owner' ? lpOwner : owner;
+    const unlock = role === 'lp-owner' ? buildFTLPUnlockScriptWithSignature : buildTBC20UnlockScriptWithSignature;
+    input.setScript(unlock({ currentTx: tx, inputIndex: vin,
+      preTx: h.chain.get(input.prevTxId.toString('hex')), preTxVout: input.outputIndex,
+      ancestorTransactions: h.chain, outputGroups: groups, signature: sig(vin, signer), publicKey: signer.publicKey.toBuffer(),
+      ...(role === 'pool-ft' ? { contractController: { transaction: common.pool.parentTx, currentInputIndex: 0 } } : {}) }));
+  }
+  const report = validatePool3Transaction(tx);
+  assert.equal(report.valueConserved, true);
+  assert.equal(report.inputs[0].success, false, 'Pool independently rejects the economic mutation');
+  assert(report.inputs.slice(1).every(input => input.success), 'all other proofs and signatures remain valid');
+}
+
+function setPoolAmounts(tx, patch) {
+  const fields = decodePoolTape(tx.outputs[1].script);
+  tx.outputs[1].setScript(tbc.Script.fromBuffer(encodePoolTape({ ...fields, ...patch })));
+}
+
+function adjustFtSlot(tx, tapeVout, vin, increment) {
+  const amounts = TBC20.parseTape(tx.outputs[tapeVout].script).amounts.slice();
+  amounts[vin] += increment;
+  tx.outputs[tapeVout].setScript(replaceTBC20TapeAmounts(tx.outputs[tapeVout].script, amounts));
 }
 
 for (const timelocked of [false, true]) for (const controllerCount of [0, 2]) {
@@ -251,6 +335,154 @@ for (const timelocked of [false, true]) for (let controllerCount = 1; controller
   }));
 }
 
+for (const timelocked of [false, true]) for (const controllerCount of [0, 2]) {
+  test(`partial RemoveLP cannot drain the last LP holder: lock=${timelocked}, controllers=${controllerCount}`,
+    { concurrency: false }, () => quiet(async () => {
+      const h = await createHarness({ timelocked, controllerCount });
+      const added = await h.add(1_000_002n, 1_000_002n);
+      const heldLP = h.asset(added, 'new-lp', h.signers.lpOwner), common = h.common();
+      const valid = await h.run('removeLP', { ...common, userLP: heldLP, burnAmountRaw: 1_000_001n,
+        receiverAddress: address(owner), minFtOutRaw: 1n, minTbcOutSat: 1n });
+      assert.equal(valid.nextState.ftLpAmount, 1n);
+      assert.equal(valid.nextState.ftAAmount, 1n);
+      assert.equal(valid.nextState.tbcAmount, 1n);
+      assert.equal(valid.nextState.poolValue, POOL3_CODE_DUST + 1n);
+      assert.equal(valid.quote.poolValueDecrementSat, 1_000_001n);
+      verifyMutatedOperation(h, valid, common, tx => {
+        // Recreate the former ratio=P result: leave 1 LP, pay every reserve.
+        tx.outputs[0].satoshis--; tx.outputs[2].satoshis++;
+        setPoolAmounts(tx, { ftAAmount: 0n, tbcAmount: 0n });
+        adjustFtSlot(tx, 4, 2, 1n);
+        adjustFtSlot(tx, 8, 2, -1n);
+      });
+    }));
+
+  test(`Swap output floors reject old reserve-floor payments: lock=${timelocked}, controllers=${controllerCount}`,
+    { concurrency: false }, () => quiet(async () => {
+      const h = await createHarness({ timelocked, controllerCount });
+      await h.add(100_000_000n, 200_000_000n);
+      let common = h.common(), old = h.currentPool.nextState;
+      const forward = await h.run('swapFT', { ...common, inputTbcSat: 1_000_000n,
+        receiverAddress: address(owner), minFtOutRaw: 1n });
+      assert.equal(forward.quote.ftOutRaw, 1_973_335n);
+      assert(forward.nextState.tbcAmount * forward.nextState.ftAAmount >= old.tbcAmount * old.ftAAmount);
+      verifyMutatedOperation(h, forward, common, tx => {
+        setPoolAmounts(tx, { ftAAmount: forward.nextState.ftAAmount - 1n });
+        adjustFtSlot(tx, 3, 2, 1n);
+        adjustFtSlot(tx, 6, 2, -1n);
+      });
+
+      common = h.common(); old = h.currentPool.nextState;
+      const inputFtRaw = 1_000_000n;
+      const backward = await h.run('swapTBC', { ...common, userFT: h.userFT, inputFtRaw,
+        receiverAddress: address(owner), minTbcOutSat: 1n });
+      assert.notEqual(old.tbcAmount * inputFtRaw % (old.ftAAmount + inputFtRaw), 0n,
+        'fixture distinguishes ceil output from floor output');
+      assert.equal(backward.quote.grossTbcOutSat, old.tbcAmount * inputFtRaw / (old.ftAAmount + inputFtRaw));
+      assert(backward.nextState.tbcAmount * backward.nextState.ftAAmount >= old.tbcAmount * old.ftAAmount);
+      verifyMutatedOperation(h, backward, common, tx => {
+        setPoolAmounts(tx, { tbcAmount: backward.nextState.tbcAmount - 1n });
+        tx.outputs[0].satoshis--; tx.outputs[2].satoshis++;
+      });
+    }));
+
+  test(`single-asset AddLP budgets preserve retained fees and change: lock=${timelocked}, controllers=${controllerCount}`,
+    { concurrency: false }, () => quiet(async () => {
+      const h = await createHarness({ timelocked, controllerCount });
+      await h.add(100_000_000n, 200_000_000n);
+      await h.run('swapFT', { ...h.common(), inputTbcSat: 1_000_000n, receiverAddress: address(owner), minFtOutRaw: 1n });
+      for (const side of ['incrementSat', 'incrementFtRaw']) {
+        const old = h.currentPool.nextState;
+        assert(old.poolValue - POOL3_CODE_DUST > old.tbcAmount, 'Swap created real retained fees');
+        // Locate a nonzero integer remainder, rather than relying on a decimal
+        // input or accidentally testing only exactly divisible deposits.
+        let budget, quote;
+        for (let n = 1000n; n < 3000n; n++) {
+          const candidate = h.pool.quoteAddLP(h.currentPool.transaction, { [side]: n });
+          const used = side === 'incrementSat' ? candidate.tbcIncrementSat : candidate.ftAIncrementRaw;
+          if (used < n) { budget = n; quote = candidate; break; }
+        }
+        assert(quote, `${side}: fixture has an unused budget remainder`);
+        const oldUserFT = h.userFT.amountRaw;
+        const result = await h.run('addLP', { ...h.common(), userFT: h.userFT, [side]: budget,
+          lpReceiverAddress: address(lpOwner), minLpOutRaw: quote.ftLpIncrementRaw,
+          maxFtInRaw: quote.ftAIncrementRaw, maxTbcInSat: quote.tbcIncrementSat,
+          ...(timelocked ? { lpLockTime: 0 } : {}) });
+        assert.equal(result.nextState.poolValue - old.poolValue, quote.tbcIncrementSat);
+        assert.equal(result.nextState.tbcAmount - old.tbcAmount, quote.tbcReserveIncrementSat);
+        assert.equal(result.nextState.ftAAmount - old.ftAAmount, quote.ftAIncrementRaw);
+        assert.equal(result.nextState.ftLpAmount - old.ftLpAmount, quote.ftLpIncrementRaw);
+        assert.equal(h.asset(result, 'ft-change').amountRaw, oldUserFT - quote.ftAIncrementRaw);
+        assert.equal(h.asset(result, 'new-lp').amountRaw, quote.ftLpIncrementRaw);
+        assert((result.nextState.poolValue - POOL3_CODE_DUST) * old.ftLpAmount
+          >= (old.poolValue - POOL3_CODE_DUST) * result.nextState.ftLpAmount);
+        assert(result.nextState.ftAAmount * old.ftLpAmount >= old.ftAAmount * result.nextState.ftLpAmount);
+      }
+    }));
+
+  test(`AddLP rejects re-signed economic mutations: lock=${timelocked}, controllers=${controllerCount}`,
+    { concurrency: false }, () => quiet(async () => {
+      const h = await createHarness({ timelocked, controllerCount });
+      await h.add(100_000_000n, 200_000_000n);
+      await h.run('swapFT', { ...h.common(), inputTbcSat: 1_000_000n, receiverAddress: address(owner), minFtOutRaw: 1n });
+      const common = h.common(), userFT = h.userFT, old = h.currentPool.nextState;
+      const valid = await h.run('addLP', { ...common, userFT, incrementSat: 1_000_000n,
+        lpReceiverAddress: address(lpOwner), ...(timelocked ? { lpLockTime: 0 } : {}) });
+      const groups = [{ codeVout: 0, tapeVout: 1 }, { codeVout: 2, tapeVout: 3 },
+        { codeVout: 4, tapeVout: 5 }, { codeVout: 6, tapeVout: 7 }, { codeVout: 8 }];
+      const setPoolAmount = (tx, field, value) => {
+        const fields = decodePoolTape(tx.outputs[1].script);
+        tx.outputs[1].setScript(tbc.Script.fromBuffer(encodePoolTape({ ...fields, [field]: value })));
+      };
+      const moveFt = (tx, amount) => {
+        for (const [vout, delta] of [[3, amount], [7, -amount]]) {
+          const slots = TBC20.parseTape(tx.outputs[vout].script).amounts.slice();
+          slots[1] += delta;
+          tx.outputs[vout].setScript(replaceTBC20TapeAmounts(tx.outputs[vout].script, slots));
+        }
+        setPoolAmount(tx, 'ftAAmount', valid.nextState.ftAAmount + amount);
+      };
+      const mutations = {
+        'donate an extra TBC sat': tx => { tx.outputs[0].satoshis++; tx.outputs[8].satoshis--; },
+        'underpay TBC by one sat': tx => { tx.outputs[0].satoshis--; tx.outputs[8].satoshis++; },
+        'donate an extra FT raw': tx => moveFt(tx, 1n),
+        'underpay FT by one raw': tx => moveFt(tx, -1n),
+        'credit the real TBC payment as pricing reserve': tx => {
+          assert.notEqual(valid.quote.tbcIncrementSat, valid.quote.tbcReserveIncrementSat);
+          setPoolAmount(tx, 'tbcAmount', old.tbcAmount + valid.quote.tbcIncrementSat);
+        },
+        'overmint LP consistently in output and Pool Tape': tx => {
+          setPoolAmount(tx, 'ftLpAmount', valid.nextState.ftLpAmount + 1n);
+          const lp = LP.parseTape(tx.outputs[5].script, { timelocked, tapeSize: 66 });
+          const amounts = lp.amounts.slice(); amounts[0]++;
+          tx.outputs[5].setScript(LP.buildTape({ tapeSize: 66, timelocked, amounts,
+            ...(timelocked ? { lockTime: lp.lockTime } : {}) }));
+        },
+      };
+      for (const [label, mutate] of Object.entries(mutations)) {
+        const tx = new tbc.Transaction(valid.txraw);
+        tx.inputs.forEach((input, vin) => { input.output = valid.transaction.inputs[vin].output; });
+        mutate(tx);
+        const sig = (vin, k) => tbc.Transaction.sighash.sign(tx, k, 0x41, vin,
+          tx.inputs[vin].output.script, tx.inputs[vin].output.satoshisBN).toTxFormat();
+        tx.inputs[0].setScript(buildPoolUnlockScript({ tx, preTx: common.pool.parentTx,
+          prePreTx: common.pool.ancestorTx, inputTxs: [userFT.parentTx, common.poolFT.parentTx, common.funding.parentTx],
+          option: 1, ...(controllerCount ? { signature: sig(0, memberKeys[0]), publicKey: memberKeys[0].publicKey.toBuffer() } : {}) }));
+        for (const [vin, input, signer] of [[1, userFT, owner], [2, common.poolFT, poolFtSigner]]) {
+          tx.inputs[vin].setScript(buildTBC20UnlockScriptWithSignature({ currentTx: tx, inputIndex: vin,
+            preTx: input.parentTx, preTxVout: input.outputIndex, ancestorTransactions: h.chain,
+            outputGroups: groups, signature: sig(vin, signer), publicKey: signer.publicKey.toBuffer(),
+            ...(vin === 2 ? { contractController: { transaction: common.pool.parentTx, currentInputIndex: 0 } } : {}) }));
+        }
+        tx.inputs[3].setScript(new tbc.Script().add(sig(3, funder)).add(funder.publicKey.toBuffer()));
+        const report = validatePool3Transaction(tx);
+        assert.equal(report.valueConserved, true, label);
+        assert.equal(report.inputs[0].success, false, `${label}: Pool rejects incorrect economics`);
+        assert(report.inputs.slice(1).every(input => input.success), `${label}: all asset/funding proofs and signatures remain valid`);
+      }
+    }));
+}
+
 test('offline preparation rejects stale quotes, wrong assets, omitted Controller and fee underfunding', { concurrency: false }, () => quiet(async () => {
   const h = await createHarness({ controllerCount: 2 });
   const first = await h.add(100_000_000n, 200_000_000n);
@@ -262,6 +494,11 @@ test('offline preparation rejects stale quotes, wrong assets, omitted Controller
   assert.throws(() => h.pool.prepareSwapTBC({ ...common, userFT: h.asset(first, 'new-lp', h.signers.lpOwner),
     inputFtRaw: 10000n, receiverAddress: address(owner), minTbcOutSat: 1n }), /codeScript|artifact|bytes|TBC20/i);
   assert.throws(() => h.pool.prepareSwapFT({ ...options, feePolicy: { minimumFeeSat: 100_000_000_000n } }), /insufficient TBC/);
+  const add = { ...common, userFT: h.userFT, incrementFtRaw: 2_000_000n, lpReceiverAddress: address(lpOwner) };
+  assert.throws(() => h.pool.prepareAddLP({ ...add, maxTbcInSat: 999_999n }), /maxTbcInSat/);
+  assert.throws(() => h.pool.prepareAddLP({ ...add, maxFtInRaw: 1_999_999n }), /maxFtInRaw/);
+  assert.throws(() => h.pool.prepareAddLP({ ...add, minLpOutRaw: 1_000_001n }), /minLpOutRaw/);
+  assert.throws(() => h.pool.prepareAddLP({ ...add, incrementSat: 1_000_000n }));
   assert.equal(h.signatures.length, calls, 'all rejected preparations happen before external signing');
 }));
 
@@ -321,4 +558,50 @@ test('moving swapped FT from pool vin2 to funding vin1 fails after all proofs an
   assert.equal(report.success, false); assert.equal(report.inputs[0].success, false);
   assert.equal(report.inputs[1].success, true, 'funding signature was regenerated for changed outputs');
   assert.equal(report.inputs[2].success, false, 'real TBC20 independently rejects the input-source mismatch');
+}));
+
+for (const timelocked of [false, true]) for (const controllerCount of [0, 2]) {
+  test(`large real AddLP accepts >2^31 fields and >8-byte intermediate products: lock=${timelocked}, controllers=${controllerCount}`,
+    { concurrency: false }, () => quiet(async () => {
+      const h = await createHarness({ timelocked, controllerCount, ftSupplyRaw: (1n << 63n) - 1n });
+      const first = await h.add(3_000_000_000n, 1n << 61n);
+      assert(first.nextState.tbcAmount > (1n << 31n));
+      const added = await h.add(1_000_000_000n);
+      assert.equal(added.nextState.ftLpAmount, 4_000_000_000n);
+      assert.equal(added.nextState.tbcAmount, 4_000_000_000n);
+      assert.equal(added.quote.ftAIncrementRaw, ((1n << 61n) + 2n) / 3n);
+      assert((first.nextState.ftAAmount * added.quote.ftLpIncrementRaw) > (1n << 64n));
+      assert(added.validation.inputs.every(input => input.success));
+      validateInFreshProcess(added);
+    }));
+
+  test(`RemoveLP quote and builder agree at 10 sat and reject 9 sat: lock=${timelocked}, controllers=${controllerCount}`,
+    { concurrency: false }, () => quiet(async () => {
+      const h = await createHarness({ timelocked, controllerCount });
+      const first = await h.add(1000n, 2000n);
+      const options = { ...h.common(), userLP: h.asset(first, 'new-lp', h.signers.lpOwner),
+        receiverAddress: address(owner), minFtOutRaw: 1n, minTbcOutSat: 1n };
+      const calls = h.signatures.length;
+      assert.throws(() => h.pool.quoteRemoveLP(first.transaction, 9n), /at least 10 sat/);
+      assert.throws(() => h.pool.prepareRemoveLP({ ...options, burnAmountRaw: 9n }), /at least 10 sat/);
+      assert.equal(h.signatures.length, calls, 'sub-dust redemption is rejected before signing');
+      assert.equal(h.pool.quoteRemoveLP(first.transaction, 10n).poolValueDecrementSat, 10n);
+      const removed = await h.run('removeLP', { ...options, burnAmountRaw: 10n });
+      assert.equal(removed.quote.poolValueDecrementSat, 10n);
+      assert.equal(removed.transaction.outputs[2].satoshis, 10);
+      assert(removed.validation.inputs.every(input => input.success));
+    }));
+}
+
+test('first AddLP rejects prefunded empty Pool snapshots before preparing signatures', { concurrency: false }, () => quiet(async () => {
+  const h = await createHarness();
+  const prefunded = new tbc.Transaction(h.minted.txraw);
+  prefunded.outputs[0].satoshis += 1;
+  assert.throws(() => h.pool.quoteAddLP(prefunded, 100n, 200n), /exactly 1500 sat/);
+  const common = h.common(), calls = h.signatures.length;
+  assert.throws(() => h.pool.prepareAddLP({ ...common,
+    pool: { ...common.pool, parentTx: prefunded }, userFT: h.userFT,
+    incrementSat: 100n, firstFtAmountRaw: 200n, lpReceiverAddress: address(lpOwner),
+  }), /exactly 1500 sat/);
+  assert.equal(h.signatures.length, calls);
 }));

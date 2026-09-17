@@ -233,12 +233,32 @@ test('fee reservation and dust change preserve the exact TBC ledger', async () =
   assertFees(a);
   assert(a.feeSat >= 91n);
   assert.equal(a.changeVout, 1);
-  const noChange = fixture({ fundingSat: 1110, paymentSat: 1000n });
+  const noChange = fixture({ fundingSat: 1089, paymentSat: 1000n });
   const b = await quiet(() => noChange.prepared.sign());
   assertFees(b);
   assert.equal(b.changeVout, undefined);
-  assert.equal(b.feeSat, 110n);
+  assert.equal(b.feeSat, 89n);
   assert.equal(b.transaction.outputs.length, 1);
   assert.throws(() => fixture({ fundingSat: 1050, paymentSat: 1000n }), /insufficient TBC/);
   assert.throws(() => fixture({ feePolicy: { satoshisPerKb: 0n } }), /must be positive/);
+});
+
+test('Pool3 ordinary payments and default change use a strict 10-sat minimum', async () => {
+  const ten = fixture({ paymentSat: 10n });
+  assertFees(await quiet(() => ten.prepared.sign()));
+  assert.throws(() => fixture({ paymentSat: 9n }), /at least 10 sat/);
+  assert.throws(() => fixture({ paymentSat: 0n }), /at least 10 sat/);
+  assert.throws(() => fixture({ feePolicy: { changeDustSat: 9n } }), /at least 10 sat/);
+  const exactChange = fixture({ fundingSat: 1090, paymentSat: 1000n });
+  const signed = await quiet(() => exactChange.prepared.sign());
+  assertFees(signed);
+  assert.equal(signed.changeVout, 1);
+  assert.equal(signed.transaction.outputs[1].satoshis, 10);
+  // Hand-built fixed outputs cannot bypass the shared helper's floor.
+  const prior = parent(p2pkh(keys[0]));
+  assert.throws(() => new PreparedPool3Transaction({
+    inputs: [p2pkhInputPlan({ parentTx: prior, outputIndex: 0, signer: privateKeySigner(keys[0]) })],
+    outputs: [new tbc.Transaction.Output({ script: p2pkh(keys[0]), satoshis: 9 })],
+    changeAddress: keys[0].toAddress().toString(),
+  }), /at least 10 sat/);
 });

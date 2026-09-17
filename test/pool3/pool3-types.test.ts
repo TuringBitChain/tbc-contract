@@ -10,6 +10,7 @@ import type {
   PoolAuthorization, PoolNFT3Config, Pool3AssetInput, Pool3SignedInput,
   Pool3PoolInput, Pool3BuildResult, Pool3SigningIdentity, Pool3Signature,
   Pool3TransactionResolver,
+  Pool3AddLPAmount,
 } from "../../index";
 
 declare const tx: tbc.Transaction;
@@ -36,6 +37,7 @@ const bigAmount: bigint = decoded.ftLpAmount + breakdown.totalFeeSat;
 const shared = { pool, funding, poolFT: asset, controllerSigner: signer };
 const mint: Promise<Pool3BuildResult> = sdk.mintPoolNFT({ funding });
 const add: Promise<Pool3BuildResult> = sdk.addLP({ ...shared, userFT: asset, incrementSat: 1000000n, firstFtAmountRaw: 2000000n, lpReceiverAddress: address, lpLockTime: 0 });
+const addByFt: Promise<Pool3BuildResult> = sdk.addLP({ ...shared, userFT: asset, incrementFtRaw: 2000000n, maxTbcInSat: 1000000n, lpReceiverAddress: address, lpLockTime: 0 });
 const remove: Promise<Pool3BuildResult> = sdk.removeLP({ ...shared, userLP: asset, burnAmountRaw: 100n, receiverAddress: address });
 const swapFT: Promise<Pool3BuildResult> = sdk.swapFT({ ...shared, inputTbcSat: 1000000n, receiverAddress: address, minFtOutRaw: 1n });
 const swapTBC: Promise<Pool3BuildResult> = sdk.swapTBC({ ...shared, userFT: asset, inputFtRaw: 1000000n, receiverAddress: address, minTbcOutSat: 42n });
@@ -48,14 +50,32 @@ const requests = prepared.signingRequests;
 const lpCode = FTLPTBC20.instantiateCode({ poolCodeHash: state.poolCodeHash, controller: Buffer.alloc(21), tapeSize: 66, timelocked: true });
 const lpDescriptor = FTLPTBC20.parseCode(lpCode);
 sdk.quoteAddLP(tx, 100n);
+const ftBudget: Pool3AddLPAmount = { incrementFtRaw: 100n };
+const ftBudgetQuote = sdk.quoteAddLP(tx, ftBudget);
+sdk.quoteAddLP(tx, { incrementSat: 100n, firstFtAmountRaw: 200n });
+const pricingReserveIncrement: bigint = ftBudgetQuote.tbcReserveIncrementSat;
 sdk.quoteRemoveLP(tx, 100n);
 sdk.quoteSwapFT(tx, 100n);
 sdk.quoteSwapTBC(tx, 100n);
-void [alias, resolver, restored, bigAmount, mint, add, remove, swapFT, swapTBC, transfer, unlock,
+void [alias, resolver, restored, bigAmount, mint, add, addByFt, pricingReserveIncrement, remove, swapFT, swapTBC, transfer, unlock,
   report, requests, lpDescriptor, recipient];
 
 // @ts-expect-error Amounts cannot be floating-point JavaScript numbers.
 sdk.quoteSwapFT(tx, 0.5);
+// @ts-expect-error RemoveLP uses direct proportional amounts, not a fixed-point ratio.
+sdk.quoteRemoveLP(tx, 100n).ratio;
+// @ts-expect-error Exactly one AddLP asset budget is accepted.
+sdk.quoteAddLP(tx, { incrementSat: 100n, incrementFtRaw: 200n });
+// @ts-expect-error AddLP needs one asset budget.
+sdk.quoteAddLP(tx, {});
+// @ts-expect-error Initial pricing requires the TBC-input mode, not an FT budget.
+sdk.quoteAddLP(tx, { incrementFtRaw: 100n, firstFtAmountRaw: 200n });
+// @ts-expect-error Object-based amounts carry the initial FT quantity inside the object.
+sdk.quoteAddLP(tx, { incrementSat: 100n }, 200n);
+// @ts-expect-error The builder also rejects two simultaneous asset budgets.
+sdk.prepareAddLP({ ...shared, userFT: asset, incrementSat: 100n, incrementFtRaw: 200n, lpReceiverAddress: address });
+// @ts-expect-error FT budgets must use bigint raw units.
+sdk.prepareAddLP({ ...shared, userFT: asset, incrementFtRaw: 0.5, lpReceiverAddress: address });
 // @ts-expect-error A public pool has no whitelist field.
 const badAuth: PoolAuthorization = { kind: "public", controllerPubKeyHashes: [] };
 // @ts-expect-error A controller whitelist is a list, not one hash string.

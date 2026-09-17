@@ -35,11 +35,11 @@ function oracle(state, operation, input) {
     const fees = feeOracle(input);
     next.poolValue += input - fees.serviceFeePaidSat;
     next.tbcAmount += fees.netAmountSat;
-    next.ftAAmount = state.tbcAmount * state.ftAAmount / next.tbcAmount;
+    next.ftAAmount = state.ftAAmount - state.ftAAmount * fees.netAmountSat / next.tbcAmount;
     return { nextState: next, fees, output: state.ftAAmount - next.ftAAmount };
   }
   next.ftAAmount += input;
-  next.tbcAmount = state.tbcAmount * state.ftAAmount / next.ftAAmount;
+  next.tbcAmount = state.tbcAmount - state.tbcAmount * input / next.ftAAmount;
   const fees = feeOracle(state.tbcAmount - next.tbcAmount);
   next.poolValue -= fees.netAmountSat + fees.serviceFeePaidSat;
   return { nextState: next, fees, output: fees.netAmountSat };
@@ -58,7 +58,7 @@ function selectInput(state, operation, target, availableFt) {
       // not be used as a binary-search predicate.
       let low = 1n, high = availableFt < state.ftAAmount ? availableFt : state.ftAAmount - 1n;
       if (high < low) continue;
-      const gross = quantity => state.tbcAmount - state.tbcAmount * state.ftAAmount / (state.ftAAmount + quantity);
+      const gross = quantity => state.tbcAmount * quantity / (state.ftAAmount + quantity);
       if (gross(high) < base) continue;
       while (low < high) {
         const middle = (low + high) / 2n;
