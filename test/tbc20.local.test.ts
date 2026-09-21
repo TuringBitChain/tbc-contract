@@ -15,7 +15,7 @@ import {
   getTBC20PreTxData,
   encodeTBC20UnsignedLE,
   buildTBC20UnlockScriptWithSignature,
-} from "../lib/util/tbc20unlock";
+} from "../lib/util/tbc20/tbc20unlock";
 
 const OWNER_WIF =
   "L1u2TmR7hMMMSV9Bx2Lyt3sujbboqEFqnKygnPRnQERhKB4qptuK";

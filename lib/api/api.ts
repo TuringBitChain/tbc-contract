@@ -1,12 +1,12 @@
 import * as tbc from "tbc-lib-js";
-import { getPrePreTxdata } from "../util/ftunlock";
-import { findMinFiveSum } from "../util/utxoSelect";
+import { getPrePreTxdata } from "../util/ft/ftunlock";
+import { findMinFiveSum } from "../util/common/utxoSelect";
 import {
   fetchInBatches,
   fetchTBCLockTime,
   safeJSONParse,
   parseDecimalToBigInt,
-} from "../util/util";
+} from "../util/common/util";
 
 interface NFTInfo {
   collectionId: string;
@@ -1594,6 +1594,48 @@ class API {
   }
 
   //stableCoin
+  private static coinInteger(value: unknown, field: string): bigint {
+    if (typeof value === "number" && !Number.isSafeInteger(value)) {
+      throw new Error(`Coin API ${field} must be a safe integer number or an exact integer string`);
+    }
+    if (typeof value !== "bigint" && typeof value !== "number" &&
+        !(typeof value === "string" && /^\d+$/.test(value))) {
+      throw new Error(`Coin API ${field} must be a nonnegative integer`);
+    }
+    const result = BigInt(value);
+    if (result < 0n) throw new Error(`Coin API ${field} must be a nonnegative integer`);
+    return result;
+  }
+
+  private static coinNumber(value: unknown, field: string, maximum = Number.MAX_SAFE_INTEGER): number {
+    const result = API.coinInteger(value, field);
+    if (result > BigInt(maximum)) throw new Error(`Coin API ${field} exceeds ${maximum}`);
+    return Number(result);
+  }
+
+  private static async coinData(url: string): Promise<any> {
+    const response = await fetch(url);
+    const text = await response.text();
+    let body: any;
+    try {
+      // The shared parser preserves balances and UTXO values. Coin supply is
+      // another atomic-unit integer and must be preserved before JSON parsing.
+      body = safeJSONParse(text.replace(/("supply"\s*:\s*)(\d+)(?=\s*[,}])/g, '$1"$2"'));
+    } catch {
+      throw new Error(`Coin API HTTP ${response.status}: invalid JSON response`);
+    }
+    if (!response.ok || String(body?.code) !== "200" || body?.error) {
+      const detail = [body?.error, body?.message].filter(value => typeof value === "string" && value.length);
+      const error = new Error(`Coin API HTTP ${response.status}, code ${body?.code ?? "missing"}: ${detail.join(": ") || response.statusText}`);
+      Object.assign(error, { code: body?.error || body?.code, status: response.status, requestId: body?.request_id });
+      throw error;
+    }
+    if (!body.data || typeof body.data !== "object" || Array.isArray(body.data)) {
+      throw new Error("Coin API success response is missing a data object");
+    }
+    return body.data;
+  }
+
   static async fetchCoinInfo(
     contractTxid: string,
     network?: "testnet" | "mainnet" | string
@@ -1602,27 +1644,22 @@ class API {
       ? API.getBaseURL(network)
       : API.getBaseURL("mainnet");
     const url = base_url + `stablecoin/info/stablecoinid/${contractTxid}`;
-    try {
-      const response = await fetch(url)
-        .then((response) => response.text())
-        .then((text) => {
-          const result = safeJSONParse(text);
-          return result;
-        });
-      const data = response.data;
-      const coinInfo: FtInfo = {
-        codeScript: data.code_script,
-        tapeScript: data.tape_script,
-        totalSupply: data.supply,
-        decimal: data.decimal,
-        name: data.name,
-        symbol: data.symbol,
-      };
-      const nftTXID = data.utxo.txid;
-      return { coinInfo, nftTXID };
-    } catch (error: any) {
-      throw new Error(error.message);
+    const data = await API.coinData(url);
+    if (typeof data.code_script !== "string" || !/^(?:[a-fA-F0-9]{2})+$/.test(data.code_script) ||
+        typeof data.tape_script !== "string" || !/^(?:[a-fA-F0-9]{2})+$/.test(data.tape_script) ||
+        typeof data.name !== "string" || typeof data.symbol !== "string" ||
+        typeof data.utxo?.txid !== "string" || !/^[a-fA-F0-9]{64}$/.test(data.utxo.txid)) {
+      throw new Error("Coin API returned invalid coin metadata or issuance UTXO");
     }
+    const coinInfo: FtInfo = {
+      codeScript: data.code_script,
+      tapeScript: data.tape_script,
+      totalSupply: API.coinInteger(data.supply, "supply"),
+      decimal: API.coinNumber(data.decimal, "decimal", 255),
+      name: data.name,
+      symbol: data.symbol,
+    };
+    return { coinInfo, nftTXID: data.utxo.txid };
   }
 
   static async getCoinbalance(
@@ -1641,7 +1678,7 @@ class API {
       hash = publicKeyHash + "00";
     } else {
       // If the recipient is a hash
-      if (addressOrHash.length !== 40) {
+      if (!/^[a-fA-F0-9]{40}$/.test(addressOrHash)) {
         throw new Error("Invalid address or hash");
       }
       hash = addressOrHash + "01";
@@ -1649,18 +1686,8 @@ class API {
     const url =
       base_url +
       `stablecoin/tokenbalance/combinescript/${hash}/stablecoinid/${contractTxid}`;
-    try {
-      const response = await fetch(url)
-        .then((response) => response.text())
-        .then((text) => {
-          const result = safeJSONParse(text);
-          return result;
-        });
-      const coinBalance = response.data.balance;
-      return coinBalance;
-    } catch (error: any) {
-      throw new Error(error.message);
-    }
+    const data = await API.coinData(url);
+    return API.coinInteger(data.balance, "balance");
   }
 
   static async fetchCoinUTXOList(
@@ -1678,33 +1705,32 @@ class API {
       tbc.Address.fromString(addressOrHash).hashBuffer.toString("hex");
       hash = publicKeyHash + "00";
     } else {
-      if (addressOrHash.length !== 40) {
+      if (!/^[a-fA-F0-9]{40}$/.test(addressOrHash)) {
       throw new Error("Invalid address or hash");
       }
       hash = addressOrHash + "01";
     }
     const url =
       base_url + `stablecoin/utxo/combinescript/${hash}/stablecoinid/${contractTxid}`;
-    try {
-      const response = await fetch(url)
-      .then((response) => response.text())
-      .then((text) => safeJSONParse(text));
-      const utxoList = response.data.utxos;
-      if (utxoList.length === 0) {
-        throw new Error("The ft balance in the account is zero.");
-      }
-      
-      return utxoList.map((utxo: any) => ({
-        txId: utxo.txid,
-        outputIndex: utxo.index,
-        script: codeScript,
-        satoshis: Number(utxo.tbc_value),
-        ftBalance: utxo.ft_value,
-        lockTime: utxo.lock_time,
-      }));
-    } catch (error: any) {
-      throw new Error(error.message);
+    const data = await API.coinData(url);
+    if (!Array.isArray(data.utxos)) throw new Error("Coin API success response is missing a UTXO array");
+    if (data.utxos.length === 0) {
+      throw new Error("The ft balance in the account is zero.");
     }
+    return data.utxos.map((utxo: any) => {
+      if (!utxo || typeof utxo.txid !== "string" || !/^[a-fA-F0-9]{64}$/.test(utxo.txid)) {
+        throw new Error("Coin API returned an invalid UTXO transaction id");
+      }
+      return {
+        txId: utxo.txid,
+        outputIndex: API.coinNumber(utxo.index, "UTXO index", 0xffffffff),
+        script: codeScript,
+        satoshis: API.coinNumber(utxo.tbc_value, "UTXO tbc_value"),
+        ftBalance: API.coinInteger(utxo.ft_value, "UTXO ft_value"),
+        // Older unlocked Coin index records may omit this optional field.
+        lockTime: API.coinNumber(utxo.lock_time === undefined ? 0 : utxo.lock_time, "UTXO lock_time", 0xffffffff),
+      };
+    });
   }
 
   static async fetchCoinUTXOs(
@@ -1715,8 +1741,11 @@ class API {
     network?: "testnet" | "mainnet" | string,
     number?: number
   ): Promise<tbc.Transaction.IUnspentOutput[]> {
-    if (number !== undefined && (number <= 0 || !Number.isInteger(number))) {
+    if (number !== undefined && (number <= 0 || !Number.isSafeInteger(number))) {
       throw new Error("Number must be a positive integer greater than 0");
+    }
+    if (typeof amount !== "bigint" || amount <= 0n) {
+      throw new Error("Coin amount must be a positive bigint in atomic units");
     }
     try {
       const coinutxolist = await API.fetchCoinUTXOList(
@@ -1725,9 +1754,7 @@ class API {
         codeScript,
         network
       );
-      coinutxolist.sort((a, b) =>
-        BigInt(b.ftBalance) > BigInt(a.ftBalance) ? 1 : -1
-      );
+      coinutxolist.sort((a, b) => a.ftBalance === b.ftBalance ? 0 : b.ftBalance > a.ftBalance ? 1 : -1);
 
       const maxCount = number ?? coinutxolist.length;
       let sumBalance = BigInt(0);
@@ -1759,7 +1786,7 @@ class API {
       }
       return coinutxos;
     } catch (error: any) {
-      throw new Error(error.message);
+      throw error;
     }
   }
 

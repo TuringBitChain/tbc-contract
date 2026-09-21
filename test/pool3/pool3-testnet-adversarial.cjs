@@ -7,7 +7,7 @@
 const assert = require('node:assert/strict');
 const tbc = require('tbc-lib-js');
 const TBC20 = require('../../lib/contract/tbc20.js');
-const { buildTBC20UnlockScriptWithSignature, replaceTBC20TapeAmounts } = require('../../lib/util/tbc20unlock.js');
+const { buildTBC20UnlockScriptWithSignature, replaceTBC20TapeAmounts } = require('../../lib/util/tbc20/tbc20unlock.js');
 const { buildPoolUnlockScript } = require('../../lib/util/poolnft3/witness.js');
 const { decodePoolTape, replacePoolTapeAmounts } = require('../../lib/util/poolnft3/tape.js');
 const { parsePoolCode } = require('../../lib/util/poolnft3/artifacts.js');

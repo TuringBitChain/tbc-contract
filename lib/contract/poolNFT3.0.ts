@@ -1,13 +1,13 @@
 import * as tbc from 'tbc-lib-js';
 import { TBC20 } from './tbc20';
 import { FTLPTBC20 } from './ftlpTbc20';
-import { buildFTLPUnlockScriptWithSignature } from '../util/ftlpTbc20unlock';
+import { buildFTLPUnlockScriptWithSignature } from '../util/poolnft3/ftlpTbc20unlock';
 import {
   buildTBC20UnlockScriptWithSignature,
   getTBC20CodeIdentity,
   getTBC20Controller,
   replaceTBC20TapeAmounts,
-} from '../util/tbc20unlock';
+} from '../util/tbc20/tbc20unlock';
 import {
   assertPoolControllerPublicKey,
   normalizePoolAuthorization,
@@ -40,7 +40,7 @@ import {
   publicKeyBytes,
   referenceOutput,
 } from '../util/poolnft3/transaction';
-import type { TBC20CurrentOutputGroup } from '../util/tbc20unlock';
+import type { TBC20CurrentOutputGroup } from '../util/tbc20/tbc20unlock';
 import type {
   Pool3InputPlan,
   Pool3Signature,

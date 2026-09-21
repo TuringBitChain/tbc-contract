@@ -9,7 +9,7 @@ const tbc = require('tbc-lib-js');
 const TBC20 = require('../../lib/contract/tbc20.js');
 const { buildPoolUnlockScript, getPoolOutputLayout, getPoolUnlockLeafCount } =
   require('../../lib/util/poolnft3/witness.js');
-const { getTBC20PartialScriptData } = require('../../lib/util/tbc20unlock.js');
+const { getTBC20PartialScriptData } = require('../../lib/util/tbc20/tbc20unlock.js');
 const { instantiatePoolCode } = require('../../lib/util/poolnft3/artifacts.js');
 const { POOL3_CODE_DUST } = require('../../lib/util/poolnft3/math.js');
 const artifacts = {

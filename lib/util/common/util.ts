@@ -1,6 +1,6 @@
 import * as tbc from 'tbc-lib-js';
-import { getPrePreTxdata } from './ftunlock';
-export { fillCharLengthInFT, isCoinCodeScript } from './ftscript';
+import { getPrePreTxdata } from '../ft/ftunlock';
+export { fillCharLengthInFT, isCoinCodeScript } from '../ft/ftscript';
 
 export function buildUTXO(tx: tbc.Transaction, vout: number, isFT?: boolean): tbc.Transaction.IUnspentOutput {
         let ftBlance: bigint;

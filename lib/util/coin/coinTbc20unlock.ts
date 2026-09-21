@@ -1,5 +1,5 @@
 import * as tbc from 'tbc-lib-js';
-import { FTLPTBC20 } from '../contract/ftlpTbc20';
+import { CoinTBC20 } from './coinTbc20Code';
 import {
   encodeTBC20UnsignedLE,
   getTBC20ContractTxData,
@@ -8,8 +8,8 @@ import {
   getTBC20PrePreTxArray,
   getTBC20PreTxData,
   readTBC20TapeAmounts,
-} from './tbc20unlock';
-import type { FTLPCodeDescriptor } from '../contract/ftlpTbc20';
+} from '../tbc20/tbc20unlock';
+import type { CoinCodeDescriptor } from './coinTbc20Code';
 import type {
   TBC20ContractTxData,
   TBC20OutputData,
@@ -19,13 +19,13 @@ import type {
   TBC20TransactionResolver,
   TBC20UnlockWithPrivateKeyOptions,
   TBC20UnlockWithSignatureOptions,
-} from './tbc20unlock';
+} from '../tbc20/tbc20unlock';
 
-export type FTLPUnlockWithSignatureOptions = TBC20UnlockWithSignatureOptions;
-export type FTLPUnlockWithPrivateKeyOptions = TBC20UnlockWithPrivateKeyOptions;
+export type CoinTBC20UnlockWithSignatureOptions = TBC20UnlockWithSignatureOptions;
+export type CoinTBC20UnlockWithPrivateKeyOptions = TBC20UnlockWithPrivateKeyOptions;
 
 function fail(message: string): never {
-  throw new Error(`FTLP unlock: ${message}`);
+  throw new Error(`Coin TBC20 unlock: ${message}`);
 }
 
 function bytes(value: Buffer | string, name: string): Buffer {
@@ -77,8 +77,8 @@ function lookup(resolver: TBC20TransactionResolver, txid: string): tbc.Transacti
 }
 
 function ancestors(
-  options: FTLPUnlockWithSignatureOptions,
-  descriptor: FTLPCodeDescriptor,
+  options: CoinTBC20UnlockWithSignatureOptions,
+  descriptor: CoinCodeDescriptor,
   amounts: readonly bigint[]
 ): TBC20PrePreTxData[] {
   // Resolve each TXID once. The same immutable view supplies prechecks and ABI proofs.
@@ -92,28 +92,28 @@ function ancestors(
     if (!parent) {
       parent = lookup(options.ancestorTransactions, txid);
       if (!(parent instanceof tbc.Transaction) || parent.hash.toLowerCase() !== txid) {
-        fail(`missing or mismatched LP ancestor ${txid}`);
+        fail(`missing or mismatched Coin ancestor ${txid}`);
       }
       resolved.set(txid, parent);
     }
-    index(source.outputIndex, parent.outputs.length, 'LP ancestor vout');
+    index(source.outputIndex, parent.outputs.length, 'Coin ancestor vout');
     const code = parent.outputs[source.outputIndex].script;
     let sameIdentity = false;
     try {
-      sameIdentity = FTLPTBC20.getCodeIdentity(code).equals(descriptor.identity);
+      sameIdentity = CoinTBC20.getCodeIdentity(code).equals(descriptor.identity);
     } catch {
-      /* Pool issuance is checked separately. */
+      /* Coin certificate issuance is checked separately. */
     }
     if (
       !sameIdentity &&
       !(
         slot === 0 &&
         source.outputIndex === 0 &&
-        tbc.crypto.Hash.sha256(code.toBuffer()).equals(descriptor.poolCodeHash)
+        tbc.crypto.Hash.sha256(code.toBuffer()).equals(descriptor.coinNftCodeHash)
       )
     ) {
       fail(
-        `parent Tape slot ${slot} is neither the same LP identity nor its authorized Pool issuance source`
+        `parent Tape slot ${slot} is neither the same Coin identity nor its authorized Coin certificate issuance source`
       );
     }
   }
@@ -121,15 +121,17 @@ function ancestors(
 }
 
 function controllerProof(
-  options: FTLPUnlockWithSignatureOptions,
-  descriptor: FTLPCodeDescriptor,
+  options: CoinTBC20UnlockWithSignatureOptions,
+  descriptor: CoinCodeDescriptor,
   publicKey: Buffer
 ): { data: TBC20ContractTxData; vin: number } {
   const expected = descriptor.controller.subarray(0, 20);
-  if (descriptor.controller[20] === 0) {
-    if (options.contractController) fail('contractController must be omitted for address-held LP');
-    if (!tbc.crypto.Hash.sha256ripemd160(publicKey).equals(expected))
-      fail('publicKey does not belong to the LP owner');
+  const publicKeyHash = tbc.crypto.Hash.sha256ripemd160(publicKey);
+  const administrator = publicKeyHash.equals(descriptor.adminPubKeyHash);
+  if (administrator || descriptor.controller[20] === 0) {
+    if (options.contractController) fail('contractController must be omitted for administrator or address-held Coin');
+    if (!administrator && !publicKeyHash.equals(expected))
+      fail('publicKey does not belong to the Coin owner');
     return {
       vin: 0,
       data: {
@@ -142,10 +144,10 @@ function controllerProof(
     };
   }
   const witness = options.contractController;
-  if (!witness) fail('contract-held LP requires an explicit controlling-contract witness');
+  if (!witness) fail('contract-held Coin requires an explicit controlling-contract witness');
   index(witness.currentInputIndex, options.currentTx.inputs.length, 'contract currentInputIndex');
   if (witness.currentInputIndex === options.inputIndex)
-    fail('an LP input cannot be its own controlling-contract input');
+    fail('a Coin input cannot be its own controlling-contract input');
   const controllingInput = options.currentTx.inputs[witness.currentInputIndex];
   assertLinked(
     options.currentTx,
@@ -157,7 +159,7 @@ function controllerProof(
     witness.transaction.outputs[controllingInput.outputIndex].script.toBuffer()
   );
   if (!tbc.crypto.Hash.sha256ripemd160(hash).equals(expected))
-    fail('controlling-contract hash does not match LP Controller');
+    fail('controlling-contract hash does not match Coin Controller');
   return {
     vin: witness.currentInputIndex,
     data: getTBC20ContractTxData(witness.transaction, controllingInput.outputIndex),
@@ -165,8 +167,8 @@ function controllerProof(
 }
 
 function verifyOutputAllocations(
-  options: FTLPUnlockWithSignatureOptions,
-  descriptor: FTLPCodeDescriptor,
+  options: CoinTBC20UnlockWithSignatureOptions,
+  descriptor: CoinCodeDescriptor,
   inputBalance: bigint
 ): TBC20OutputGroupData[] {
   const groups = getTBC20CurrentOutputData(options.currentTx, options.outputGroups);
@@ -178,7 +180,7 @@ function verifyOutputAllocations(
       codeBytes.length === descriptor.tapeSize &&
       codeBytes.subarray(-9).equals(Buffer.from('TBC20TAPE'))
     ) {
-      fail('an FT/LP Tape cannot be hidden in a Code output field');
+      fail('an FT/Coin Tape cannot be hidden in a Code output field');
     }
     if (group.tapeVout === undefined) continue;
     const tape = options.currentTx.outputs[group.tapeVout];
@@ -186,19 +188,19 @@ function verifyOutputAllocations(
     const amount = readTBC20TapeAmounts(tape.script)[options.inputIndex];
     allocated += amount;
     if (amount === 0n) continue;
-    const recipient = FTLPTBC20.validateCode(code.script, {
-      poolCodeHash: descriptor.poolCodeHash,
+    const recipient = CoinTBC20.validateCode(code.script, {
+      coinNftCodeHash: descriptor.coinNftCodeHash,
       tapeSize: descriptor.tapeSize,
-      timelocked: descriptor.timelocked,
+      adminPubKeyHash: descriptor.adminPubKeyHash,
     });
     if (!recipient.identity.equals(descriptor.identity))
-      fail('LP output changes its source identity');
-    FTLPTBC20.parseTape(tape.script, recipient);
+      fail('Coin output changes its source identity');
+    CoinTBC20.parseTape(tape.script, recipient);
     if (code.satoshis !== 500 || tape.satoshis !== 0)
-      fail('LP output Code/Tape values must be 500/0 satoshis');
+      fail('Coin output Code/Tape values must be 500/0 satoshis');
   }
   if (allocated !== inputBalance)
-    fail("LP output amounts do not conserve this input's absolute vin slot");
+    fail("Coin output amounts do not conserve this input's absolute vin slot");
   return groups;
 }
 
@@ -239,45 +241,40 @@ function pushParent(script: tbc.Script, data: TBC20PreTxData): void {
   push(script, data.outputsLastPart);
 }
 
-/** Build the frozen 123-field LP ABI; does not sign, fetch, broadcast or mutate the transaction. */
-export function buildFTLPUnlockScriptWithSignature(
-  options: FTLPUnlockWithSignatureOptions
+/** Build the frozen 123-field Coin ABI; does not sign, fetch, broadcast or mutate the transaction. */
+export function buildCoinTBC20UnlockScriptWithSignature(
+  options: CoinTBC20UnlockWithSignatureOptions
 ): tbc.Script {
   if (!options || typeof options !== 'object') fail('unlock options are required');
   assertLinked(options.currentTx, options.inputIndex, options.preTx, options.preTxVout);
   if (options.currentTx.inputs.length > 6 || options.inputIndex >= 6)
-    fail('LP transactions support at most six total inputs');
-  const descriptor = FTLPTBC20.parseCode(options.preTx.outputs[options.preTxVout].script);
+    fail('Coin transactions support at most six total inputs');
+  const descriptor = CoinTBC20.parseCode(options.preTx.outputs[options.preTxVout].script);
   const preData = getTBC20PreTxData(options.preTx, options.preTxVout);
-  const tape = FTLPTBC20.parseTape(preData.outputsGotData.tape.lockingScript, descriptor);
-  FTLPTBC20.verifyInputLock(
-    options.currentTx,
-    options.inputIndex,
-    preData.outputsGotData.tape.lockingScript,
-    descriptor
-  );
+  const tape = CoinTBC20.parseTape(preData.outputsGotData.tape.lockingScript, descriptor);
   const signature = bytes(options.signature, 'signature');
-  if (
-    signature.length === 65 ||
-    signature.length > 72 ||
-    !tbc.crypto.Signature.isTxDER(signature)
-  ) {
-    fail('signature must be a canonical DER transaction signature of at most 72 bytes');
-  }
-  const decoded = tbc.crypto.Signature.fromTxFormat(signature) as unknown as {
-    hasLowS(): boolean;
-    hasDefinedHashtype(): boolean;
-    nhashtype: number;
-  };
-  if (!decoded.hasLowS() || !decoded.hasDefinedHashtype() || decoded.nhashtype !== 0x41) {
-    fail('signature must be low-S and use SIGHASH_ALL | SIGHASH_FORKID (0x41)');
-  }
   const publicKey =
     options.publicKey instanceof tbc.PublicKey
       ? options.publicKey.toBuffer()
       : bytes(options.publicKey, 'publicKey');
-  if (publicKey.length !== 33) fail('publicKey must be a compressed 33-byte key');
-  tbc.PublicKey.fromBuffer(publicKey);
+  if (signature.length === 65) {
+    if (signature[64] !== 0x41 || publicKey.length !== 32)
+      fail('Schnorr signature must be 65 bytes ending in 41 with a 32-byte x-only publicKey');
+    tbc.PublicKey.fromXOnly(publicKey);
+  } else {
+    if (signature.length > 72 || !tbc.crypto.Signature.isTxDER(signature))
+      fail('signature must be canonical DER of at most 72 bytes or a 65-byte Schnorr transaction signature');
+    const decoded = tbc.crypto.Signature.fromTxFormat(signature) as unknown as {
+      hasLowS(): boolean; hasDefinedHashtype(): boolean; nhashtype: number;
+    };
+    if (!decoded.hasLowS() || !decoded.hasDefinedHashtype() || decoded.nhashtype !== 0x41)
+      fail('DER signature must be low-S and use SIGHASH_ALL | SIGHASH_FORKID (0x41)');
+    if (publicKey.length !== 33) fail('DER signature requires a compressed 33-byte publicKey');
+    tbc.PublicKey.fromBuffer(publicKey);
+  }
+  const administrator = tbc.crypto.Hash.sha256ripemd160(publicKey).equals(descriptor.adminPubKeyHash);
+  CoinTBC20.verifyInputLock(options.currentTx, options.inputIndex,
+    preData.outputsGotData.tape.lockingScript, descriptor, administrator);
   const contract = controllerProof(options, descriptor, publicKey);
   const outputs = verifyOutputAllocations(options, descriptor, tape.balance);
   const inputs = getTBC20CurrentInputsData(options.currentTx);
@@ -298,18 +295,34 @@ export function buildFTLPUnlockScriptWithSignature(
   push(result, contract.data.outputsLastPart);
   push(result, encodeTBC20UnsignedLE(contract.vin));
   pushParent(result, preData);
-  if (result.chunks.length !== 123) fail('internal LP ABI error: expected exactly 123 pushes');
+  if (result.chunks.length !== 123) fail('internal Coin ABI error: expected exactly 123 pushes');
   return result;
 }
 
-export function buildFTLPUnlockScript(options: FTLPUnlockWithPrivateKeyOptions): tbc.Script {
+export function buildCoinTBC20UnlockScript(options: CoinTBC20UnlockWithPrivateKeyOptions): tbc.Script {
   if (!options || !(options.privateKey instanceof tbc.PrivateKey))
     fail('privateKey must be a tbc.PrivateKey');
+  assertLinked(options.currentTx, options.inputIndex, options.preTx, options.preTxVout);
+  const descriptor = CoinTBC20.parseCode(options.preTx.outputs[options.preTxVout].script);
+  const signingPublicKey = options.privateKey.toPublicKey();
+  const xOnly = signingPublicKey.toXOnly();
+  const xOnlyHash = tbc.crypto.Hash.sha256ripemd160(xOnly);
+  const compressedAdministrator = tbc.crypto.Hash.sha256ripemd160(signingPublicKey.toBuffer())
+    .equals(descriptor.adminPubKeyHash);
+  if (xOnlyHash.equals(descriptor.adminPubKeyHash) ||
+      (!compressedAdministrator && descriptor.controller[20] === 0 &&
+        xOnlyHash.equals(descriptor.controller.subarray(0, 20)))) {
+    const previousOutput = options.currentTx.inputs[options.inputIndex].output!;
+    const signature = tbc.Transaction.Sighash.signSchnorr(options.currentTx, options.privateKey,
+      0x41, options.inputIndex, previousOutput.script, previousOutput.satoshisBN,
+      tbc.Script.Interpreter.DEFAULT_FLAGS).toTxFormat();
+    return buildCoinTBC20UnlockScriptWithSignature({ ...options, signature, publicKey: xOnly });
+  }
   const signature = options.currentTx.getSignature(options.inputIndex, options.privateKey);
   if (typeof signature !== 'string') fail('privateKey did not produce one transaction signature');
-  return buildFTLPUnlockScriptWithSignature({
+  return buildCoinTBC20UnlockScriptWithSignature({
     ...options,
     signature,
-    publicKey: options.privateKey.toPublicKey(),
+    publicKey: signingPublicKey,
   });
 }

@@ -6,8 +6,8 @@ const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const tbc = require('tbc-lib-js');
 const { FTLPTBC20: LP } = require('../../lib/contract/ftlpTbc20');
-const { buildFTLPUnlockScript, buildFTLPUnlockScriptWithSignature } = require('../../lib/util/ftlpTbc20unlock');
-const { getTBC20CurrentInputsData, buildTBC20UnlockScript } = require('../../lib/util/tbc20unlock');
+const { buildFTLPUnlockScript, buildFTLPUnlockScriptWithSignature } = require('../../lib/util/poolnft3/ftlpTbc20unlock');
+const { getTBC20CurrentInputsData, buildTBC20UnlockScript } = require('../../lib/util/tbc20/tbc20unlock');
 
 const key = new tbc.PrivateKey('1'.padStart(64, '0'));
 const other = new tbc.PrivateKey('2'.padStart(64, '0'));

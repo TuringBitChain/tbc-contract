@@ -7,7 +7,7 @@ const tbc = require('tbc-lib-js');
 const TBC20 = require('../../lib/contract/tbc20.js');
 const { FTLPTBC20: LP } = require('../../lib/contract/ftlpTbc20.js');
 const { parsePoolCode } = require('../../lib/util/poolnft3/artifacts.js');
-const { getTBC20Controller } = require('../../lib/util/tbc20unlock.js');
+const { getTBC20Controller } = require('../../lib/util/tbc20/tbc20unlock.js');
 const { validatePool3Transaction } = require('../../lib/validator/poolnft3.js');
 
 const DUST = 1500n, FIRST_TBC = 1_000_000n, FIRST_FT = 20_000_000n;

@@ -6,12 +6,12 @@ import {
   getCurrentInputsdata,
   getContractTxdata,
   getSize,
-} from "../util/ftunlock";
+} from "../util/ft/ftunlock";
 import {
   buildUTXO,
   buildFtPrePreTxData,
   parseDecimalToBigInt
-} from "../util/util";
+} from "../util/common/util";
 
 interface FtInfo {
     contractTxid?: string;

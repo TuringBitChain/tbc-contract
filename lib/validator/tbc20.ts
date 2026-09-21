@@ -9,13 +9,13 @@ import {
   TBC20_TAPE_MARKER,
   TBC20_TAPE_PREFIX,
   getTBC20PartialScriptData,
-} from "../util/tbc20unlock";
+} from "../util/tbc20/tbc20unlock";
 import {
   decodePublishedFTCode,
   isPublishedFTTape,
   PublishedFTCodeDescriptor,
 } from "./ft-artifacts";
-import { isFTCodeLength } from "../util/ftscript";
+import { isFTCodeLength } from "../util/ft/ftscript";
 
 const TBC20: typeof TBC20Class = require("../contract/tbc20");
 

@@ -11,7 +11,7 @@ const TBC20 = require('../../lib/contract/tbc20.js');
 const { FTLPTBC20: LP } = require('../../lib/contract/ftlpTbc20.js');
 const { parsePoolCode } = require('../../lib/util/poolnft3/artifacts.js');
 const { decodePoolTape } = require('../../lib/util/poolnft3/tape.js');
-const { getTBC20CodeIdentity } = require('../../lib/util/tbc20unlock.js');
+const { getTBC20CodeIdentity } = require('../../lib/util/tbc20/tbc20unlock.js');
 const { resolveSwapFeePolicy, calculateSwapFees, deriveFeeRecipient } = require('../../lib/util/poolnft3/fees.js');
 const { validatePool3Transaction } = require('../../lib/validator/poolnft3.js');
 

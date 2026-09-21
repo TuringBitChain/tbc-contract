@@ -9,7 +9,7 @@ const TBC20 = require('../../lib/contract/tbc20.js');
 const { PoolNFT3 } = require('../../lib/contract/poolNFT3.0.js');
 const { FTLPTBC20 } = require('../../lib/contract/ftlpTbc20.js');
 const { parsePoolCode } = require('../../lib/util/poolnft3/artifacts.js');
-const { getTBC20Controller } = require('../../lib/util/tbc20unlock.js');
+const { getTBC20Controller } = require('../../lib/util/tbc20/tbc20unlock.js');
 
 // Independent Pool2-compatible fixture; deliberately do not import SDK fee or
 // quote helpers, so a shared wrong fee mapping cannot make this oracle pass.

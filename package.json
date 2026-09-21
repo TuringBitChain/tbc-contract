@@ -5,7 +5,11 @@
   "types": "index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test:pool3": "npm run build && node --test test/pool3/pool3-*.test.cjs"
+    "test:pool3": "npm run build && node --test test/pool3/pool3-*.test.cjs",
+    "test:tbc721": "npm run build && node --test test/tbc721/*.test.cjs",
+    "test:coin": "npm run build && node --test test/coin/*.test.cjs test/coinTbc20.local.test.cjs",
+    "test:coin:testnet": "node test/coin/coin-testnet-production.cjs",
+    "test:coin:audit": "node test/coin/coin-testnet-audit.cjs --write-report"
   },
   "author": "Edmund",
   "dependencies": {

@@ -14,7 +14,7 @@ const publicPool3Exports = [
 ];
 const existingExports = [
   'version', 'versionGuard', 'FT', 'TBC20', 'TokenValidator', 'TokenValidationError',
-  'poolNFT', 'poolNFT2', 'API', 'NFT', 'MultiSig', 'piggyBank', 'orderBook', 'HTLC', 'stableCoin',
+  'poolNFT', 'poolNFT2', 'API', 'NFT', 'TBC721', 'MultiSig', 'piggyBank', 'orderBook', 'HTLC', 'stableCoin', 'Coin', 'CoinTBC20',
   'buildUTXO', 'buildFtPrePreTxData', 'getFtBalanceFromTape', 'selectTXfromLocal', 'fetchInBatches',
   'fetchWithRetry', 'getOpCode', 'getLpCostAddress', 'getLpCostAmount', 'isLock', 'fetchTBCLockTime',
   'safeJSONParse', 'parseDecimalToBigInt', 'fillCharLengthInFT', 'isCoinCodeScript',
@@ -54,8 +54,13 @@ function typeCheck(ts, rootNames, virtual = new Map(), publicationRoot) {
   const publicationOnly = name => publicationRoot && name.startsWith(publicationRoot + path.sep);
   host.fileExists = name => virtual.has(name) || (!publicationOnly(name) && original.fileExists(name));
   host.readFile = name => virtual.get(name) ?? (publicationOnly(name) ? undefined : original.readFile(name));
-  host.directoryExists = name => [...virtual.keys()].some(file => file.startsWith(name + path.sep)) ||
-    (!publicationOnly(name) && !!original.directoryExists?.(name));
+  host.directoryExists = name => {
+    // Node16 resolves a package-root import to a directory with a trailing
+    // slash; normalize it before testing virtual descendants.
+    const directory = path.resolve(name);
+    return [...virtual.keys()].some(file => file.startsWith(directory + path.sep)) ||
+      (!publicationOnly(directory) && !!original.directoryExists?.(directory));
+  };
   host.getSourceFile = (name, languageVersion, onError, shouldCreate) => virtual.has(name)
     ? ts.createSourceFile(name, virtual.get(name), languageVersion, true)
     : publicationOnly(name) ? undefined : original.getSourceFile(name, languageVersion, onError, shouldCreate);
@@ -78,16 +83,26 @@ test('CommonJS root exposes only the supported Pool3 API and preserves every exi
   assert.equal(sdk.calculateSwapFees(1000000n, sdk.resolveSwapFeePolicy()).totalFeeSat, 3500n);
 });
 
-test('npm publication needs only index.d.ts, compiled code and the four frozen artifacts', () => {
+test('npm publication includes standalone declarations, grouped utilities and frozen artifacts without flat utility remnants', () => {
   const data = JSON.parse(execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'],
     { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }))[0];
   const files = new Set(data.files.map(file => file.path));
   for (const name of ['pool', 'pool_hash_lock', 'ftlp_tbc20', 'ftlp_tbc20_locktime']) {
     assert(files.has(`lib/util/poolnft3/artifacts/${name}.json`));
   }
+  for (const artifact of ['lib/util/coin/artifacts/coin_tbc20.json', 'lib/util/tbc721/artifacts/tbc721.json']) {
+    assert(files.has(artifact), artifact);
+  }
   assert.deepEqual([...files].filter(name => name.endsWith('.d.ts')), ['index.d.ts']);
   for (const name of ['lib/contract/poolNFT3.0.js', 'lib/contract/ftlpTbc20.js',
-    'lib/util/poolnft3/transaction.js', 'lib/validator/poolnft3.js']) assert(files.has(name), name);
+    'lib/util/poolnft3/transaction.js', 'lib/validator/poolnft3.js', 'lib/contract/stableCoin.js',
+    'lib/contract/coinTbc20.js', 'lib/util/common/util.js', 'lib/util/common/utxoSelect.js',
+    'lib/util/ft/ftunlock.js', 'lib/util/ft/ftscript.js', 'lib/util/nft/nftunlock.js',
+    'lib/util/tbc20/tbc20unlock.js', 'lib/util/coin/coinTbc20Code.js', 'lib/util/coin/coinTbc20unlock.js',
+    'lib/util/tbc721/tbc721unlock.js', 'lib/util/poolnft/poolnftunlock.js',
+    'lib/util/orderbook/orderbookunlock.js', 'lib/util/poolnft3/ftlpTbc20unlock.js']) assert(files.has(name), name);
+  assert(![...files].some(name => /^lib\/util\/[^/]+\.(?:js|json)$/.test(name)),
+    'Moved utility modules and artifacts must not remain at the flat lib/util paths');
   assert(![...files].some(name => name.endsWith('.ts') && !name.endsWith('.d.ts')), 'TypeScript implementation sources must not be needed at runtime');
   assert(![...files].some(name => name.startsWith('tests/') || name.startsWith('test/')), 'Offline fixtures must not enter the npm package');
 
@@ -110,11 +125,14 @@ test('npm publication needs only index.d.ts, compiled code and the four frozen a
   const virtualRoot = path.join(os.tmpdir(), 'tbc-contract-pool3-publication-view');
   const virtual = new Map();
   for (const name of files) {
-    if (name.endsWith('.d.ts')) virtual.set(path.join(virtualRoot, name), fs.readFileSync(path.join(root, name), 'utf8'));
+    if (name.endsWith('.d.ts') || name === 'package.json')
+      virtual.set(path.join(virtualRoot, name), fs.readFileSync(path.join(root, name), 'utf8'));
   }
   const consumer = path.join(virtualRoot, 'test/pool3/pool3-types.test.ts');
   virtual.set(consumer, fs.readFileSync(path.join(__dirname, 'pool3-types.test.ts'), 'utf8'));
-  const program = typeCheck(ts, [consumer], virtual, virtualRoot);
+  const coinConsumer = path.join(virtualRoot, 'test/coin/coin.package.types.test.ts');
+  virtual.set(coinConsumer, fs.readFileSync(path.join(root, 'test/coin/coin.package.types.test.ts'), 'utf8'));
+  const program = typeCheck(ts, [consumer, coinConsumer], virtual, virtualRoot);
   const loadedTypes = program.getSourceFiles().filter(file => file.fileName.startsWith(virtualRoot + path.sep) && file.isDeclarationFile);
   assert.deepEqual(loadedTypes.map(file => file.fileName), [path.join(virtualRoot, 'index.d.ts')]);
 });
@@ -122,7 +140,7 @@ test('npm publication needs only index.d.ts, compiled code and the four frozen a
 test('Pool3 implementation is strict and its public types match index.d.ts in both directions', () => {
   const ts = loadTypeScript();
   const productionRoots = ['lib/contract/poolNFT3.0.ts', 'lib/contract/ftlpTbc20.ts',
-    'lib/util/ftlpTbc20unlock.ts', 'lib/validator/poolnft3.ts',
+    'lib/validator/poolnft3.ts',
     ...fs.readdirSync(path.join(root, 'lib/util/poolnft3')).filter(name => name.endsWith('.ts') && !name.endsWith('.d.ts'))
       .map(name => `lib/util/poolnft3/${name}`)].map(name => path.join(root, name));
   const compatibilityFile = path.join(__dirname, '__pool3-public-type-compatibility__.ts');

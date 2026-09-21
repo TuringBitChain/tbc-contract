@@ -7,7 +7,7 @@ import {
   getInputsTxdata,
   getCurrentTxOutputsDataforPool1,
   getSize,
-} from "../util/poolnftunlock";
+} from "../util/poolnft/poolnftunlock";
 const API = require("../api/api");
 const FT = require("./ft");
 const partial_sha256 = require("tbc-lib-js/lib/util/partial-sha256");

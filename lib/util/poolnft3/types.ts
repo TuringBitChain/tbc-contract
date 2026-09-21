@@ -1,5 +1,5 @@
 import type * as tbc from 'tbc-lib-js';
-import type { TBC20TransactionResolver } from '../tbc20unlock';
+import type { TBC20TransactionResolver } from '../tbc20/tbc20unlock';
 import type { PoolAuthorization } from './authorization';
 import type { PoolMathState } from './math';
 import type { Pool3Quote } from '../../contract/poolNFT3.0';

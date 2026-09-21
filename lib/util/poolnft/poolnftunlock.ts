@@ -3,7 +3,7 @@ import {
     FT_V2_PARTIAL_OFFSET,
     getFTPartialOffsetByLength,
     isFTCodeLength,
-} from './ftscript';
+} from '../ft/ftscript';
 const partial_sha256 = require('tbc-lib-js/lib/util/partial-sha256');
 
 const SERVICE_FEE_ADDRESS: { [key: number]: string } = {

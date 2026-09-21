@@ -1,6 +1,6 @@
 import * as tbc from 'tbc-lib-js';
 import { getPool3Artifact } from '../util/poolnft3/artifacts';
-import { getTBC20PartialScriptData, TBC20_MAX_SLOT_AMOUNT } from '../util/tbc20unlock';
+import { getTBC20PartialScriptData, TBC20_MAX_SLOT_AMOUNT } from '../util/tbc20/tbc20unlock';
 
 export type FTLPScriptLike = tbc.Script | Buffer | string;
 

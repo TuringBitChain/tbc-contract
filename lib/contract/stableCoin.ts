@@ -1,15 +1,16 @@
 import * as tbc from "tbc-lib-js";
-import { getPrePreTxdata, getSize } from "../util/ftunlock";
+import { isCoinCodeScript } from "../util/ft/ftscript";
+import { getPrePreTxdata, getSize } from "../util/ft/ftunlock";
 import {
   getCurrentTxdata as nftGetCurrentTxdata,
   getPreTxdata as nftGetPreTxdata,
   getPrePreTxdata as nftGetPrePreTxdata,
-} from "../util/nftunlock";
+} from "../util/nft/nftunlock";
 import {
   buildUTXO,
   buildFtPrePreTxData,
   parseDecimalToBigInt,
-} from "../util/util";
+} from "../util/common/util";
 const FT = require("./ft");
 const NFT = require("./nft");
 
@@ -94,7 +95,66 @@ function preseedAdminInputsAndFreezeFee(
   tx.sign(feePrivateKey);
 }
 
+/** Original FT-based stablecoin; Coin TBC20 is exposed separately as Coin. */
 class stableCoin extends FT {
+  initialize(info: { codeScript: string; tapeScript: string; totalSupply: bigint | string;
+    decimal: number; name: string; symbol: string; contractTxid?: string }): void {
+    let legacyCoin = false;
+    try { legacyCoin = isCoinCodeScript(info.codeScript); } catch { /* Invalid legacy Code. */ }
+    if (!legacyCoin) {
+      throw new Error("stableCoin: expected legacy Coin Code; use Coin for Coin TBC20");
+    }
+    const totalSupply = BigInt(info.totalSupply);
+    super.initialize({ ...info, totalSupply });
+    if (info.contractTxid) this.contractTxid = info.contractTxid;
+  }
+
+  transferWithAdditionalInfo(
+    key: tbc.PrivateKey, recipient: string, amount: number | string,
+    utxos: tbc.Transaction.IUnspentOutput[], fee: tbc.Transaction.IUnspentOutput,
+    parents: tbc.Transaction[], proofs: string[], data: Buffer,
+  ): string {
+    return this.transfer(key, recipient, amount, utxos, fee, parents, proofs, undefined, data);
+  }
+
+  mergeFT(
+    key: tbc.PrivateKey, utxos: tbc.Transaction.IUnspentOutput[],
+    fee: tbc.Transaction.IUnspentOutput, parents: tbc.Transaction[], proofs: string[],
+    localTX: tbc.Transaction[] = [],
+  ): Array<{ txraw: string }> {
+    return this.mergeCoin(key, utxos, fee, parents, proofs, localTX);
+  }
+
+  /** Builds the version-specific Code/Tape pair without changing NFT issuance. */
+  protected buildIssuanceScripts(
+    adminPubHashHex: string,
+    receiveAddress: string,
+    issuerCodeHash: string,
+    amountRaw: bigint,
+  ): { codeScript: tbc.Script; tapeScript: tbc.Script } {
+    const amountwriter = new tbc.encoding.BufferWriter();
+    amountwriter.writeUInt64LEBN(new tbc.crypto.BN(amountRaw.toString()));
+    for (let i = 1; i < 6; i++) {
+      amountwriter.writeUInt64LEBN(new tbc.crypto.BN(0));
+    }
+    const tapeAmount = amountwriter.toBuffer().toString("hex");
+    const nameHex = Buffer.from(this.name, "utf8").toString("hex");
+    const symbolHex = Buffer.from(this.symbol, "utf8").toString("hex");
+    const decimalHex = this.decimal.toString(16).padStart(2, "0");
+    const tapeScript = tbc.Script.fromASM(
+      `OP_FALSE OP_RETURN ${tapeAmount} ${decimalHex} ${nameHex} ${symbolHex} 00000000 4654617065`,
+    );
+    return {
+      codeScript: stableCoin.getCoinMintCode(
+        adminPubHashHex,
+        receiveAddress,
+        issuerCodeHash,
+        tapeScript.toBuffer().length,
+      ),
+      tapeScript,
+    };
+  }
+
   /**
    * Mints a new stableCoin and returns the raw transaction hex.
    * @param privateKey_from - The private key of the sender.
@@ -129,26 +189,6 @@ class stableCoin extends FT {
     const decimal = this.decimal;
     const totalSupply = parseDecimalToBigInt(this.totalSupply, decimal);
 
-    // Prepare the amount in BN format and write it into a buffer
-    const amountbn = new tbc.crypto.BN(totalSupply.toString());
-    const amountwriter = new tbc.encoding.BufferWriter();
-    amountwriter.writeUInt64LEBN(amountbn);
-    for (let i = 1; i < 6; i++) {
-      amountwriter.writeUInt64LEBN(new tbc.crypto.BN(0));
-    }
-    const tapeAmount = amountwriter.toBuffer().toString("hex");
-
-    // Convert name, symbol, and decimal to hex
-    const nameHex = Buffer.from(name, "utf8").toString("hex");
-    const symbolHex = Buffer.from(symbol, "utf8").toString("hex");
-    const decimalHex = decimal.toString(16).padStart(2, "0");
-    const lockTimeHex = "00000000";
-    // Build the tape script
-    const tapeScript = tbc.Script.fromASM(
-      `OP_FALSE OP_RETURN ${tapeAmount} ${decimalHex} ${nameHex} ${symbolHex} ${lockTimeHex} 4654617065`,
-    );
-    const tapeSize = tapeScript.toBuffer().length;
-
     const data: coinNftData = {
       nftName: name + " NFT",
       nftSymbol: symbol + " NFT",
@@ -174,11 +214,11 @@ class stableCoin extends FT {
     const originCodeHash = tbc.crypto.Hash.sha256(
       coinNftTX.outputs[0].script.toBuffer(),
     ).toString("hex");
-    const codeScript = stableCoin.getCoinMintCode(
+    const { codeScript, tapeScript } = this.buildIssuanceScripts(
       adminPubHash,
       address_to,
       originCodeHash,
-      tapeSize,
+      totalSupply,
     );
     this.codeScript = codeScript.toBuffer().toString("hex");
     this.tapeScript = tapeScript.toBuffer().toString("hex");
@@ -306,23 +346,6 @@ class stableCoin extends FT {
     const newTotalSupply = totalSupply + newMintAmount;
     const coinNftTX = nftPreTX;
 
-    const amountbn = new tbc.crypto.BN(newMintAmount.toString());
-    const amountwriter = new tbc.encoding.BufferWriter();
-    amountwriter.writeUInt64LEBN(amountbn);
-    for (let i = 1; i < 6; i++) {
-      amountwriter.writeUInt64LEBN(new tbc.crypto.BN(0));
-    }
-    const tapeAmount = amountwriter.toBuffer().toString("hex");
-
-    const nameHex = Buffer.from(name, "utf8").toString("hex");
-    const symbolHex = Buffer.from(symbol, "utf8").toString("hex");
-    const decimalHex = decimal.toString(16).padStart(2, "0");
-    const lockTimeHex = "00000000";
-    const tapeScript = tbc.Script.fromASM(
-      `OP_FALSE OP_RETURN ${tapeAmount} ${decimalHex} ${nameHex} ${symbolHex} ${lockTimeHex} 4654617065`,
-    );
-    const tapeSize = tapeScript.toBuffer().length;
-
     const coinNftOutputs = stableCoin.buildCoinNftOutput(
       coinNftTX.outputs[0].script,
       coinNftTX.outputs[1].script,
@@ -335,11 +358,11 @@ class stableCoin extends FT {
     const originCodeHash = tbc.crypto.Hash.sha256(
       coinNftTX.outputs[0].script.toBuffer(),
     ).toString("hex");
-    const codeScript = stableCoin.getCoinMintCode(
+    const { codeScript, tapeScript } = this.buildIssuanceScripts(
       adminPubHash,
       address_to,
       originCodeHash,
-      tapeSize,
+      newMintAmount,
     );
     this.codeScript = codeScript.toBuffer().toString("hex");
     this.tapeScript = tapeScript.toBuffer().toString("hex");
@@ -452,6 +475,7 @@ class stableCoin extends FT {
     preTX: tbc.Transaction[],
     prepreTxData: string[],
     tbc_amount?: number | string,
+    additionalInfo?: Buffer,
   ): string {
     const privateKey = privateKey_from;
     const address_from = privateKey.toAddress().toString();
@@ -539,6 +563,13 @@ class stableCoin extends FT {
           satoshis: 0,
         }),
       );
+    }
+    if (additionalInfo !== undefined) {
+      if (!Buffer.isBuffer(additionalInfo)) throw new Error("additionalInfo must be a Buffer");
+      tx.addOutput(new tbc.Transaction.Output({
+        script: new tbc.Script().add(tbc.Opcode.OP_0).add(tbc.Opcode.OP_RETURN).add(additionalInfo),
+        satoshis: 0,
+      }));
     }
     tx.feePerKb(80);
     tx.change(address_from);
@@ -959,7 +990,7 @@ class stableCoin extends FT {
     utxo: tbc.Transaction.IUnspentOutput,
     preTX: tbc.Transaction[],
     prepreTxData: string[],
-    localTX: tbc.Transaction[],
+    localTX: tbc.Transaction[] = [],
   ): Array<{ txraw: string }> {
     const privateKey = privateKey_from;
     const preTxCopy = preTX;
@@ -1013,7 +1044,7 @@ class stableCoin extends FT {
       prepreTxDatas.push(buildFtPrePreTxData(preTXs[i], 0, localTX));
     }
     localTX = preTXs;
-    const txs = this.mergeFT(
+    const txs = this.mergeCoin(
       privateKey,
       ftutxos,
       newutxo,
@@ -1506,7 +1537,7 @@ class stableCoin extends FT {
     const txraw = tx.uncheckedSerialize();
     return txraw;
   }
-  
+
   static buildCoinNftOutput(
     nftCodeScript: tbc.Script,
     nftHoldScript: tbc.Script,
