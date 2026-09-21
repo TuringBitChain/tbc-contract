@@ -5,6 +5,7 @@
   "types": "index.d.ts",
   "scripts": {
     "build": "tsc",
+    "test:versions": "npm run build && node --test test/common/*.test.cjs",
     "test:pool3": "npm run build && node --test test/pool3/pool3-*.test.cjs",
     "test:tbc721": "npm run build && node --test test/tbc721/*.test.cjs",
     "test:coin": "npm run build && node --test test/coin/*.test.cjs test/coinTbc20.local.test.cjs",

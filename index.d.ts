@@ -1,5 +1,36 @@
 import { PrivateKey, Address, Transaction, Script } from "tbc-lib-js";
 
+// Offline Code-template recognition. Unknown/malformed scripts return null.
+/** The locking script of a Code output, never a txid, raw transaction, Hold or Tape. */
+export type ContractCodeScript = Script | Buffer | string;
+
+type CodeSize = { readonly codeBytes: number };
+export type PoolVersionInfo = CodeSize & (
+  | { readonly family: 'pool'; readonly version: 1; readonly sdk: 'poolNFT' }
+  | { readonly family: 'pool'; readonly version: 2; readonly sdk: 'poolNFT2' }
+  | { readonly family: 'pool'; readonly version: 3; readonly sdk: 'PoolNFT3' }
+);
+export type FTVersionInfo = CodeSize & (
+  | { readonly family: 'ft'; readonly version: 'legacy'; readonly sdk: 'FT'; readonly legacyVersion: 1 | 2 | 3 | 4 }
+  | { readonly family: 'ft'; readonly version: 'tbc20'; readonly sdk: 'TBC20' }
+);
+export type StableCoinVersionInfo = CodeSize & (
+  | { readonly family: 'stablecoin'; readonly version: 'legacy'; readonly sdk: 'stableCoin'; readonly legacyVersion: 1 | 2 | 3 | 4 }
+  | { readonly family: 'stablecoin'; readonly version: 'tbc20'; readonly sdk: 'Coin' }
+);
+export type NFTVersionInfo = CodeSize & (
+  | { readonly family: 'nft'; readonly version: 'legacy'; readonly sdk: 'NFT'; readonly legacyVersion: 0 | 1 | 2 }
+  | { readonly family: 'nft'; readonly version: 'tbc721'; readonly sdk: 'TBC721' }
+);
+export type ContractVersionInfo = PoolVersionInfo | FTVersionInfo | StableCoinVersionInfo | NFTVersionInfo;
+
+export function detectContractVersion(codeScript: ContractCodeScript): ContractVersionInfo | null;
+export function detectPoolVersion(codeScript: ContractCodeScript): PoolVersionInfo | null;
+export function detectFTVersion(codeScript: ContractCodeScript): FTVersionInfo | null;
+export function detectStableCoinVersion(codeScript: ContractCodeScript): StableCoinVersionInfo | null;
+export function detectNFTVersion(codeScript: ContractCodeScript): NFTVersionInfo | null;
+
+
 // PoolNFT 3.0: offline construction, signing and validation. TBC amounts use
 // integer satoshis; FT and LP amounts use raw minimum units. Nothing broadcasts.
 

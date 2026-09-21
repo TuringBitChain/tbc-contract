@@ -1,6 +1,10 @@
 node_modules/
 changelog/
 test/*
+!test/common/
+test/common/*
+!test/common/*.test.cjs
+!test/common/*.test.ts
 !test/pool3/
 test/pool3/*
 !test/pool3/*.cjs

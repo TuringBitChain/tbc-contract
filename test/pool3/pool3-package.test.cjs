@@ -13,6 +13,7 @@ const publicPool3Exports = [
   'resolveSwapFeePolicy', 'calculateSwapFees', 'deriveFeeRecipient', 'validatePool3Transaction',
 ];
 const existingExports = [
+  'detectContractVersion', 'detectPoolVersion', 'detectFTVersion', 'detectStableCoinVersion', 'detectNFTVersion',
   'version', 'versionGuard', 'FT', 'TBC20', 'TokenValidator', 'TokenValidationError',
   'poolNFT', 'poolNFT2', 'API', 'NFT', 'TBC721', 'MultiSig', 'piggyBank', 'orderBook', 'HTLC', 'stableCoin', 'Coin', 'CoinTBC20',
   'buildUTXO', 'buildFtPrePreTxData', 'getFtBalanceFromTape', 'selectTXfromLocal', 'fetchInBatches',
@@ -97,7 +98,7 @@ test('npm publication includes standalone declarations, grouped utilities and fr
   for (const name of ['lib/contract/poolNFT3.0.js', 'lib/contract/ftlpTbc20.js',
     'lib/util/poolnft3/transaction.js', 'lib/validator/poolnft3.js', 'lib/contract/stableCoin.js',
     'lib/contract/coinTbc20.js', 'lib/util/common/util.js', 'lib/util/common/utxoSelect.js',
-    'lib/util/ft/ftunlock.js', 'lib/util/ft/ftscript.js', 'lib/util/nft/nftunlock.js',
+    'lib/util/common/contractVersion.js', 'lib/util/ft/ftunlock.js', 'lib/util/ft/ftscript.js', 'lib/util/nft/nftunlock.js',
     'lib/util/tbc20/tbc20unlock.js', 'lib/util/coin/coinTbc20Code.js', 'lib/util/coin/coinTbc20unlock.js',
     'lib/util/tbc721/tbc721unlock.js', 'lib/util/poolnft/poolnftunlock.js',
     'lib/util/orderbook/orderbookunlock.js', 'lib/util/poolnft3/ftlpTbc20unlock.js']) assert(files.has(name), name);
@@ -132,7 +133,9 @@ test('npm publication includes standalone declarations, grouped utilities and fr
   virtual.set(consumer, fs.readFileSync(path.join(__dirname, 'pool3-types.test.ts'), 'utf8'));
   const coinConsumer = path.join(virtualRoot, 'test/coin/coin.package.types.test.ts');
   virtual.set(coinConsumer, fs.readFileSync(path.join(root, 'test/coin/coin.package.types.test.ts'), 'utf8'));
-  const program = typeCheck(ts, [consumer, coinConsumer], virtual, virtualRoot);
+  const versionConsumer = path.join(virtualRoot, 'test/common/contractVersion.types.test.ts');
+  virtual.set(versionConsumer, fs.readFileSync(path.join(root, 'test/common/contractVersion.types.test.ts'), 'utf8'));
+  const program = typeCheck(ts, [consumer, coinConsumer, versionConsumer], virtual, virtualRoot);
   const loadedTypes = program.getSourceFiles().filter(file => file.fileName.startsWith(virtualRoot + path.sep) && file.isDeclarationFile);
   assert.deepEqual(loadedTypes.map(file => file.fileName), [path.join(virtualRoot, 'index.d.ts')]);
 });
@@ -152,6 +155,7 @@ test('Pool3 implementation is strict and its public types match index.d.ts in bo
     import type * as Tape from '../../lib/util/poolnft3/tape';
     import type * as Fees from '../../lib/util/poolnft3/fees';
     import type * as Validation from '../../lib/validator/poolnft3';
+    import type * as Versions from '../../lib/util/common/contractVersion';
     type Public<T> = Pick<T, keyof T>;
     // Only implementation-private class members are erased. Every public argument,
     // return value and property is still checked in both directions.
@@ -171,6 +175,7 @@ test('Pool3 implementation is strict and its public types match index.d.ts in bo
       calculate: typeof Fees.calculateSwapFees;
       recipient: typeof Fees.deriveFeeRecipient;
       validate: typeof Validation.validatePool3Transaction;
+      versions: typeof Versions;
     };
     declare let publication: {
       pool: Surface<Published.PoolNFT3>;
@@ -184,6 +189,8 @@ test('Pool3 implementation is strict and its public types match index.d.ts in bo
       calculate: typeof Published.calculateSwapFees;
       recipient: typeof Published.deriveFeeRecipient;
       validate: typeof Published.validatePool3Transaction;
+      versions: Pick<typeof Published, 'detectContractVersion' | 'detectPoolVersion' |
+        'detectFTVersion' | 'detectStableCoinVersion' | 'detectNFTVersion'>;
     };
     implementation = publication;
     publication = implementation;

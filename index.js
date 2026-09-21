@@ -60,3 +60,11 @@ contract.safeJSONParse = require("./lib/util/common/util").safeJSONParse;
 contract.parseDecimalToBigInt = require("./lib/util/common/util").parseDecimalToBigInt;
 contract.fillCharLengthInFT = require("./lib/util/common/util").fillCharLengthInFT;
 contract.isCoinCodeScript = require("./lib/util/common/util").isCoinCodeScript;
+
+// Offline Code-template recognition and SDK routing.
+var contractVersions = require("./lib/util/common/contractVersion");
+contract.detectContractVersion = contractVersions.detectContractVersion;
+contract.detectPoolVersion = contractVersions.detectPoolVersion;
+contract.detectFTVersion = contractVersions.detectFTVersion;
+contract.detectStableCoinVersion = contractVersions.detectStableCoinVersion;
+contract.detectNFTVersion = contractVersions.detectNFTVersion;
