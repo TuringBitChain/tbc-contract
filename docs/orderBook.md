@@ -1,3 +1,25 @@
+## 代币格式兼容
+
+OrderBook 根据 Code 脚本自动选择旧版 FT / stableCoin、TBC20 或 Coin TBC20 的输出构造与解锁逻辑。TBC20、Coin TBC20 均支持 TBC/Token 和 Token/Token 下单、撤单、完整成交、部分成交，以及对应的在线接口。
+
+- `stableCoin` 仍是旧版稳定币 SDK；Coin TBC20 使用 `Coin`。调用 OrderBook 时传入实际 Code 脚本即可，无需转换资产格式。
+- 旧版的 `prepreTxData` / `ftPrePreTxData` 参数继续传十六进制证明字符串。TBC20、Coin TBC20 改传祖交易数组、`ReadonlyMap<txid, Transaction>` 或同步交易查询函数；每个非零父 Tape 槽对应的祖交易必须存在。多输入 `fillSigsMake*` 的参数仍是逐输入的证明数组。
+- 在线接口会根据实际 Code 选择证明格式，通过 `API.fetchTXraw` 获取祖交易；返回原始交易，不广播。
+- 含 TBC20 / Coin TBC20 输入的交易最多六个输入（含订单和手续费输入），以保证后续交易能够验证父交易。代币输入必须位于前六个 vin 槽。
+- Coin TBC20 的 `sequence` 与最大 `lockTime` 在构建阶段固定；高度锁与时间戳锁不能混用。外部签名后，填充方法只验证这些值。输出保留 Tape 元数据及锁定时间。
+
+```ts
+// 单个 TBC20 / Coin TBC20 输入：parents[0] 是代币 UTXO 的父交易，
+// ancestors 是其非零 Tape 槽引用的祖交易；不是父交易本身。
+const signed = order.fillSigsMakeBuyOrder(
+  unsignedRaw, signatures, publicKey, parents, [ancestors],
+);
+```
+
+Token/Token 新建订单修正了父交易见证填充、输出栈索引和续单字段校验；Code 仍为 1332 字节，数据尾部仍为 180 字节。撮合输出顺序为 **B 收款/手续费、A 收款/手续费、TBC 找零、可选续单及 Code/Tape**。使用本版本新建订单；已部署的旧订单脚本不会随 SDK 更新。
+
+运行 `npm run test:orderbook` 可离线执行真实合约脚本测试，无需网络或广播。
+
 ## 数值
 - 用八字节小端存储，方法参数类型统一bigint，精度除ft外均是6
 

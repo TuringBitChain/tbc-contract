@@ -1,3 +1,40 @@
+Token HTLC 支持旧版 FT、StableCoin、TBC20 和 Coin TBC20。`deployHTLCToken`、`withdrawHTLCToken`、`refundHTLCToken` 的外部签名接口与 `WithSign` 接口均自动识别代币脚本。
+
+`prepreTxData` 的类型为 `HTLCTokenProof`：旧版 FT / StableCoin 继续传 `API.fetchFtPrePreTxData` 返回的 hex；TBC20 / Coin TBC20 必须传真实祖先交易，可以使用交易数组、以 txid 为键的 `ReadonlyMap`，或同步解析函数 `(txid) => Transaction | undefined`。部署时每个代币输入对应一份证明；领取、退款时传入部署交易所引用的代币父交易。数组、Map 和解析函数必须覆盖对应 Tape 中非零金额槽位所引用的祖先交易。
+
+`ftAmount` 保留现有的固定六位小数换算：`"1"` 表示 `1_000_000` 个代币最小单位。代币自身 decimal 不会被自动读取；对其他精度的代币，请先将目标最小单位数量用字符串换算成六位小数参数。部署支持最多 5 个同种代币输入，加 1 个手续费输入。Coin TBC20 会保留 Tape 中的锁定时间，领取时设置相应的 nLockTime 和 sequence，退款时取 Coin 与 HTLC 锁定时间的较大值；非零高度锁与时间戳锁不能混合。
+
+下面展示新版代币证明的准备方式；后面的完整示例使用旧版 FT 证明。
+
+```ts
+import { API, HTLC, HTLCTokenProof, buildUTXO } from "tbc-contract";
+import * as tbc from "tbc-lib-js";
+
+// 读取真实祖先交易；多带不参与代币金额的手续费祖先也是允许的。
+async function modernProof(parent: tbc.Transaction, network: string): Promise<HTLCTokenProof> {
+  const ids = [...new Set(parent.inputs.map(input => input.prevTxId.toString("hex")))];
+  return Promise.all(ids.map(id => API.fetchTXraw(id, network)));
+}
+
+// ftutxos 为待锁定的代币 UTXO，ftBalance 使用最小单位；feeUTXO 为 TBC 手续费 UTXO。
+const preTXs = await Promise.all(ftutxos.map(input => API.fetchTXraw(input.txId, network)));
+const proofs = await Promise.all(preTXs.map(parent => modernProof(parent, network)));
+const raw = HTLC.deployHTLCTokenWithSign(
+  sender, receiver, hashlock, timelock, "1", ftutxos, feeUTXO,
+  preTXs, proofs, senderPrivateKey.toString(),
+);
+
+// 部署交易输出：0 = HTLC，1 = Code，2 = Tape。
+const deployTX = new tbc.Transaction(raw);
+const withdrawRaw = HTLC.withdrawHTLCTokenWithSign(
+  receiverPrivateKey.toString(), receiver,
+  buildUTXO(deployTX, 0), buildUTXO(deployTX, 1, true), deployTX,
+  preTXs, receiverFeeUTXO, secret,
+);
+// 外部签名时，fillSigDeployHTLCToken 接收同一个 proofs；
+// fillSigWithdrawHTLCToken / fillSigRefundHTLCToken 接收同一个 preTXs。
+```
+
 ```ts
 import * as tbc from "tbc-lib-js";
 import * as crypto from "crypto";

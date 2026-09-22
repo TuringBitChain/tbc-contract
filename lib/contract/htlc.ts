@@ -4,21 +4,25 @@ import {
   _isValidHexString,
   parseDecimalToBigInt,
   getFtBalanceFromTape,
-  isCoinCodeScript,
 } from "../util/common/util";
 import {
   FT_V2_CODE_LENGTH,
   FT_V4_CODE_LENGTH,
   LEGACY_COIN_CODE_LENGTH,
-  getFTVersion,
 } from "../util/ft/ftscript";
-const FT = require("./ft");
+import {
+  ContractToken as FT, ContractTokenProof, tokenKind, isCoinCodeScript,
+  getFTVersion, getFTPartialOffset, isTokenProof, modernCodeOffsets,
+} from "../util/common/contractToken";
+import { CoinTBC20 } from "../util/coin/coinTbc20Code";
+export type HTLCTokenProof = ContractTokenProof;
 const stableCoin = require("./stableCoin");
 
 const SUPPORTED_FT_CODE_LENGTHS: readonly number[] = [
   FT_V2_CODE_LENGTH,
   LEGACY_COIN_CODE_LENGTH,
   FT_V4_CODE_LENGTH,
+  ...modernCodeOffsets.keys(),
 ];
 
 const validateFTCodeLength = (codeLength: number): void => {
@@ -28,6 +32,36 @@ const validateFTCodeLength = (codeLength: number): void => {
     );
   }
 };
+const tokenLockTime = (code: string, tape: tbc.Script): number =>
+  tokenKind(code) === "coinTbc20"
+    ? CoinTBC20.parseTape(tape).lockTime
+    : stableCoin.getLockTimeFromTape(tape);
+
+const mergeLockTimes = (a: number, b: number): number => {
+  if (a && b && (a < 500000000) !== (b < 500000000))
+    throw new Error("HTLC: cannot combine height and timestamp locks");
+  return Math.max(a, b);
+};
+
+const tokenUnlockEstimate = (code: string): number =>
+  tokenKind(code) === "legacy" ? 2000 : 12000;
+
+// Authenticate the Code/Tape pair before allocating balances or binding it to HTLC.
+const validateTokenInputs = (
+  utxos: tbc.Transaction.IUnspentOutput[], parents: tbc.Transaction[],
+): void => {
+  const identity = Buffer.from(utxos[0].script, "hex").subarray(0, getFTPartialOffset(utxos[0].script));
+  utxos.forEach((utxo, i) => {
+    const parent = parents[i], code = parent?.outputs[utxo.outputIndex], tape = parent?.outputs[utxo.outputIndex + 1];
+    if (!code || !tape || parent.hash !== utxo.txId || code.script.toHex() !== utxo.script || code.satoshis !== utxo.satoshis)
+      throw new Error("HTLC: token UTXO does not match its parent Code/Tape");
+    const prefix = Buffer.from(utxo.script, "hex").subarray(0, getFTPartialOffset(utxo.script));
+    if (!prefix.equals(identity)) throw new Error("HTLC: token inputs must have the same identity");
+    if (BigInt(utxo.ftBalance!) !== getFtBalanceFromTape(tape.script.toHex()))
+      throw new Error("HTLC: token balance differs from parent Tape");
+  });
+};
+
 // ==================== HTLC with TBC ====================
 
 export function deployHTLC(
@@ -269,7 +303,7 @@ export function refundWithSign(
   return txraw;
 }
 
-// ==================== HTLC with Token (FT / StableCoin) ====================
+// ==================== HTLC with Token (FT / StableCoin / TBC20 / Coin TBC20) ====================
 
 // ========== Non-sign variants (build + fillSig pattern) ==========
 // build functions return an unsigned raw tx with all SIGHASH-relevant fields
@@ -286,7 +320,7 @@ export function deployHTLCToken(
   ftutxos: tbc.Transaction.IUnspentOutput[],
   utxo: tbc.Transaction.IUnspentOutput,
   preTX: tbc.Transaction[],
-  prepreTxData: string[],
+  prepreTxData: HTLCTokenProof[],
 ): string {
   if (!tbc.Address.isValid(sender) || !tbc.Address.isValid(receiver)) {
     throw new Error("Invalid sender or receiver address");
@@ -294,7 +328,7 @@ export function deployHTLCToken(
   if (!_isValidSHA256Hash(hashlock)) {
     throw new Error("Invalid hashlock");
   }
-  if (!Number.isInteger(timelock) || timelock < 0) {
+  if (!Number.isInteger(timelock) || timelock < 0 || timelock > 0xffffffff) {
     throw new Error("Invalid timelock");
   }
   if (!ftutxos || ftutxos.length === 0) {
@@ -317,6 +351,7 @@ export function deployHTLCToken(
     tbc.crypto.Hash.sha256(htlcScript.toBuffer()),
   ).toString("hex");
 
+  validateTokenInputs(ftutxos, preTX);
   const ftCodeLen = ftutxos[0].script.length / 2;
   const isCoin = isCoinCodeScript(ftutxos[0].script);
   validateFTCodeLength(ftCodeLen);
@@ -338,9 +373,10 @@ export function deployHTLCToken(
   let lockTimeMax = 0;
   if (isCoin) {
     for (let i = 0; i < ftutxos.length; i++) {
-      lockTimeMax = Math.max(
+      lockTimeMax = mergeLockTimes(
         lockTimeMax,
-        stableCoin.getLockTimeFromTape(
+        tokenLockTime(
+          ftutxos[i].script,
           preTX[i].outputs[ftutxos[i].outputIndex + 1].script,
         ),
       );
@@ -400,9 +436,9 @@ export function deployHTLCToken(
   }
 
   // Fee accounting: tx.getEstimateSize() does not know the eventual size of
-  // the FT unlock scripts each FT input will carry (~2KB each). Pad accordingly.
+  // token unlock scripts. Reserve more space for modern ancestor proofs.
   tx.change(sender);
-  const txSize = tx.getEstimateSize() + ftutxos.length * 2000;
+  const txSize = tx.getEstimateSize() + ftutxos.reduce((sum, input) => sum + tokenUnlockEstimate(input.script), 0);
   tx.fee(txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80));
 
   return tx.uncheckedSerialize();
@@ -413,7 +449,7 @@ export function fillSigDeployHTLCToken(
   sigs: string[],
   publicKey: string,
   preTX: tbc.Transaction[],
-  prepreTxData: string[],
+  prepreTxData: HTLCTokenProof[],
 ): string {
   if (!_isValidHexString(deployRaw)) {
     throw new Error("Invalid deployRaw hex string");
@@ -424,7 +460,7 @@ export function fillSigDeployHTLCToken(
   if (!Array.isArray(sigs) || sigs.some((s) => !_isValidHexString(s))) {
     throw new Error("Invalid sigs array");
   }
-  if (preTX.length !== prepreTxData.length) {
+  if (preTX.length === 0 || preTX.length > 5 || preTX.length !== prepreTxData.length) {
     throw new Error("preTX/prepreTxData length mismatch");
   }
   if (sigs.length !== preTX.length + 1) {
@@ -435,6 +471,9 @@ export function fillSigDeployHTLCToken(
 
   const tx = new tbc.Transaction(deployRaw);
   const ftInputCount = preTX.length;
+  if (tx.inputs.length !== ftInputCount + 1) {
+    throw new Error("HTLC: input count must match token parents plus one fee input");
+  }
 
   const ftCodeScript =
     preTX[0].outputs[tx.inputs[0].outputIndex].script.toHex();
@@ -505,11 +544,11 @@ export function withdrawHTLCToken(
 
   if (isCoin) {
     tx.setInputSequence(1, 4294967294);
-    tx.setLockTime(stableCoin.getLockTimeFromTape(ftTapeScript));
+    tx.setLockTime(tokenLockTime(ftutxo.script, ftTapeScript));
   }
 
   tx.change(receiver);
-  const txSize = tx.getEstimateSize() + 3000;
+  const txSize = tx.getEstimateSize() + tokenUnlockEstimate(ftutxo.script) + 1000;
   tx.fee(txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80));
 
   return tx.uncheckedSerialize();
@@ -521,7 +560,7 @@ export function fillSigWithdrawHTLCToken(
   publicKey: string,
   secret: string,
   deployTX: tbc.Transaction,
-  prepreTxData: string,
+  prepreTxData: HTLCTokenProof,
 ): string {
   if (!_isValidHexString(withdrawRaw)) {
     throw new Error("Invalid withdrawRaw hex string");
@@ -532,8 +571,8 @@ export function fillSigWithdrawHTLCToken(
   if (!_isValidHexString(secret)) {
     throw new Error("Invalid secret hex string");
   }
-  if (!_isValidHexString(prepreTxData)) {
-    throw new Error("Invalid prepreTxData hex string");
+  if (!isTokenProof(prepreTxData)) {
+    throw new Error("Invalid token ancestor proof");
   }
   if (!Array.isArray(sigs) || sigs.length !== 3 || sigs.some((s) => !_isValidHexString(s))) {
     throw new Error("sigs must be 3 valid hex strings: [HTLC, FTCode, tbcFee]");
@@ -541,7 +580,7 @@ export function fillSigWithdrawHTLCToken(
 
   const tx = new tbc.Transaction(withdrawRaw);
 
-  const ftCodeScript = deployTX.outputs[1].script.toHex();
+  const ftCodeScript = deployTX.outputs[tx.inputs[1].outputIndex].script.toHex();
   const isCoin = isCoinCodeScript(ftCodeScript);
   const ftVersion = getFTVersion(ftCodeScript, isCoin);
   const ftCodeOutputIndex = tx.inputs[1].outputIndex;
@@ -588,7 +627,7 @@ export function refundHTLCToken(
   if (!tbc.Address.isValid(sender)) {
     throw new Error("Invalid sender address");
   }
-  if (!Number.isInteger(timelock) || timelock < 0) {
+  if (!Number.isInteger(timelock) || timelock < 0 || timelock > 0xffffffff) {
     throw new Error("Invalid timelock");
   }
 
@@ -627,13 +666,13 @@ export function refundHTLCToken(
 
   let txLockTime = timelock;
   if (isCoin) {
-    const coinLockTime = stableCoin.getLockTimeFromTape(ftTapeScript);
-    txLockTime = Math.max(timelock, coinLockTime);
+    const coinLockTime = tokenLockTime(ftutxo.script, ftTapeScript);
+    txLockTime = mergeLockTimes(timelock, coinLockTime);
   }
   tx.setLockTime(txLockTime);
 
   tx.change(sender);
-  const txSize = tx.getEstimateSize() + 3000;
+  const txSize = tx.getEstimateSize() + tokenUnlockEstimate(ftutxo.script) + 1000;
   tx.fee(txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80));
 
   return tx.uncheckedSerialize();
@@ -644,7 +683,7 @@ export function fillSigRefundHTLCToken(
   sigs: string[],
   publicKey: string,
   deployTX: tbc.Transaction,
-  prepreTxData: string,
+  prepreTxData: HTLCTokenProof,
 ): string {
   if (!_isValidHexString(refundRaw)) {
     throw new Error("Invalid refundRaw hex string");
@@ -652,8 +691,8 @@ export function fillSigRefundHTLCToken(
   if (!tbc.PublicKey.isValid(publicKey)) {
     throw new Error("Invalid publicKey");
   }
-  if (!_isValidHexString(prepreTxData)) {
-    throw new Error("Invalid prepreTxData hex string");
+  if (!isTokenProof(prepreTxData)) {
+    throw new Error("Invalid token ancestor proof");
   }
   if (!Array.isArray(sigs) || sigs.length !== 3 || sigs.some((s) => !_isValidHexString(s))) {
     throw new Error("sigs must be 3 valid hex strings: [HTLC, FTCode, tbcFee]");
@@ -661,7 +700,7 @@ export function fillSigRefundHTLCToken(
 
   const tx = new tbc.Transaction(refundRaw);
 
-  const ftCodeScript = deployTX.outputs[1].script.toHex();
+  const ftCodeScript = deployTX.outputs[tx.inputs[1].outputIndex].script.toHex();
   const isCoin = isCoinCodeScript(ftCodeScript);
   const ftVersion = getFTVersion(ftCodeScript, isCoin);
   const ftCodeOutputIndex = tx.inputs[1].outputIndex;
@@ -703,7 +742,7 @@ export function deployHTLCTokenWithSign(
   ftutxos: tbc.Transaction.IUnspentOutput[],
   utxo: tbc.Transaction.IUnspentOutput,
   preTX: tbc.Transaction[],
-  prepreTxData: string[],
+  prepreTxData: HTLCTokenProof[],
   privateKey: string,
 ): string {
   if (!tbc.Address.isValid(sender) || !tbc.Address.isValid(receiver)) {
@@ -712,7 +751,7 @@ export function deployHTLCTokenWithSign(
   if (!_isValidSHA256Hash(hashlock)) {
     throw new Error("Invalid hashlock");
   }
-  if (!Number.isInteger(timelock) || timelock < 0) {
+  if (!Number.isInteger(timelock) || timelock < 0 || timelock > 0xffffffff) {
     throw new Error("Invalid timelock");
   }
   if (!ftutxos || ftutxos.length === 0) {
@@ -735,6 +774,7 @@ export function deployHTLCTokenWithSign(
     tbc.crypto.Hash.sha256(htlcScript.toBuffer()),
   ).toString("hex");
 
+  validateTokenInputs(ftutxos, preTX);
   const ftCodeLen = ftutxos[0].script.length / 2;
   const isCoin = isCoinCodeScript(ftutxos[0].script);
   validateFTCodeLength(ftCodeLen);
@@ -756,9 +796,10 @@ export function deployHTLCTokenWithSign(
   let lockTimeMax = 0;
   if (isCoin) {
     for (let i = 0; i < ftutxos.length; i++) {
-      lockTimeMax = Math.max(
+      lockTimeMax = mergeLockTimes(
         lockTimeMax,
-        stableCoin.getLockTimeFromTape(
+        tokenLockTime(
+          ftutxos[i].script,
           preTX[i].outputs[ftutxos[i].outputIndex + 1].script,
         ),
       );
@@ -831,7 +872,7 @@ export function deployHTLCTokenWithSign(
 
   for (let i = 0; i < ftutxos.length; i++) {
     tx.setInputScript({ inputIndex: i }, (currentTX) => {
-      const sig = currentTX.getSignature(i, privateKeyObj);
+      const sig = currentTX.getSignature(i, privateKeyObj) as string;
       return FT.getFTunlock(
         sig,
         publicKey,
@@ -858,22 +899,22 @@ export function withdrawHTLCTokenWithSign(
   htlcutxo: tbc.Transaction.IUnspentOutput,
   ftutxo: tbc.Transaction.IUnspentOutput,
   deployTX: tbc.Transaction,
-  prepreTxData: string,
+  prepreTxData: HTLCTokenProof,
   utxo: tbc.Transaction.IUnspentOutput,
   secret: string,
 ): string {
   if (!tbc.Address.isValid(receiver)) {
     throw new Error("Invalid receiver address");
   }
-  if (!_isValidHexString(prepreTxData)) {
-    throw new Error("Invalid prepreTxData hex string");
+  if (!isTokenProof(prepreTxData)) {
+    throw new Error("Invalid token ancestor proof");
   }
   if (!_isValidHexString(secret)) {
     throw new Error("Invalid secret hex string");
   }
 
   const ftCodeLen = ftutxo.script.length / 2;
-  const ftCodeScript = deployTX.outputs[1].script.toHex();
+  const ftCodeScript = deployTX.outputs[ftutxo.outputIndex].script.toHex();
   const isCoin = isCoinCodeScript(ftCodeScript);
   const ftVersion = getFTVersion(ftCodeScript, isCoin);
   validateFTCodeLength(ftCodeLen);
@@ -912,7 +953,7 @@ export function withdrawHTLCTokenWithSign(
   let lockTimeMax = 0;
   if (isCoin) {
     tx.setInputSequence(1, 4294967294);
-    lockTimeMax = stableCoin.getLockTimeFromTape(ftTapeScript);
+    lockTimeMax = tokenLockTime(ftutxo.script, ftTapeScript);
     tx.setLockTime(lockTimeMax);
   }
 
@@ -929,7 +970,7 @@ export function withdrawHTLCTokenWithSign(
 
   // [1] FT Code unlock via getFTunlockSwap
   tx.setInputScript({ inputIndex: 1 }, (currentTX) => {
-    const sig = currentTX.getSignature(1, privateKeyObj);
+    const sig = currentTX.getSignature(1, privateKeyObj) as string;
     return FT.getFTunlockSwap(
       sig,
       publicKey,
@@ -958,22 +999,22 @@ export function refundHTLCTokenWithSign(
   htlcutxo: tbc.Transaction.IUnspentOutput,
   ftutxo: tbc.Transaction.IUnspentOutput,
   deployTX: tbc.Transaction,
-  prepreTxData: string,
+  prepreTxData: HTLCTokenProof,
   utxo: tbc.Transaction.IUnspentOutput,
   timelock: number,
 ): string {
   if (!tbc.Address.isValid(sender)) {
     throw new Error("Invalid sender address");
   }
-  if (!Number.isInteger(timelock) || timelock < 0) {
+  if (!Number.isInteger(timelock) || timelock < 0 || timelock > 0xffffffff) {
     throw new Error("Invalid timelock");
   }
-  if (!_isValidHexString(prepreTxData)) {
-    throw new Error("Invalid prepreTxData hex string");
+  if (!isTokenProof(prepreTxData)) {
+    throw new Error("Invalid token ancestor proof");
   }
 
   const ftCodeLen = ftutxo.script.length / 2;
-  const ftCodeScript = deployTX.outputs[1].script.toHex();
+  const ftCodeScript = deployTX.outputs[ftutxo.outputIndex].script.toHex();
   const isCoin = isCoinCodeScript(ftCodeScript);
   const ftVersion = getFTVersion(ftCodeScript, isCoin);
   validateFTCodeLength(ftCodeLen);
@@ -1015,8 +1056,8 @@ export function refundHTLCTokenWithSign(
 
   let txLockTime = timelock;
   if (isCoin) {
-    const coinLockTime = stableCoin.getLockTimeFromTape(ftTapeScript);
-    txLockTime = Math.max(timelock, coinLockTime);
+    const coinLockTime = tokenLockTime(ftutxo.script, ftTapeScript);
+    txLockTime = mergeLockTimes(timelock, coinLockTime);
   }
   tx.setLockTime(txLockTime);
 
@@ -1032,7 +1073,7 @@ export function refundHTLCTokenWithSign(
 
   // [1] FT Code unlock via getFTunlockSwap
   tx.setInputScript({ inputIndex: 1 }, (currentTX) => {
-    const sig = currentTX.getSignature(1, privateKeyObj);
+    const sig = currentTX.getSignature(1, privateKeyObj) as string;
     return FT.getFTunlockSwap(
       sig,
       publicKey,

@@ -1823,6 +1823,9 @@ export class piggyBank {
   static fetchTBCLockTime(utxo: Transaction.IUnspentOutput): number;
 }
 
+/** Legacy proof hex, or authenticated ancestor transactions for TBC20 / Coin TBC20. */
+export type OrderBookTokenProof = string | ReadonlyMap<string, Transaction> | readonly Transaction[] | ((txid: string) => Transaction | undefined);
+
 export class orderBook {
   type: "buy" | "sell";
   hold_address: string;
@@ -1880,7 +1883,7 @@ export class orderBook {
     sigs: string[],
     publicKey: string,
     preTXs: Transaction[],
-    prepreTxData: string[],
+    prepreTxData: OrderBookTokenProof[],
   ): string;
   fillSigsCancelBuyOrder(
     buyOrderTxRaw: string,
@@ -1888,7 +1891,7 @@ export class orderBook {
     publicKey: string,
     buyPreTX: Transaction,
     ftPreTX: Transaction,
-    ftPrePreTxData: string,
+    ftPrePreTxData: OrderBookTokenProof,
   ): string;
   matchOrder(
     privateKey: PrivateKey,
@@ -1896,7 +1899,7 @@ export class orderBook {
     buyPreTX: Transaction,
     ftutxo: Transaction.IUnspentOutput,
     ftPreTX: Transaction,
-    ftPrePreTxData: string,
+    ftPrePreTxData: OrderBookTokenProof,
     sellutxo: Transaction.IUnspentOutput,
     sellPreTX: Transaction,
     utxos: Transaction.IUnspentOutput[],
@@ -1967,14 +1970,14 @@ export class orderBook {
     sigs: string[],
     publicKey: string,
     preTXs: Transaction[],
-    prepreTxData: string[],
+    prepreTxData: OrderBookTokenProof[],
   ): string;
   fillSigsMakeTokenBuyOrder(
     buyOrderTxRaw: string,
     sigs: string[],
     publicKey: string,
     preTXs: Transaction[],
-    prepreTxData: string[],
+    prepreTxData: OrderBookTokenProof[],
   ): string;
   buildCancelTokenSellOrderTX(
     sellutxo: Transaction.IUnspentOutput,
@@ -1994,7 +1997,7 @@ export class orderBook {
     publicKey: string,
     sellPreTX: Transaction,
     ftPreTX: Transaction,
-    ftPrePreTxData: string,
+    ftPrePreTxData: OrderBookTokenProof,
   ): string;
   fillSigsCancelTokenBuyOrder(
     cancelBuyOrderTxRaw: string,
@@ -2002,7 +2005,7 @@ export class orderBook {
     publicKey: string,
     buyPreTX: Transaction,
     ftPreTX: Transaction,
-    ftPrePreTxData: string,
+    ftPrePreTxData: OrderBookTokenProof,
   ): string;
   matchTokenOrder(
     privateKey: PrivateKey,
@@ -2010,12 +2013,12 @@ export class orderBook {
     buyPreTX: Transaction,
     buyFtUtxo: Transaction.IUnspentOutput,
     buyFtPreTX: Transaction,
-    buyFtPrePreTxData: string,
+    buyFtPrePreTxData: OrderBookTokenProof,
     sellutxo: Transaction.IUnspentOutput,
     sellPreTX: Transaction,
     sellFtUtxo: Transaction.IUnspentOutput,
     sellFtPreTX: Transaction,
-    sellFtPrePreTxData: string,
+    sellFtPrePreTxData: OrderBookTokenProof,
     utxos: Transaction.IUnspentOutput[],
     ftaFeeAddress: string,
     ftbFeeAddress: string,
@@ -2073,8 +2076,8 @@ export class orderBook {
     taxAddress: string,
     ftCodeSize?: string,
   ): Script;
-  getTokenSellOrderCode(taxAddress: string): Script;
-  getTokenBuyOrderCode(taxAddress: string): Script;
+  getTokenSellOrderCode(taxAddress: string, modernA?: boolean, modernB?: boolean): Script;
+  getTokenBuyOrderCode(taxAddress: string, modernA?: boolean, modernB?: boolean): Script;
   buildOrderData(): Script;
   buildTokenOrderData(): Script;
   static updateSaleVolume(codeScript: string, newSaleVolume: bigint): Script;
@@ -2101,6 +2104,9 @@ export class orderBook {
     ftbID: string;
   };
 }
+
+/** Legacy proof hex or authenticated ancestor transactions for modern tokens. */
+export type HTLCTokenProof = string | TBC20AncestorResolver;
 
 export namespace HTLC {
   export function deployHTLC(
@@ -2175,7 +2181,7 @@ export namespace HTLC {
     ftutxos: Transaction.IUnspentOutput[],
     utxo: Transaction.IUnspentOutput,
     preTX: Transaction[],
-    prepreTxData: string[],
+    prepreTxData: HTLCTokenProof[],
   ): string;
 
   export function fillSigDeployHTLCToken(
@@ -2183,7 +2189,7 @@ export namespace HTLC {
     sigs: string[],
     publicKey: string,
     preTX: Transaction[],
-    prepreTxData: string[],
+    prepreTxData: HTLCTokenProof[],
   ): string;
 
   export function withdrawHTLCToken(
@@ -2200,7 +2206,7 @@ export namespace HTLC {
     publicKey: string,
     secret: string,
     deployTX: Transaction,
-    prepreTxData: string,
+    prepreTxData: HTLCTokenProof,
   ): string;
 
   export function refundHTLCToken(
@@ -2217,7 +2223,7 @@ export namespace HTLC {
     sigs: string[],
     publicKey: string,
     deployTX: Transaction,
-    prepreTxData: string,
+    prepreTxData: HTLCTokenProof,
   ): string;
 
   export function deployHTLCTokenWithSign(
@@ -2229,7 +2235,7 @@ export namespace HTLC {
     ftutxos: Transaction.IUnspentOutput[],
     utxo: Transaction.IUnspentOutput,
     preTX: Transaction[],
-    prepreTxData: string[],
+    prepreTxData: HTLCTokenProof[],
     privateKey: string,
   ): string;
 
@@ -2239,7 +2245,7 @@ export namespace HTLC {
     htlcutxo: Transaction.IUnspentOutput,
     ftutxo: Transaction.IUnspentOutput,
     deployTX: Transaction,
-    prepreTxData: string,
+    prepreTxData: HTLCTokenProof,
     utxo: Transaction.IUnspentOutput,
     secret: string,
   ): string;
@@ -2250,7 +2256,7 @@ export namespace HTLC {
     htlcutxo: Transaction.IUnspentOutput,
     ftutxo: Transaction.IUnspentOutput,
     deployTX: Transaction,
-    prepreTxData: string,
+    prepreTxData: HTLCTokenProof,
     utxo: Transaction.IUnspentOutput,
     timelock: number,
   ): string;

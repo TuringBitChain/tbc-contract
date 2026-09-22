@@ -2,11 +2,8 @@ node_modules/
 changelog/
 .github/
 docs/
-test.*
-test/
 lib/**/*.d.ts
 lib/**/*.ts
-*.log
 *.txt
 obfuscate.js
 .DS_Store
@@ -14,3 +11,16 @@ obfuscate.js
 .vscode/
 CLAUDE.md
 tsconfig.json
+
+# Tests and logs (at any depth)
+test/
+tests/
+__tests__/
+test.*
+*.test.*
+*.spec.*
+test-*
+log/
+logs/
+*.log
+*.log.*

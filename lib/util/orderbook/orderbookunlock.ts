@@ -1,4 +1,5 @@
 import * as tbc from "tbc-lib-js"
+import { modernCodeOffsets } from "./token";
 import {
     FT_V2_CODE_LENGTH,
     FT_V2_PARTIAL_OFFSET,
@@ -21,6 +22,7 @@ const tokenOrderCodeLength = 1152 + 180;
 const buyPartialOffset = 960;
 const sellPartialOffset = 832;
 const tokenOrderPartialOffset = 1152;
+
 
 export function getPreTxdata(tx: tbc.Transaction, vout: number, contractOutputNumber: number): string {
     const writer = new tbc.encoding.BufferWriter();
@@ -117,7 +119,9 @@ export function getPreTxdata(tx: tbc.Transaction, vout: number, contractOutputNu
             i += contractOutputNumber - 1;
         }
     }
-    for (let i = tx.outputs.length; i < 10; i++) {
+    // Token/Token covenant authenticates twelve four-field parent output records.
+    const outputSlots = tx.outputs[vout].script.toBuffer().length === tokenOrderCodeLength ? 12 : 10;
+    for (let i = tx.outputs.length; i < outputSlots; i++) {
         writer.write(Buffer.from("00", 'hex'));
         writer.write(Buffer.from("00", 'hex'));
         writer.write(Buffer.from("00", 'hex'));
@@ -136,7 +140,7 @@ export function getCurrentTxOutputsData(tx: tbc.Transaction, fixedOutputCount = 
         const len = lockingscript.length;
         const size = getSize(len);
 
-        let partialOffset = 0;
+        let partialOffset = modernCodeOffsets.get(len) ?? 0;
         if (len === FT_V2_CODE_LENGTH) partialOffset = FT_V2_PARTIAL_OFFSET;
         else if (len === LEGACY_COIN_CODE_LENGTH) partialOffset = LEGACY_COIN_PARTIAL_OFFSET;
         else if (len === FT_V4_CODE_LENGTH) partialOffset = FT_V4_PARTIAL_OFFSET;
@@ -176,6 +180,7 @@ export function getCurrentTxOutputsData(tx: tbc.Transaction, fixedOutputCount = 
         writer.write(size);
 
         if (
+            modernCodeOffsets.has(len) ||
             len === FT_V2_CODE_LENGTH ||
             len === LEGACY_COIN_CODE_LENGTH ||
             len === FT_V4_CODE_LENGTH

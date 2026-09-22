@@ -9,11 +9,12 @@ import {
   fetchInBatches,
   _isValidSHA256Hash,
   _isValidHexString,
-  isCoinCodeScript,
 } from "../util/common/util";
-import { getFTPartialOffset, getFTVersion } from "../util/ft/ftscript";
+import { OrderBookToken as FT, OrderBookTokenProof, tokenKind, isTokenProof,
+  getFTPartialOffset, getFTVersion, isCoinCodeScript, fetchTokenProof, modernCodeOffsets,
+} from "../util/orderbook/token";
+import { CoinTBC20 } from "../util/coin/coinTbc20Code";
 const API = require("../api/api");
-const FT = require("./ft");
 const stableCoin = require("./stableCoin");
 const partial_sha256 = require("tbc-lib-js/lib/util/partial-sha256");
 const BN = tbc.crypto.BN;
@@ -26,6 +27,9 @@ const zero_ft_tape_amount =
 const utxoFee = 0.01;
 const MAX_ORDER_INPUTS = 10;
 const MAX_FT_INPUTS = 5;
+
+const tokenUnlockEstimate = (code: string): number =>
+  tokenKind(code) === "legacy" ? 2000 : 12000;
 
 const validateSellOrderInputCount = (utxoCount: number): void => {
   if (utxoCount > MAX_ORDER_INPUTS) {
@@ -61,20 +65,29 @@ const getCoinInputLockTime = (context: CoinInputLockContext): number => {
       `Missing StableCoin Tape output for input ${context.inputIndex}`,
     );
   }
-  return stableCoin.getLockTimeFromTape(tapeOutput.script);
+  return tokenKind(context.preTX.outputs[context.preTxVout].script.toHex()) === "coinTbc20"
+    ? CoinTBC20.parseTape(tapeOutput.script).lockTime
+    : stableCoin.getLockTimeFromTape(tapeOutput.script);
 };
 
 const applyCoinInputLockTimes = (
   tx: tbc.Transaction,
   contexts: CoinInputLockContext[],
 ): void => {
+  const hasModernInput = contexts.some(context =>
+    tokenKind(context.preTX.outputs[context.preTxVout].script.toHex()) !== "legacy");
+  if (hasModernInput && tx.inputs.length > 6)
+    throw new Error("OrderBook: TBC20 transactions must have at most six inputs to remain spendable");
   let hasCoinInput = false;
   let lockTimeMax = tx.nLockTime;
   for (const context of contexts) {
     if (!context.isCoin) continue;
     hasCoinInput = true;
     tx.setInputSequence(context.inputIndex, 4294967294);
-    lockTimeMax = Math.max(lockTimeMax, getCoinInputLockTime(context));
+    const required = getCoinInputLockTime(context);
+    if (required && lockTimeMax && (required < 500000000) !== (lockTimeMax < 500000000))
+      throw new Error("OrderBook: cannot combine height and timestamp locks");
+    lockTimeMax = Math.max(lockTimeMax, required);
   }
   if (hasCoinInput) tx.setLockTime(lockTimeMax);
 };
@@ -91,7 +104,7 @@ const validateCoinInputLockTimes = (
       );
     }
     const requiredLockTime = getCoinInputLockTime(context);
-    if (tx.nLockTime < requiredLockTime) {
+    if (tx.nLockTime < requiredLockTime || (requiredLockTime > 0 && (tx.nLockTime < 500000000) !== (requiredLockTime < 500000000))) {
       throw new Error(
         `StableCoin input ${context.inputIndex} requires lockTime ${requiredLockTime}, got ${tx.nLockTime}`,
       );
@@ -103,6 +116,22 @@ const getFTCodeSizeHex = (codeScript: string): string => {
   return Buffer.from((codeScript.length / 2).toString(16).padStart(4, "0"), "hex")
     .reverse()
     .toString("hex");
+};
+
+// Match transactions put fee change before optional continuation outputs.
+// Size the complete witnesses before the final signatures, including DER-size slack.
+const finalizeMatch = (tx: tbc.Transaction, key: tbc.PrivateKey, changeIndex: number): void => {
+  tx.sign(key);
+  const requiredFee = Math.max(80, Math.ceil((tx.toBuffer().length + 2 * tx.inputs.length) * 0.08));
+  const paidFee = tx.inputs.reduce((sum, input) => sum + input.output!.satoshis, 0)
+    - tx.outputs.reduce((sum, output) => sum + output.satoshis, 0);
+  if (paidFee < requiredFee) {
+    const change = tx.outputs[changeIndex].satoshis - (requiredFee - paidFee);
+    if (change < 24) throw new Error("Insufficient TBC fee UTXO for match order");
+    (tx.outputs[changeIndex] as any).satoshis = change;
+    (tx as any)._outputAmount = undefined;
+  }
+  tx.seal();
 };
 
 class OrderBook {
@@ -121,6 +150,8 @@ class OrderBook {
 
   contract_version: number;
   private buy_code_dust = 300;
+  private tokenAModern = false;
+  private tokenBModern = false;
   private precision = BigInt(1000000);
 
   constructor() {
@@ -329,7 +360,7 @@ class OrderBook {
     }
 
     tx.change(holdAddress);
-    const txSize = tx.getEstimateSize() + ftutxos.length * 2000;
+    const txSize = tx.getEstimateSize() + ftutxos.reduce((sum, input) => sum + tokenUnlockEstimate(input.script), 0);
     tx.fee(txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80));
     const txraw = tx.uncheckedSerialize();
     return txraw;
@@ -385,7 +416,7 @@ class OrderBook {
       }),
     );
     tx.change(buyData.holdAddress);
-    const txSize = tx.getEstimateSize() + 2000;
+    const txSize = tx.getEstimateSize() + tokenUnlockEstimate(ftutxo.script);
     tx.fee(txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80));
     const txraw = tx.uncheckedSerialize();
     return txraw;
@@ -396,14 +427,14 @@ class OrderBook {
     sigs: string[],
     publicKey: string,
     preTXs: tbc.Transaction[],
-    prepreTxData: string[],
+    prepreTxData: OrderBookTokenProof[],
   ): string {
     if (!_isValidHexString(buyOrderTxRaw))
       throw new Error("Invalid BuyOrderTxRaw hex string");
     if (!tbc.PublicKey.isValid(publicKey)) throw new Error("Invalid PublicKey");
     if (!Array.isArray(sigs) || sigs.some((sig) => !_isValidHexString(sig)))
       throw new Error("Invalid Signatures array");
-    if (prepreTxData.some((data) => !_isValidHexString(data)))
+    if (prepreTxData.some((data) => !isTokenProof(data)))
       throw new Error("Invalid PrePreTxData array");
 
     const tx = new tbc.Transaction(buyOrderTxRaw);
@@ -458,14 +489,14 @@ class OrderBook {
     publicKey: string,
     buyPreTX: tbc.Transaction,
     ftPreTX: tbc.Transaction,
-    ftPrePreTxData: string,
+    ftPrePreTxData: OrderBookTokenProof,
   ): string {
     if (!_isValidHexString(buyOrderTxRaw))
       throw new Error("Invalid BuyOrderTxRaw hex string");
     if (!tbc.PublicKey.isValid(publicKey)) throw new Error("Invalid PublicKey");
     if (!Array.isArray(sigs) || sigs.some((sig) => !_isValidHexString(sig)))
       throw new Error("Invalid Signatures array");
-    if (!_isValidHexString(ftPrePreTxData))
+    if (!isTokenProof(ftPrePreTxData))
       throw new Error("Invalid FtPrePreTxData string");
 
     const tx = new tbc.Transaction(buyOrderTxRaw);
@@ -526,14 +557,14 @@ class OrderBook {
     buyPreTX: tbc.Transaction,
     ftutxo: tbc.Transaction.IUnspentOutput,
     ftPreTX: tbc.Transaction,
-    ftPrePreTxData: string,
+    ftPrePreTxData: OrderBookTokenProof,
     sellutxo: tbc.Transaction.IUnspentOutput,
     sellPreTX: tbc.Transaction,
     utxos: tbc.Transaction.IUnspentOutput[],
     ftFeeAddress: string,
     tbcFeeAddress: string,
   ): string {
-    if (!_isValidHexString(ftPrePreTxData))
+    if (!isTokenProof(ftPrePreTxData))
       throw new Error("Invalid FtPrePreTxData string");
     if (
       !tbc.Address.isValid(ftFeeAddress) ||
@@ -769,8 +800,7 @@ class OrderBook {
     // tx.feePerKb(80);
     // const txSize = tx.getEstimateSize() + 3 * 2000;
     // tx.fee(txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80));
-    tx.sign(privateKey);
-    tx.seal();
+    finalizeMatch(tx, privateKey, 6);
     console.log("tx fee", tx.getFee());
     // console.log(tx.toObject());
     // console.log(tx.verifyScript(0));
@@ -900,7 +930,7 @@ class OrderBook {
     } catch {
       TokenInfo = await API.fetchFtInfo(Token.contractTxid, network);
     }
-    const ftutxo_codeScript = stableCoin
+    const ftutxo_codeScript = FT
       .buildFTtransferCode(
         TokenInfo.codeScript,
         privateKey.toAddress().toString(),
@@ -926,11 +956,11 @@ class OrderBook {
         );
     validateBuyOrderInputCount(1, ftutxos.length);
     let preTXs: tbc.Transaction[] = [];
-    let prepreTxData: string[] = [];
+    let prepreTxData: OrderBookTokenProof[] = [];
     for (let i = 0; i < ftutxos.length; i++) {
       preTXs.push(await API.fetchTXraw(ftutxos[i].txId, network)); //获取每个ft输入的父交易
       prepreTxData.push(
-        await API.fetchFtPrePreTxData(
+        await fetchTokenProof(
           preTXs[i],
           ftutxos[i].outputIndex,
           network,
@@ -1067,7 +1097,7 @@ class OrderBook {
     const buyPreTX = await API.fetchTXraw(buyutxo.txId, network);
     const ftutxo = buildUTXO(buyPreTX, buyutxo.outputIndex + 1, true);
     const ftPreTX: tbc.Transaction = buyPreTX;
-    const ftPrePreTxData: string = await API.fetchFtPrePreTxData(
+    const ftPrePreTxData: OrderBookTokenProof = await fetchTokenProof(
       ftPreTX,
       ftutxo.outputIndex,
       network,
@@ -1175,7 +1205,7 @@ class OrderBook {
     const buyPreTX = await API.fetchTXraw(buyutxo.txId, network);
     const ftutxo = buildUTXO(buyPreTX, buyutxo.outputIndex + 1, true);
     const ftPreTX: tbc.Transaction = buyPreTX;
-    const ftPrePreTxData: string = await API.fetchFtPrePreTxData(
+    const ftPrePreTxData: OrderBookTokenProof = await fetchTokenProof(
       ftPreTX,
       ftutxo.outputIndex,
       network,
@@ -1410,8 +1440,7 @@ class OrderBook {
     // tx.feePerKb(80);
     // const txSize = tx.getEstimateSize() + 3 * 2000;
     // tx.fee(txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80));
-    tx.sign(privateKey);
-    tx.seal();
+    finalizeMatch(tx, privateKey, 6);
     console.log("tx fee", tx.getFee());
     // console.log(tx.toObject());
     // console.log(tx.verifyScript(1));
@@ -1463,6 +1492,8 @@ class OrderBook {
     this.fee_rate = feeRate;
     this.ft_a_contract_id = ftaID;
     this.ft_b_contract_id = ftbID;
+    this.tokenAModern = tokenKind(ftaCodeScript) !== "legacy";
+    this.tokenBModern = tokenKind(ftbCodeScript) !== "legacy";
     this.ft_a_contract_partialhash = this.getTokenPartialHash(ftaCodeScript);
     this.ft_b_contract_partialhash = this.getTokenPartialHash(ftbCodeScript);
 
@@ -1533,7 +1564,7 @@ class OrderBook {
     }
 
     tx.change(holdAddress);
-    const txSize = tx.getEstimateSize() + ftutxos.length * 2000;
+    const txSize = tx.getEstimateSize() + ftutxos.reduce((sum, input) => sum + tokenUnlockEstimate(input.script), 0);
     tx.fee(txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80));
     return tx.uncheckedSerialize();
   }
@@ -1570,6 +1601,8 @@ class OrderBook {
     this.fee_rate = feeRate;
     this.ft_a_contract_id = ftaID;
     this.ft_b_contract_id = ftbID;
+    this.tokenAModern = tokenKind(ftaCodeScript) !== "legacy";
+    this.tokenBModern = tokenKind(ftbCodeScript) !== "legacy";
     this.ft_a_contract_partialhash = this.getTokenPartialHash(ftaCodeScript);
     this.ft_b_contract_partialhash = this.getTokenPartialHash(ftbCodeScript);
 
@@ -1642,7 +1675,7 @@ class OrderBook {
     }
 
     tx.change(holdAddress);
-    const txSize = tx.getEstimateSize() + ftutxos.length * 2000;
+    const txSize = tx.getEstimateSize() + ftutxos.reduce((sum, input) => sum + tokenUnlockEstimate(input.script), 0);
     tx.fee(txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80));
     return tx.uncheckedSerialize();
   }
@@ -1652,7 +1685,7 @@ class OrderBook {
     sigs: string[],
     publicKey: string,
     preTXs: tbc.Transaction[],
-    prepreTxData: string[],
+    prepreTxData: OrderBookTokenProof[],
   ): string {
     if (!_isValidHexString(tokenOrderTxRaw))
       throw new Error("Invalid TokenOrderTxRaw hex string");
@@ -1661,7 +1694,7 @@ class OrderBook {
       throw new Error("Invalid Signatures array");
     if (preTXs.length === 0 || preTXs.length !== prepreTxData.length)
       throw new Error("PreTXs and PrePreTxData length mismatch");
-    if (prepreTxData.some((data) => !_isValidHexString(data)))
+    if (prepreTxData.some((data) => !isTokenProof(data)))
       throw new Error("Invalid PrePreTxData array");
 
     const tx = new tbc.Transaction(tokenOrderTxRaw);
@@ -1713,7 +1746,7 @@ class OrderBook {
     sigs: string[],
     publicKey: string,
     preTXs: tbc.Transaction[],
-    prepreTxData: string[],
+    prepreTxData: OrderBookTokenProof[],
   ): string {
     return this.fillSigsMakeTokenOrderTX(
       sellOrderTxRaw,
@@ -1729,7 +1762,7 @@ class OrderBook {
     sigs: string[],
     publicKey: string,
     preTXs: tbc.Transaction[],
-    prepreTxData: string[],
+    prepreTxData: OrderBookTokenProof[],
   ): string {
     return this.fillSigsMakeTokenOrderTX(
       buyOrderTxRaw,
@@ -1785,7 +1818,7 @@ class OrderBook {
       }),
     );
     tx.change(tokenOrderData.holdAddress);
-    const txSize = tx.getEstimateSize() + 2000;
+    const txSize = tx.getEstimateSize() + tokenUnlockEstimate(ftutxo.script);
     tx.fee(txSize < 1000 ? 80 : Math.ceil((txSize / 1000) * 80));
     return tx.uncheckedSerialize();
   }
@@ -1814,14 +1847,14 @@ class OrderBook {
     publicKey: string,
     tokenOrderPreTX: tbc.Transaction,
     ftPreTX: tbc.Transaction,
-    ftPrePreTxData: string,
+    ftPrePreTxData: OrderBookTokenProof,
   ): string {
     if (!_isValidHexString(tokenOrderTxRaw))
       throw new Error("Invalid TokenOrderTxRaw hex string");
     if (!tbc.PublicKey.isValid(publicKey)) throw new Error("Invalid PublicKey");
     if (!Array.isArray(sigs) || sigs.some((sig) => !_isValidHexString(sig)))
       throw new Error("Invalid Signatures array");
-    if (!_isValidHexString(ftPrePreTxData))
+    if (!isTokenProof(ftPrePreTxData))
       throw new Error("Invalid FtPrePreTxData string");
 
     const tx = new tbc.Transaction(tokenOrderTxRaw);
@@ -1882,7 +1915,7 @@ class OrderBook {
     publicKey: string,
     sellPreTX: tbc.Transaction,
     ftPreTX: tbc.Transaction,
-    ftPrePreTxData: string,
+    ftPrePreTxData: OrderBookTokenProof,
   ): string {
     return this.fillSigsCancelTokenOrderTX(
       cancelSellOrderTxRaw,
@@ -1900,7 +1933,7 @@ class OrderBook {
     publicKey: string,
     buyPreTX: tbc.Transaction,
     ftPreTX: tbc.Transaction,
-    ftPrePreTxData: string,
+    ftPrePreTxData: OrderBookTokenProof,
   ): string {
     return this.fillSigsCancelTokenOrderTX(
       cancelBuyOrderTxRaw,
@@ -2043,20 +2076,6 @@ class OrderBook {
     );
 
     addFTPair(
-      sellFtUtxo.script,
-      tokenATape,
-      tokenABuyerAmountHex,
-      buyData.holdAddress,
-      sellFtUtxo.satoshis,
-    );
-    addFTPair(
-      sellFtUtxo.script,
-      tokenATape,
-      tokenATaxAmountHex,
-      ftaFeeAddress,
-      sellFtUtxo.satoshis,
-    );
-    addFTPair(
       buyFtUtxo.script,
       tokenBTape,
       tokenBSellerAmountHex,
@@ -2069,6 +2088,20 @@ class OrderBook {
       tokenBTaxAmountHex,
       ftbFeeAddress,
       buyFtUtxo.satoshis,
+    );
+    addFTPair(
+      sellFtUtxo.script,
+      tokenATape,
+      tokenABuyerAmountHex,
+      buyData.holdAddress,
+      sellFtUtxo.satoshis,
+    );
+    addFTPair(
+      sellFtUtxo.script,
+      tokenATape,
+      tokenATaxAmountHex,
+      ftaFeeAddress,
+      sellFtUtxo.satoshis,
     );
 
     const feeChangeAddress = tbc.Script.fromHex(utxos[0].script)
@@ -2150,19 +2183,19 @@ class OrderBook {
     buyPreTX: tbc.Transaction,
     buyFtUtxo: tbc.Transaction.IUnspentOutput,
     buyFtPreTX: tbc.Transaction,
-    buyFtPrePreTxData: string,
+    buyFtPrePreTxData: OrderBookTokenProof,
     sellutxo: tbc.Transaction.IUnspentOutput,
     sellPreTX: tbc.Transaction,
     sellFtUtxo: tbc.Transaction.IUnspentOutput,
     sellFtPreTX: tbc.Transaction,
-    sellFtPrePreTxData: string,
+    sellFtPrePreTxData: OrderBookTokenProof,
     utxos: tbc.Transaction.IUnspentOutput[],
     ftaFeeAddress: string,
     ftbFeeAddress: string,
   ): string {
-    if (!_isValidHexString(buyFtPrePreTxData))
+    if (!isTokenProof(buyFtPrePreTxData))
       throw new Error("Invalid BuyFtPrePreTxData string");
-    if (!_isValidHexString(sellFtPrePreTxData))
+    if (!isTokenProof(sellFtPrePreTxData))
       throw new Error("Invalid SellFtPrePreTxData string");
 
     const { tx, buyData, sellData } = this.buildMatchTokenOrderTransaction(
@@ -2235,8 +2268,7 @@ class OrderBook {
         ),
     );
 
-    tx.sign(privateKey);
-    tx.seal();
+    finalizeMatch(tx, privateKey, 8);
     return tx.uncheckedSerialize();
   }
 
@@ -2281,6 +2313,8 @@ class OrderBook {
       .toBuffer()
       .toString("hex");
 
+    this.tokenAModern = tokenKind(TokenInfoA.codeScript) !== "legacy";
+    this.tokenBModern = tokenKind(TokenInfoB.codeScript) !== "legacy";
     const isCoinA = isCoinCodeScript(TokenInfoA.codeScript);
     const partialOffsetA = getFTPartialOffset(TokenInfoA.codeScript);
     this.ft_a_contract_partialhash = partial_sha256.calculate_partial_hash(
@@ -2308,11 +2342,11 @@ class OrderBook {
           saleVolume,
         );
     let preTXs: tbc.Transaction[] = [];
-    let prepreTxData: string[] = [];
+    let prepreTxData: OrderBookTokenProof[] = [];
     for (let i = 0; i < ftutxos.length; i++) {
       preTXs.push(await API.fetchTXraw(ftutxos[i].txId, network)); //获取每个ft输入的父交易
       prepreTxData.push(
-        await API.fetchFtPrePreTxData(
+        await fetchTokenProof(
           preTXs[i],
           ftutxos[i].outputIndex,
           network,
@@ -2437,7 +2471,7 @@ class OrderBook {
     const sellPreTX = await API.fetchTXraw(sellutxo.txId, network);
     const ftutxo = buildUTXO(sellPreTX, sellutxo.outputIndex + 1, true);
     const ftPreTX: tbc.Transaction = sellPreTX;
-    const ftPrePreTxData: string = await API.fetchFtPrePreTxData(
+    const ftPrePreTxData: OrderBookTokenProof = await fetchTokenProof(
       ftPreTX,
       ftutxo.outputIndex,
       network,
@@ -2568,6 +2602,8 @@ class OrderBook {
       .toBuffer()
       .toString("hex");
 
+    this.tokenAModern = tokenKind(TokenInfoA.codeScript) !== "legacy";
+    this.tokenBModern = tokenKind(TokenInfoB.codeScript) !== "legacy";
     const isCoinA = isCoinCodeScript(TokenInfoA.codeScript);
     const partialOffsetA = getFTPartialOffset(TokenInfoA.codeScript);
     this.ft_a_contract_partialhash = partial_sha256.calculate_partial_hash(
@@ -2596,11 +2632,11 @@ class OrderBook {
           requiredAmount,
         );
     let preTXs: tbc.Transaction[] = [];
-    let prepreTxData: string[] = [];
+    let prepreTxData: OrderBookTokenProof[] = [];
     for (let i = 0; i < ftutxos.length; i++) {
       preTXs.push(await API.fetchTXraw(ftutxos[i].txId, network)); //获取每个ft输入的父交易
       prepreTxData.push(
-        await API.fetchFtPrePreTxData(
+        await fetchTokenProof(
           preTXs[i],
           ftutxos[i].outputIndex,
           network,
@@ -2728,7 +2764,7 @@ class OrderBook {
     const buyPreTX = await API.fetchTXraw(buyutxo.txId, network);
     const ftutxo = buildUTXO(buyPreTX, buyutxo.outputIndex + 1, true);
     const ftPreTX: tbc.Transaction = buyPreTX;
-    const ftPrePreTxData: string = await API.fetchFtPrePreTxData(
+    const ftPrePreTxData: OrderBookTokenProof = await fetchTokenProof(
       ftPreTX,
       ftutxo.outputIndex,
       network,
@@ -2837,12 +2873,12 @@ class OrderBook {
     const sellPreTX = await API.fetchTXraw(sellutxo.txId, network);
     const buyFtUtxo = buildUTXO(buyPreTX, buyutxo.outputIndex + 1, true);
     const sellFtUtxo = buildUTXO(sellPreTX, sellutxo.outputIndex + 1, true);
-    const buyFtPrePreTxData: string = await API.fetchFtPrePreTxData(
+    const buyFtPrePreTxData: OrderBookTokenProof = await fetchTokenProof(
       buyPreTX,
       buyFtUtxo.outputIndex,
       network,
     );
-    const sellFtPrePreTxData: string = await API.fetchFtPrePreTxData(
+    const sellFtPrePreTxData: OrderBookTokenProof = await fetchTokenProof(
       sellPreTX,
       sellFtUtxo.outputIndex,
       network,
@@ -2954,20 +2990,6 @@ class OrderBook {
     );
 
     addFTPair(
-      sellFtUtxo.script,
-      tokenATape,
-      tokenABuyerAmountHex,
-      buyData.holdAddress,
-      sellFtUtxo.satoshis,
-    );
-    addFTPair(
-      sellFtUtxo.script,
-      tokenATape,
-      tokenATaxAmountHex,
-      ftaFeeAddress,
-      sellFtUtxo.satoshis,
-    );
-    addFTPair(
       buyFtUtxo.script,
       tokenBTape,
       tokenBSellerAmountHex,
@@ -2980,6 +3002,20 @@ class OrderBook {
       tokenBTaxAmountHex,
       ftbFeeAddress,
       buyFtUtxo.satoshis,
+    );
+    addFTPair(
+      sellFtUtxo.script,
+      tokenATape,
+      tokenABuyerAmountHex,
+      buyData.holdAddress,
+      sellFtUtxo.satoshis,
+    );
+    addFTPair(
+      sellFtUtxo.script,
+      tokenATape,
+      tokenATaxAmountHex,
+      ftaFeeAddress,
+      sellFtUtxo.satoshis,
     );
 
     const feeChangeAddress = tbc.Script.fromHex(utxos[0].script)
@@ -3108,8 +3144,7 @@ class OrderBook {
         ),
     );
 
-    tx.sign(privateKey);
-    tx.seal();
+    finalizeMatch(tx, privateKey, 8);
     return tx.uncheckedSerialize();
   }
 
@@ -3147,13 +3182,14 @@ class OrderBook {
     taxAddress: string,
     ftCodeSize = isCoin ? "dc07" : "5c07",
   ): tbc.Script {
+    const tapeMarker = modernCodeOffsets.has(Buffer.from(ftCodeSize, "hex").readUInt16LE()) ? "3054415045" : "4654617065";
     const address =
       "14" + new tbc.Address(this.hold_address).hashBuffer.toString("hex");
     const taxAddressHex =
       "14" + tbc.Address.fromString(taxAddress).hashBuffer.toString("hex");
 
     const sellOrderCode = tbc.Script.fromHex(
-      `765187637556ba01207f77547f75817654958f01289351947901157f597f7701217f597f597f517f7701207f756b517f77816b517f77816b517f776b517f776b7654958f01289379816b7654958f0128935394796b54958f0127935294796b006b7600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575686ca87e6b007e7e7e7e7e7e7e7e7e7ea86c7e7eaa56ba01207f7588006b7600879163a86c7e7e6bbb6c7e7e6bbb6c7e7e6c6c75756b676d6d6d760087916378787e6c6c6c7e7b7c886c55798194547901157f597f5879527a517f77886c76537a517f77887c01217f6c76537a517f77887c597f6c76537a517f7781887c597f6c76537a517f7781887c517f7701207f756c7c886b6b6b6b6b6bbb6c7e7e6b676d6d6c6c6c75756b6868760119885279537f7701147f756c6c6c76547a8700886b6b6bbb6c7e7e6b760119885279537f7701147f756c6c567981008763527a75677b${taxAddressHex}8868766b557981946b6bbb6c7e7e6b760119885279537f7701147f756c6c6c6c76557a8700886b6b5579819400886bbb6c7e7e6b527902${ftCodeSize}88768255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a93597902${ftCodeSize}8857798255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a936c6c6c6c765a79885f79885979517f7701147f75${taxAddressHex}885f79517f7701147f75886c6c527a950340420f9676527a950340420f96547988537a947b886ba86c7e7e6bbb6c7e7e6ba86c7e7e6bbb6c7e7ea857ba8867528876a9${address}88ad68516a07ffffffffffffff`,
+      `765187637556ba01207f77547f75817654958f01289351947901157f597f7701217f597f597f517f7701207f756b517f77816b517f77816b517f776b517f776b7654958f01289379816b7654958f0128935394796b54958f0127935294796b006b7600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575686ca87e6b007e7e7e7e7e7e7e7e7e7ea86c7e7eaa56ba01207f7588006b7600879163a86c7e7e6bbb6c7e7e6bbb6c7e7e6c6c75756b676d6d6d760087916378787e6c6c6c7e7b7c886c55798194547901157f597f5879527a517f77886c76537a517f77887c01217f6c76537a517f77887c597f6c76537a517f7781887c597f6c76537a517f7781887c517f7701207f756c7c886b6b6b6b6b6bbb6c7e7e6b676d6d6c6c6c75756b6868760119885279537f7701147f756c6c6c76547a8700886b6b6bbb6c7e7e6b760119885279537f7701147f756c6c567981008763527a75677b${taxAddressHex}8868766b557981946b6bbb6c7e7e6b760119885279537f7701147f756c6c6c6c76557a8700886b6b5579819400886bbb6c7e7e6b527902${ftCodeSize}88768255947f05${tapeMarker}88537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a93597902${ftCodeSize}8857798255947f05${tapeMarker}88537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a936c6c6c6c765a79885f79885979517f7701147f75${taxAddressHex}885f79517f7701147f75886c6c527a950340420f9676527a950340420f96547988537a947b886ba86c7e7e6bbb6c7e7e6ba86c7e7e6bbb6c7e7ea857ba8867528876a9${address}88ad68516a07ffffffffffffff`,
     );
 
     const sellOrderData = this.buildOrderData();
@@ -3166,13 +3202,14 @@ class OrderBook {
     taxAddress: string,
     ftCodeSize = isCoin ? "dc07" : "5c07",
   ): tbc.Script {
+    const tapeMarker = modernCodeOffsets.has(Buffer.from(ftCodeSize, "hex").readUInt16LE()) ? "3054415045" : "4654617065";
     const address =
       "14" + new tbc.Address(this.hold_address).hashBuffer.toString("hex");
     const taxAddressHex =
       "14" + tbc.Address.fromString(taxAddress).hashBuffer.toString("hex");
 
     const buyOrderCode = tbc.Script.fromHex(
-      `765187637556ba01207f77547f75817654958f01289351947901157f597f7701217f597f597f517f7701207f756b517f77816b517f77816b517f776b517f776b7654958f0128935394796b54958f0127935294796b006b7600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575686ca87e6b007e7e7e7e7e7e7e7e7e7ea86c7e7eaa56ba01207f7588006b760087636d6d6d7600879163bb6c7e7e676d6d6c686c6c75756b67577957797e6c6c6c7e7b7c88537902${ftCodeSize}88788255947f054654617065886c6c765879886b6b537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a935679517f7701147f756b6b6ba86c7e7e6bbb6c7e7e6b527901157f597f6c6c6c6c76577a517f7788547a01217f6c76537a517f77887c597f6c76537a517f7781887c597f6c76537a517f7781767c88527a517f7701207f756c7c88587a517f7781517a950340420f96567a7c886b6b6b6b6b6bbb6c6c5279a97c887e7e6b68760119885279537f7701147f756c6c76537a8700886b6bbb6c7e7e6b760119885279537f7701147f756c55798100876377677c${taxAddressHex}88685479816b6bbb6c7e7e6b760119885279537f7701147f756c6c6c76547a8878577981936c6c5279950340420f96547a886c527a950340420f967c6b7c6b6b6bbb6c7e7e6b527902${ftCodeSize}88768255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a93597902${ftCodeSize}8857798255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a936c6c6c6c765a79885f79885979517f7701147f75${taxAddressHex}885f79517f7701147f75870088537a94527a9400886ba86c7e7e6bbb6c7e7e6ba86c7e7e6bbb6c7e7ea857ba8867528876a9${address}88ad68516a30ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff`,
+      `765187637556ba01207f77547f75817654958f01289351947901157f597f7701217f597f597f517f7701207f756b517f77816b517f77816b517f776b517f776b7654958f0128935394796b54958f0127935294796b006b7600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575686ca87e6b007e7e7e7e7e7e7e7e7e7ea86c7e7eaa56ba01207f7588006b760087636d6d6d7600879163bb6c7e7e676d6d6c686c6c75756b67577957797e6c6c6c7e7b7c88537902${ftCodeSize}88788255947f05${tapeMarker}886c6c765879886b6b537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a935679517f7701147f756b6b6ba86c7e7e6bbb6c7e7e6b527901157f597f6c6c6c6c76577a517f7788547a01217f6c76537a517f77887c597f6c76537a517f7781887c597f6c76537a517f7781767c88527a517f7701207f756c7c88587a517f7781517a950340420f96567a7c886b6b6b6b6b6bbb6c6c5279a97c887e7e6b68760119885279537f7701147f756c6c76537a8700886b6bbb6c7e7e6b760119885279537f7701147f756c55798100876377677c${taxAddressHex}88685479816b6bbb6c7e7e6b760119885279537f7701147f756c6c6c76547a8878577981936c6c5279950340420f96547a886c527a950340420f967c6b7c6b6b6bbb6c7e7e6b527902${ftCodeSize}88768255947f05${tapeMarker}88537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a93597902${ftCodeSize}8857798255947f05${tapeMarker}88537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a936c6c6c6c765a79885f79885979517f7701147f75${taxAddressHex}885f79517f7701147f75870088537a94527a9400886ba86c7e7e6bbb6c7e7e6ba86c7e7e6bbb6c7e7ea857ba8867528876a9${address}88ad68516a30ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff`,
     );
 
     const buyOrderData = this.buildOrderData();
@@ -3180,14 +3217,20 @@ class OrderBook {
     return buyOrderCode.add(buyOrderData);
   }
 
-  getTokenSellOrderCode(taxAddress: string): tbc.Script {
+  // Token covenants consume twelve parent outputs (four witness fields each).
+  // Current outputs are B recipient/fee, A recipient/fee, TBC change, then optional
+  // order + Code/Tape continuation. Only a continuation of this order must retain
+  // its owner, identities, fee and price; the other order validates its own state.
+  getTokenSellOrderCode(taxAddress: string, modernA = this.tokenAModern, modernB = this.tokenBModern): tbc.Script {
+    const a = modernA ? "3054415045" : "4654617065";
+    const b = modernB ? "3054415045" : "4654617065";
     const address =
       "14" + new tbc.Address(this.hold_address).hashBuffer.toString("hex");
     const taxAddressHex =
       "14" + tbc.Address.fromString(taxAddress).hashBuffer.toString("hex");
     const buyCodeSize = token_order_size_hex;
     const sellOrderCode = tbc.Script.fromHex(
-      `765187637556ba01207f77547f75817654958f01309351947901157f597f7701217f01217f597f597f01217f517f7701207f756b517f776b517f77816b517f77816b517f776b517f776b517f776b7654958f0130935394796b54958f012f935294796b006b7600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575686ca87e6b007e7e7e7e7e7e7e7e7e7ea86c7e7eaa56ba01207f7588006b760087636d6d6d7600886d6d6c6c6c75756c6c6c6c6c6c6c75756b6b6b6b6b6b675479517f7701147f75788255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a93597959797e6c6c6c7e7b7c870087916356796c6c76537a886b6b5b7901167f77587f75817b886756796c6c6c76547a885c79${buyCodeSize}885e7901167f77587f75816c6c76537a950340420f96577a517a940164a151886b6b6b6b6b687c6b7ca87c7e7e6bbb6c7e7e6c6c6c6c6c6c6c6c5b7901157f597f775879527a517f778801217f5779527a517f778801217f5679527a517f7788597f5579527a517f778188597f5479527a517f77818801217f7c517f777b88517f7701207f75886b6b6b6b6b7c6b537a537a537abb76a97b886c7e7e6b68760119885279537f7701147f756c6c76537a8700886b6bbb6c7e7e6c6c765679885c79885679517f7701147f75${taxAddressHex}885c79517f7701147f75788700886b788255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a9358798255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a93517a936b7ca87c7e7e6bbb6c7e7e7ca87c7e7e6bbb6c7e7e6c6c6c765779885d79885779517f7701147f75${taxAddressHex}885d79517f7701147f757c8852798255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a9359798255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a936c6c547a950340420f9676527a950340420f96537988527a947c886ba86c7e7e6bbb6c7e7e6ba86c7e7e6bbb6c7e7ea857ba8867528876a9${address}88ad68516a11ffffffffffffffffffffffffffffffffff`,
+      `765187637556ba01207f77547f75817654958f01309351947901157f597f7701217f01217f597f597f01217f517f7701207f756b517f776b517f77816b517f77816b517f776b517f776b517f776b7654958f0130935394796b54958f012f935294796b006b7600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575686ca87e6b007e7e7e7e7e7e7e7e7e7ea86c7e7eaa56ba01207f7588006b760087636d6d6d7600886d6d6c6c6c75756c6c6c6c6c6c6c75756b6b6b6b6b6b675479517f7701147f75788255947f05${a}88537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a93597959797e6c6c6c7e7b7c876356796c6c76537a886b6b5b7901167f77587f75817b88516b6756796c6c6c76547a885c79${buyCodeSize}885e7901167f77587f75816c6c76537a950340420f96577a517a940164a151886b6b6b6b6b006b687c6b7ca87c7e7e6bbb6c7e7e6c6c636c6c6c6c6c6c6c5b7901157f597f775879527a517f778801217f5779527a517f778801217f5679527a517f7788597f5579527a517f778188597f5479527a517f77818801217f7c517f77537a88517f7701207f75886b6b6b6b6b7c6b676c6c6c6c6c6c6c6d6b6b6b6b6b7c6b68537a537a537abb76a97b886c7e7e6b68760119885279537f7701147f756c6c76537a8700886b6bbb6c7e7e6c6c765779885c79885679517f7701147f75${taxAddressHex}885c79517f7701147f75788700886b788255947f05${a}88537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a9358798255947f05${a}88537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a93517a936b7ca87c7e7e6bbb6c7e7e7ca87c7e7e6bbb6c7e7e6c6c6c765879885d79885779517f7701147f75${taxAddressHex}885d79517f7701147f757c8852798255947f05${b}88537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a9359798255947f05${b}88537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a936c6c547a950340420f9676527a950340420f96537988527a947c886ba86c7e7e6bbb6c7e7e6ba86c7e7e6bbb6c7e7ea857ba8867528876a9${address}88ad68516a08ffffffffffffffff`,
     ); //1152字节
 
     const sellOrderData = this.buildTokenOrderData(); //180字节
@@ -3195,14 +3238,16 @@ class OrderBook {
     return sellOrderCode.add(sellOrderData); //1332字节
   }
 
-  getTokenBuyOrderCode(taxAddress: string): tbc.Script {
+  getTokenBuyOrderCode(taxAddress: string, modernA = this.tokenAModern, modernB = this.tokenBModern): tbc.Script {
+    const a = modernA ? "3054415045" : "4654617065";
+    const b = modernB ? "3054415045" : "4654617065";
     const address =
       "14" + new tbc.Address(this.hold_address).hashBuffer.toString("hex");
     const taxAddressHex =
       "14" + tbc.Address.fromString(taxAddress).hashBuffer.toString("hex");
     const sellCodeSize = token_order_size_hex;
     const buyOrderCode = tbc.Script.fromHex(
-      `765187637556ba01207f77547f75817654958f01309351947901157f597f7701217f01217f597f597f01217f517f7701207f756b517f776b517f77816b517f77816b517f776b517f776b517f776b7654958f0130935394796b54958f012f935294796b006b7600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575687600879163bb7e6c7e6b756775757575686ca87e6b007e7e7e7e7e7e7e7e7e7ea86c7e7eaa56ba01207f7588006b760087636d6d6d7600886d6d6c6c6c75756c6c6c6c6c6c6c75756b6b6b6b6b6b675479517f7701147f75788255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a93597959797e6c6c6c7e7b7c870087916356796c6c6c76547a885e7901167f77587f75816c6c76537a950340420f96577a517a940164a151886b6b6b6b6b6756796c6c76537a886b6b5979${sellCodeSize}885b7901167f77587f75817b88687c6b7ca87c7e7e6bbb6c7e7e6c6c6c6c6c6c6c6c5b7901157f597f775879527a517f778801217f5779527a517f778801217f5679527a517f7788597f5579527a517f778188597f5479527a517f77818801217f7c517f777b88517f7701207f75886b6b6b6b6b7c6b537a537a537abb76a97b886c7e7e6b68760119885279537f7701147f756c6c76537a8700886b6bbb6c7e7e6c6c765679885c79885679517f7701147f75${taxAddressHex}885c79517f7701147f75788852798255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a9359798255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a9378936c6c6c5379950340420f96517a537a950340420f96537a887c6b7c6b6b7ca87c7e7e6bbb6c7e7e7ca87c7e7e6bbb6c7e7e6c6c6c765779885d79885779517f7701147f75${taxAddressHex}885d79517f7701147f75517a87008852798255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a9359798255947f05465461706588537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a93517a937c886ba86c7e7e6bbb6c7e7e6ba86c7e7e6bbb6c7e7ea857ba8867528876a9${address}88ad68516a0bffffffffffffffffffffff`,
+      `765187637556ba01207f77547f75817654958f01309351947901157f597f7701217f01217f597f597f01217f517f7701207f756b517f776b517f77816b517f77816b517f776b517f776b517f776b7654958f0130935394796b54958f012f935294796b006b7600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575687600879163bb7e6c7e6b6775757575686ca87e6b007e7e7e7e7e7e7e7e7e7ea86c7e7eaa56ba01207f7588006b760087636d6d6d7600886d6d6c6c6c75756c6c6c6c6c6c6c75756b6b6b6b6b6b675479517f7701147f75788255947f05${b}88537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a93597959797e6c6c6c7e7b7c876356796c6c6c76547a885e7901167f77587f75816c6c76537a950340420f96577a517a940164a151886b6b6b6b6b516b6756796c6c76537a886b6b5979${sellCodeSize}885b7901167f77587f75817b88006b687c6b7ca87c7e7e6bbb6c7e7e6c6c636c6c6c6c6c6c6c5b7901157f597f775879527a517f778801217f5779527a517f778801217f5679527a517f7788597f5579527a517f778188597f5479527a517f77818801217f7c517f77537a88517f7701207f75886b6b6b6b6b7c6b676c6c6c6c6c6c6c6d6b6b6b6b6b7c6b68537a537a537abb76a97b886c7e7e6b68760119885279537f7701147f756c6c76537a8700886b6bbb6c7e7e6c6c765779885c79885679517f7701147f75${taxAddressHex}885c79517f7701147f75788852798255947f05${a}88537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a9359798255947f05${a}88537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a9378936c6c6c5379950340420f96517a537a950340420f96537a887c6b7c6b6b7ca87c7e7e6bbb6c7e7e7ca87c7e7e6bbb6c7e7e6c6c6c765879885d79885779517f7701147f75${taxAddressHex}885d79517f7701147f75517a87008852798255947f05${b}88537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a9359798255947f05${b}88537f7701307f7500517a587f587f587f587f587f81567a937c81517a937c81517a937c81517a937c81517a937c81517a93517a937c886ba86c7e7e6bbb6c7e7e6ba86c7e7e6bbb6c7e7ea857ba8867528876a9${address}88ad68516a02ffff`,
     ); //1152字节
 
     const buyOrderData = this.buildTokenOrderData(); //180字节
