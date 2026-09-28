@@ -24,9 +24,9 @@ import type {
 | --- | --- | --- |
 | `detectContractVersion(codeScript)` | 不知道资产类别时，统一识别 | `ContractVersionInfo \| null` |
 | `detectPoolVersion(codeScript)` | Pool 版本 | `PoolVersionInfo \| null` |
-| `detectFTVersion(codeScript)` | 普通 FT / TBC20 | `FTVersionInfo \| null` |
-| `detectStableCoinVersion(codeScript)` | 旧稳定币 / Coin TBC20 | `StableCoinVersionInfo \| null` |
-| `detectNFTVersion(codeScript)` | 旧 NFT / TBC721 | `NFTVersionInfo \| null` |
+| `detectFTVersion(codeScript)` | 普通 FT / TBC20 Standard | `FTVersionInfo \| null` |
+| `detectStableCoinVersion(codeScript)` | 旧稳定币 / TBC20 Stablecoin | `StableCoinVersionInfo \| null` |
+| `detectNFTVersion(codeScript)` | 旧 NFT / TBC721 Standard | `NFTVersionInfo \| null` |
 
 输入 `ContractCodeScript` 支持三种形式：
 
@@ -44,13 +44,13 @@ import type {
 | Pool 2.0 | `pool` | `2` | 无 | `poolNFT2` |
 | Pool 3.0 | `pool` | `3` | 无 | `PoolNFT3` |
 | 旧普通 FT | `ft` | `legacy` | `1 / 2 / 3 / 4` | `FT` |
-| TBC20 | `ft` | `tbc20` | 无 | `TBC20` |
+| TBC20 Standard | `ft` | `tbc20-standard` | 无 | `TBC20Standard` |
 | 旧稳定币 | `stablecoin` | `legacy` | 已登记模板的内部版本号 | `stableCoin` |
-| Coin TBC20 | `stablecoin` | `tbc20` | 无 | `Coin` |
+| TBC20 Stablecoin | `stablecoin` | `tbc20-stablecoin` | 无 | `TBC20Stablecoin` |
 | 旧 NFT | `nft` | `legacy` | `0 / 1 / 2` | `NFT` |
-| TBC721 | `nft` | `tbc721` | 无 | `TBC721` |
+| TBC721 Standard | `nft` | `tbc721-standard` | 无 | `TBC721Standard` |
 
-`sdk` 是字符串，不是已经初始化的实例。**Coin TBC20 对应的业务类是 `Coin`**，文件为 `lib/contract/coinTbc20`；根导出的 `CoinTBC20` 是底层 Code/Tape 编解码器，不能作为发行、转账、冻结等业务类使用。
+`sdk` 是字符串，不是已经初始化的实例。**TBC20 Stablecoin 对应的业务类是 `TBC20Stablecoin`**，文件为 `lib/contract/tbc20-stablecoin`；根导出的 `TBC20StablecoinCodec` 是底层 Code/Tape 编解码器，不能作为发行、转账、冻结等业务类使用。
 
 Pool1 单独返回 `poolNFT`，避免将它误送给 `poolNFT2`。Pool3 的 `PoolNFT3` 也可使用包内别名 `poolNFT3`，识别结果统一返回 `PoolNFT3`。
 
@@ -61,7 +61,7 @@ Pool1 单独返回 `poolNFT`，避免将它误送给 `poolNFT2`。Pool3 的 `Poo
 ```js
 const sdk = require('tbc-contract');
 
-function resolveContractSDK(codeScript) {
+function resolveContractSdk(codeScript) {
   const info = sdk.detectContractVersion(codeScript);
   if (!info) throw new Error('无法识别该 Code：请核对输出位置和合约模板');
 
@@ -70,21 +70,21 @@ function resolveContractSDK(codeScript) {
     poolNFT2: sdk.poolNFT2,
     PoolNFT3: sdk.PoolNFT3,
     FT: sdk.FT,
-    TBC20: sdk.TBC20,
+    TBC20Standard: sdk.TBC20Standard,
     stableCoin: sdk.stableCoin,
-    Coin: sdk.Coin,
+    TBC20Stablecoin: sdk.TBC20Stablecoin,
     NFT: sdk.NFT,
-    TBC721: sdk.TBC721,
+    TBC721Standard: sdk.TBC721Standard,
   };
   return { info, SDK: classes[info.sdk] };
 }
 
 // 构造用于展示的 Code，不发行资产、不花费 UTXO。
-const code = sdk.TBC721.buildCodeScript('11'.repeat(32), 7);
-const { info, SDK } = resolveContractSDK(code);
+const code = sdk.TBC721Standard.buildCodeScript('11'.repeat(32), 7);
+const { info, SDK } = resolveContractSdk(code);
 console.log(info);
-// { family: 'nft', version: 'tbc721', sdk: 'TBC721', codeBytes: 234 }
-console.log(SDK === sdk.TBC721); // true
+// { family: 'nft', version: 'tbc721-standard', sdk: 'TBC721Standard', codeBytes: 234 }
+console.log(SDK === sdk.TBC721Standard); // true
 ```
 
 在 TypeScript 中，可以按 `family`、`version` 或 `sdk` 缩小返回类型。例如 `info.family === 'ft' && info.version === 'legacy'` 时才存在 `info.legacyVersion`。
@@ -121,80 +121,80 @@ Pool2 普通版与带公钥前缀授权的版本都返回 `version: 2`；Pool3 �
 
 识别或初始化后，应用还应核对自己的业务池 ID、Pool Code hash 和最新 outpoint，不能把“同版本”视为“同一个池”。
 
-## 4. FT / TBC20
+## 4. FT / TBC20 Standard
 
 ```js
-const { FT, TBC20, detectFTVersion } = require('tbc-contract');
+const { FT, TBC20Standard, detectFTVersion } = require('tbc-contract');
 
-function selectTokenSDK(codeScript) {
+function selectTokenSdk(codeScript) {
   const info = detectFTVersion(codeScript);
-  if (!info) throw new Error('不是已知的普通 FT/TBC20 Code');
-  return { info, SDK: info.sdk === 'TBC20' ? TBC20 : FT };
+  if (!info) throw new Error('不是已知的普通 FT/TBC20 Standard Code');
+  return { info, SDK: info.sdk === 'TBC20Standard' ? TBC20Standard : FT };
 }
 
 // 只创建示例脚本，供本地识别。
-const code = TBC20.instantiateCode({
+const code = TBC20Standard.instantiateCode({
   originalUTXO: { txId: '22'.repeat(32), outputIndex: 0 },
   tapeSize: 66,
   controller: Buffer.concat([Buffer.alloc(20, 0x33), Buffer.from([0])]),
 });
-const selected = selectTokenSDK(code.toHex());
-console.log(selected.info.sdk); // TBC20
-console.log(selected.SDK === TBC20); // true
+const selected = selectTokenSdk(code.toHex());
+console.log(selected.info.sdk); // TBC20Standard
+console.log(selected.SDK === TBC20Standard); // true
 ```
 
-`detectFTVersion` 只识别普通代币。旧稳定币、Coin TBC20、旧 FTLP 和 FTLPTBC20 不会返回 `FT` 或 `TBC20`。不知道类别时使用 `detectContractVersion`。
+`detectFTVersion` 只识别普通代币。旧稳定币、TBC20 Stablecoin、旧 FTLP 和 TBC20 LP 不会返回 `FT` 或 `TBC20Standard`。不知道类别时使用 `detectContractVersion`。
 
-旧 FT 内部版本 v1–v4 都路由到 `FT`；TBC20 是独立协议，不使用旧 FT 的内部版本号。业务金额也需遵循对应接口：TBC20 使用原始整数单位，不能直接照搬旧 FT 的展示金额参数。
+旧 FT 内部版本 v1–v4 都路由到 `FT`；TBC20 Standard 是独立协议，不使用旧 FT 的内部版本号。业务金额也需遵循对应接口：TBC20 Standard 使用原始整数单位，不能直接照搬旧 FT 的展示金额参数。
 
-## 5. stableCoin / Coin TBC20
+## 5. stableCoin / TBC20 Stablecoin
 
 ```js
-const { stableCoin, Coin, CoinTBC20, detectStableCoinVersion } = require('tbc-contract');
+const { stableCoin, TBC20Stablecoin, TBC20StablecoinCodec, detectStableCoinVersion } = require('tbc-contract');
 
-function selectStableCoinSDK(codeScript) {
+function selectStablecoinSdk(codeScript) {
   const info = detectStableCoinVersion(codeScript);
   if (!info) throw new Error('不是已知的稳定币 Code');
-  return { info, SDK: info.sdk === 'Coin' ? Coin : stableCoin };
+  return { info, SDK: info.sdk === 'TBC20Stablecoin' ? TBC20Stablecoin : stableCoin };
 }
 
-// CoinTBC20 在这里仅用于构造示例 Code。
-const code = CoinTBC20.instantiateCode({
+// TBC20StablecoinCodec 在这里仅用于构造示例 Code。
+const code = TBC20StablecoinCodec.instantiateCode({
   coinNftCodeHash: Buffer.alloc(32, 0x44),
   adminPubKeyHash: Buffer.alloc(20, 0x55),
   tapeSize: 66,
   controller: Buffer.concat([Buffer.alloc(20, 0x66), Buffer.from([0])]),
 });
-const selected = selectStableCoinSDK(code.toBuffer());
+const selected = selectStablecoinSdk(code.toBuffer());
 console.log(selected.info);
-// { family: 'stablecoin', version: 'tbc20', sdk: 'Coin', codeBytes: 2981 }
-console.log(selected.SDK === Coin); // true
+// { family: 'stablecoin', version: 'tbc20-stablecoin', sdk: 'TBC20Stablecoin', codeBytes: 2981 }
+console.log(selected.SDK === TBC20Stablecoin); // true
 ```
 
-应传稳定币资产 Code，不是发行凭证的 NFT Code。发行凭证若采用 TBC721 模板，其 Code 会被识别为 `TBC721`；脚本版本本身不能说明它在业务上是否作为发行凭证。
+应传稳定币资产 Code，不是发行凭证的 NFT Code。发行凭证若采用 TBC721 Standard 模板，其 Code 会被识别为 `TBC721Standard`；脚本版本本身不能说明它在业务上是否作为发行凭证。
 
-## 6. NFT / TBC721
+## 6. NFT / TBC721 Standard
 
 ```js
-const { NFT, TBC721, detectNFTVersion } = require('tbc-contract');
+const { NFT, TBC721Standard, detectNFTVersion } = require('tbc-contract');
 
-function selectNFTSDK(nftTx, codeVout = 0) {
+function selectNftSdk(nftTx, codeVout = 0) {
   const output = nftTx.outputs[codeVout];
   if (!output) throw new Error('NFT Code vout 不存在');
   const info = detectNFTVersion(output.script);
-  if (!info) throw new Error('不是已知的 NFT/TBC721 Code');
-  return { info, SDK: info.sdk === 'TBC721' ? TBC721 : NFT };
+  if (!info) throw new Error('不是已知的 NFT/TBC721 Standard Code');
+  return { info, SDK: info.sdk === 'TBC721Standard' ? TBC721Standard : NFT };
 }
 
 const tbc = require('tbc-lib-js');
 const tx = new tbc.Transaction().addOutput(new tbc.Transaction.Output({
   script: NFT.buildCodeScript('77'.repeat(32), 2), satoshis: 200,
 }));
-const selected = selectNFTSDK(tx);
+const selected = selectNftSdk(tx);
 console.log(selected.info.sdk, selected.info.legacyVersion); // NFT 2
 ```
 
-传入 NFT 的 Code，不能只取 `NHold` 输出或 `NTape`。旧 NFT v0/v1/v2 均路由到 `NFT`，该 SDK 的常规转移入口会根据输入 Code 选择对应实现；TBC721 路由到独立的 `TBC721`。
+传入 NFT 的 Code，不能只取 `NHold` 输出或 `NTape`。旧 NFT v0/v1/v2 均路由到 `NFT`，该 SDK 的常规转移入口会根据输入 Code 选择对应实现；TBC721 Standard 路由到独立的 `TBC721Standard`。
 
 ## 7. 从链上交易选择 Code 并识别
 
@@ -221,7 +221,7 @@ async function detectByOutpoint(txid, codeVout, network = 'testnet') {
 工具匹配完整模板及其构造参数边界，不仅比较长度、填充字节或末尾标记：
 
 - 旧 FT / 稳定币复用 SDK 中的已登记模板和规范化摘要，区分同长度的普通 FT 与稳定币。
-- TBC20、Coin TBC20、Pool3、TBC721 复用各自严格的 Code 解析或验证器。
+- TBC20 Standard、TBC20 Stablecoin、Pool3、TBC721 Standard 复用各自严格的 Code 解析或验证器。
 - Pool1、Pool2、旧 NFT 按仓库现有构造器生成模板，保留可变参数位置，核对其余固定字节。Pool2 重复的 FT 长度、费用公钥哈希及授权前缀长度必须一致；支持 1–10 个、各 1–65 字节的等长授权公钥前缀。
 
 `null` 表示“不匹配本 SDK 支持的模板”，不等同于链上脚本无效。其他历史编译产物、自定义模板或未登记版本需要单独接入，不能因保留相同 marker 就认为兼容。

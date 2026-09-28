@@ -1,6 +1,6 @@
-# TBC20 使用文档
+# TBC20 Standard 使用文档
 
-TBC20 是新的同质化 Token 合约。每个 Token UTXO 由两个相邻输出组成：
+TBC20 Standard 是同质化 Token 合约。每个 Token UTXO 由两个相邻输出组成：
 
 - Code：固定 `500 satoshis`，负责所有权和状态迁移验证。
 - Tape：固定 `0 satoshis`，保存6个金额槽以及 metadata。
@@ -15,8 +15,8 @@ npm i tbc-lib-js tbc-contract
 
 ```ts
 import * as tbc from "tbc-lib-js";
-import { API, TBC20 } from "tbc-contract";
-import type { TBC20AncestorResolver, TBC20BuildResult } from "tbc-contract";
+import { API, TBC20Standard } from "tbc-contract";
+import type { TBC20StandardAncestorResolver, TBC20StandardBuildResult } from "tbc-contract";
 
 const network = "testnet";
 const privateKeyA = tbc.PrivateKey.fromString("YOUR_TESTNET_WIF");
@@ -31,7 +31,7 @@ const addressB = "RECIPIENT_ADDRESS";
 创建新 Token 时必须使用精确十进制字符串定义供应量：
 
 ```ts
-const token = new TBC20({
+const token = new TBC20Standard({
   name: "Chain Token",
   symbol: "CHN",
   supply: "1000",
@@ -57,7 +57,7 @@ console.log(token.declaredSupplyRaw); // 1000000000n
 以下函数把交易输出转换为后续调用需要的 UTXO。不要猜测 Token Code 的输出位置，应读取返回值中的 `tokenOutputs`。
 
 ```ts
-function outputToUTXO(
+function outputToUtxo(
   tx: tbc.Transaction,
   outputIndex: number,
 ): tbc.Transaction.IUnspentOutput {
@@ -72,7 +72,7 @@ function outputToUTXO(
   };
 }
 
-function findAddressUTXO(
+function findAddressUtxo(
   tx: tbc.Transaction,
   address: string,
 ): tbc.Transaction.IUnspentOutput {
@@ -80,23 +80,23 @@ function findAddressUTXO(
 
   for (let outputIndex = tx.outputs.length - 1; outputIndex >= 0; outputIndex -= 1) {
     if (tx.outputs[outputIndex].script.toHex() === expectedScript) {
-      return outputToUTXO(tx, outputIndex);
+      return outputToUtxo(tx, outputIndex);
     }
   }
 
   throw new Error("transaction has no P2PKH change output for this address");
 }
 
-function tokenUTXOsFromResult(
-  result: TBC20BuildResult,
+function tokenUtxosFromResult(
+  result: TBC20StandardBuildResult,
 ): tbc.Transaction.IUnspentOutput[] {
   return result.tokenOutputs.map((output) =>
-    outputToUTXO(result.transaction, output.codeVout),
+    outputToUtxo(result.transaction, output.codeVout),
   );
 }
 ```
 
-`findAddressUTXO` 只适用于确定存在找零的交易。资金过小时，SDK 可能把小于 dust 的余额计入手续费而不创建找零输出。
+`findAddressUtxo` 只适用于确定存在找零的交易。资金过小时，SDK 可能把小于 dust 的余额计入手续费而不创建找零输出。
 
 ## Mint
 
@@ -106,7 +106,7 @@ Mint 会生成两笔链式交易：
 2. Genesis transaction：消费 Source 输出并创建第一组 Code + Tape。
 
 ```ts
-const token = new TBC20({
+const token = new TBC20Standard({
   name: "Chain Token",
   symbol: "CHN",
   supply: "1000",
@@ -134,7 +134,7 @@ if (genesisTxid.toLowerCase() !== mint.transaction.hash.toLowerCase()) {
   throw new Error("genesis transaction id mismatch");
 }
 
-console.log("TBC20 Contract ID:", token.contractTxid);
+console.log("TBC20 Standard Contract ID:", token.contractTxid);
 console.log("Genesis token output:", mint.tokenOutputs[0]);
 ```
 
@@ -156,7 +156,7 @@ const savedToken = {
 进程重启后，可以直接使用已持久化的可信脚本恢复：
 
 ```ts
-const token = new TBC20({
+const token = new TBC20Standard({
   codeScript: savedToken.codeScript,
   tapeScript: savedToken.tapeScript,
   contractTxid: savedToken.contractTxid,
@@ -174,10 +174,10 @@ if (genesis.hash.toLowerCase() !== savedToken.contractTxid.toLowerCase()) {
 const code = genesis.outputs[savedToken.codeVout];
 const tape = genesis.outputs[savedToken.codeVout + 1];
 if (!code || !tape || code.satoshis !== 500 || tape.satoshis !== 0) {
-  throw new Error("invalid canonical TBC20 Code/Tape pair");
+  throw new Error("invalid canonical TBC20 Standard Code/Tape pair");
 }
 
-const token = new TBC20({
+const token = new TBC20Standard({
   codeScript: code.script,
   tapeScript: tape.script,
   contractTxid: savedToken.contractTxid,
@@ -193,11 +193,11 @@ const token = new TBC20({
 每个 Token 输入都必须提供三个位置完全对应的数据：
 
 ```text
-tokenUTXOs[i]  <->  parentTxs[i]  <->  ancestorResolvers[i]
+tokenUtxos[i]  <->  parentTxs[i]  <->  ancestorResolvers[i]
 ```
 
-- `tokenUTXOs[i]` 必须指向 Code 输出，下一输出必须是对应 Tape。
-- `parentTxs[i]` 是创建该 Code 输出的完整交易，其 hash 必须等于 `tokenUTXOs[i].txId`。
+- `tokenUtxos[i]` 必须指向 Code 输出，下一输出必须是对应 Tape。
+- `parentTxs[i]` 是创建该 Code 输出的完整交易，其 hash 必须等于 `tokenUtxos[i].txId`。
 - `ancestorResolvers[i]` 用于按 txid 查找 `parentTxs[i]` 中非零 Tape 金额槽所对应输入花费的直接前序交易。
 - resolver 不是完整历史链，也不要求内部交易数组按顺序排列；SDK 会按 hash 查找。
 - resolver 可以是 `ReadonlyMap<string, Transaction>`、`Transaction[]` 或同步回调。
@@ -207,20 +207,20 @@ tokenUTXOs[i]  <->  parentTxs[i]  <->  ancestorResolvers[i]
 生产环境可以提前准备所有父交易和祖交易：
 
 ```ts
-async function prepareTBC20Proofs(
-  tokenUTXOs: readonly tbc.Transaction.IUnspentOutput[],
+async function prepareTbc20StandardProofs(
+  tokenUtxos: readonly tbc.Transaction.IUnspentOutput[],
   network: string,
 ): Promise<{
   parentTxs: tbc.Transaction[];
-  ancestorResolvers: TBC20AncestorResolver[];
+  ancestorResolvers: TBC20StandardAncestorResolver[];
 }> {
   const parentTxs = await Promise.all(
-    tokenUTXOs.map((utxo) => API.fetchTXraw(utxo.txId, network)),
+    tokenUtxos.map((utxo) => API.fetchTXraw(utxo.txId, network)),
   );
   const ancestorIds = new Set<string>();
 
   parentTxs.forEach((parent, index) => {
-    const utxo = tokenUTXOs[index];
+    const utxo = tokenUtxos[index];
     if (parent.hash.toLowerCase() !== utxo.txId.toLowerCase()) {
       throw new Error(`parentTxs[${index}] hash mismatch`);
     }
@@ -231,7 +231,7 @@ async function prepareTBC20Proofs(
       output.satoshis !== utxo.satoshis ||
       output.script.toHex().toLowerCase() !== utxo.script.toLowerCase()
     ) {
-      throw new Error(`tokenUTXOs[${index}] differs from parent output`);
+      throw new Error(`tokenUtxos[${index}] differs from parent output`);
     }
 
     // 获取全部parent输入的直接前序交易最简单；SDK只使用非零Tape槽需要的项。
@@ -252,7 +252,7 @@ async function prepareTBC20Proofs(
 
   return {
     parentTxs,
-    ancestorResolvers: tokenUTXOs.map(() => ancestorMap),
+    ancestorResolvers: tokenUtxos.map(() => ancestorMap),
   };
 }
 ```
@@ -261,7 +261,7 @@ async function prepareTBC20Proofs(
 
 ## 交易结构边界
 
-- TBC20 交易版本必须精确为 `10`。
+- TBC20 Standard 交易版本必须精确为 `10`。
 - SDK 生成的当前交易最多6个 vin。位置式便捷接口必须预留1个 fee vin，所以最多使用5个 Token 输入。
 - 每个 `parentTxs[i]` 也必须是版本 `10`，且最多6个输入；ancestor 交易必须是版本 `10`，但不受父交易固定6条输入证明的限制。
 - 当前交易最多8个逻辑输出组、16个物理 vout。一组 Token 必须是相邻的 Code + Tape，占2个物理 vout；普通 TBC 找零占1个逻辑组和1个物理 vout。
@@ -272,10 +272,10 @@ async function prepareTBC20Proofs(
 位置式 `transfer` 使用一个私钥签署所有地址控制的 Token 输入和 fee UTXO：
 
 ```ts
-const tokenUTXOs = getTokenUTXOsFromWalletOrIndexer();
+const tokenUtxos = getTokenUtxosFromWalletOrIndexer();
 const feeUTXO = await API.fetchUTXO(privateKeyA, 0.01, network);
-const { parentTxs, ancestorResolvers } = await prepareTBC20Proofs(
-  tokenUTXOs,
+const { parentTxs, ancestorResolvers } = await prepareTbc20StandardProofs(
+  tokenUtxos,
   network,
 );
 
@@ -283,7 +283,7 @@ const transfer = token.transfer(
   privateKeyA,
   addressB,
   "4.000001",
-  tokenUTXOs,
+  tokenUtxos,
   feeUTXO,
   parentTxs,
   ancestorResolvers,
@@ -298,32 +298,32 @@ await API.broadcastTXraw(transfer.txraw, network);
 约束：
 
 - 每次接受 `1-5` 个 Token 输入；fee 输入紧跟 Token 输入，并额外占用一个 vin。
-- `tokenUTXOs`、`parentTxs`、`ancestorResolvers` 长度必须完全一致。
+- `tokenUtxos`、`parentTxs`、`ancestorResolvers` 长度必须完全一致。
 - 所有 Token 输入必须属于同一个 Code identity，并由传入私钥控制。
 - Token 找零默认返回第一个 Token 输入的控制地址。
 - 单次便捷调用只有一个接收者；需要多个接收者时应构建多笔链式交易，或使用深层高级接口。
 
-当前 `tbc-contract` 的公共 API 尚未提供 TBC20 专用 UTXO 索引接口，`getTokenUTXOsFromWalletOrIndexer()` 代表应用自己维护的 UTXO 列表或可信索引服务。SDK 会再次校验 UTXO、父交易、Code identity、Tape 和祖交易证明，但索引器仍应以规范创世 identity 分类资产。
+当前 `tbc-contract` 的公共 API 尚未提供 TBC20 Standard 专用 UTXO 索引接口，`getTokenUtxosFromWalletOrIndexer()` 代表应用自己维护的 UTXO 列表或可信索引服务。SDK 会再次校验 UTXO、父交易、Code identity、Tape 和祖交易证明，但索引器仍应以规范创世 identity 分类资产。
 
 ## Merge
 
 `merge` 每次尽量把 `2-5` 个由同一私钥控制的 Token UTXO 聚合到尽可能少的输出，并返回一笔交易。如果聚合金额无法放入一组受单槽上限约束的 Tape，SDK 会自动拆成多个 Token 输出，实际位置以 `tokenOutputs` 为准。它不会像旧 FT 的 `mergeFT` 一样自动生成多轮交易数组。
 
 ```ts
-const tokenUTXOs = getTokenUTXOsFromWalletOrIndexer();
-if (tokenUTXOs.length < 2 || tokenUTXOs.length > 5) {
+const tokenUtxos = getTokenUtxosFromWalletOrIndexer();
+if (tokenUtxos.length < 2 || tokenUtxos.length > 5) {
   throw new Error("merge requires 2-5 token UTXOs");
 }
 
 const feeUTXO = await API.fetchUTXO(privateKeyA, 0.01, network);
-const { parentTxs, ancestorResolvers } = await prepareTBC20Proofs(
-  tokenUTXOs,
+const { parentTxs, ancestorResolvers } = await prepareTbc20StandardProofs(
+  tokenUtxos,
   network,
 );
 
 const merge = token.merge(
   privateKeyA,
-  tokenUTXOs,
+  tokenUtxos,
   feeUTXO,
   parentTxs,
   ancestorResolvers,
@@ -344,12 +344,12 @@ await API.broadcastTXraw(merge.txraw, network);
 
 ```ts
 import * as tbc from "tbc-lib-js";
-import { API, TBC20 } from "tbc-contract";
-import type { TBC20BuildResult } from "tbc-contract";
+import { API, TBC20Standard } from "tbc-contract";
+import type { TBC20StandardBuildResult } from "tbc-contract";
 
 const network = "testnet";
 
-function outputToUTXO(
+function outputToUtxo(
   tx: tbc.Transaction,
   outputIndex: number,
 ): tbc.Transaction.IUnspentOutput {
@@ -363,22 +363,22 @@ function outputToUTXO(
   };
 }
 
-function findP2PKHChange(
+function findP2pkhChange(
   tx: tbc.Transaction,
   address: string,
 ): tbc.Transaction.IUnspentOutput {
   const scriptHex = tbc.Script.buildPublicKeyHashOut(address).toHex();
   for (let vout = tx.outputs.length - 1; vout >= 0; vout -= 1) {
     if (tx.outputs[vout].script.toHex() === scriptHex) {
-      return outputToUTXO(tx, vout);
+      return outputToUtxo(tx, vout);
     }
   }
   throw new Error("missing P2PKH change output");
 }
 
-function tokenUTXOs(result: TBC20BuildResult) {
+function tokenUtxos(result: TBC20StandardBuildResult) {
   return result.tokenOutputs.map(({ codeVout }) =>
-    outputToUTXO(result.transaction, codeVout),
+    outputToUtxo(result.transaction, codeVout),
   );
 }
 
@@ -390,12 +390,12 @@ async function broadcastChecked(raw: string, expectedTxid: string) {
 }
 
 async function main() {
-  const wif = process.env.TBC20_TESTNET_WIF;
-  if (!wif) throw new Error("set TBC20_TESTNET_WIF first");
+  const wif = process.env.TBC20_STANDARD_TESTNET_WIF;
+  if (!wif) throw new Error("set TBC20_STANDARD_TESTNET_WIF first");
 
   const ownerKey = tbc.PrivateKey.fromString(wif);
   const ownerAddress = ownerKey.toAddress().toString();
-  const token = new TBC20({
+  const token = new TBC20Standard({
     name: "Chain Token",
     symbol: "CHN",
     supply: "1000",
@@ -407,7 +407,7 @@ async function main() {
   await broadcastChecked(mint.sourceTxraw, mint.sourceTransaction.hash);
   await broadcastChecked(mint.txraw, mint.transaction.hash);
 
-  const genesisToken = outputToUTXO(
+  const genesisToken = outputToUtxo(
     mint.transaction,
     mint.tokenOutputs[0].codeVout,
   );
@@ -416,7 +416,7 @@ async function main() {
     ownerAddress,
     "400",
     [genesisToken],
-    findP2PKHChange(mint.transaction, ownerAddress),
+    findP2pkhChange(mint.transaction, ownerAddress),
     [mint.transaction],
     [[mint.sourceTransaction]],
     { tbcChangeAddress: ownerAddress },
@@ -425,11 +425,11 @@ async function main() {
 
   // 两个 split Tape 都只有 slot0 非零；slot0 对应 split vin0，
   // 因而两个 resolver 都需要能查到 mint.transaction。
-  const splitTokens = tokenUTXOs(split);
+  const splitTokens = tokenUtxos(split);
   const merged = token.merge(
     ownerKey,
     splitTokens,
-    findP2PKHChange(split.transaction, ownerAddress),
+    findP2pkhChange(split.transaction, ownerAddress),
     splitTokens.map(() => split.transaction),
     splitTokens.map(() => [mint.transaction]),
     { tbcChangeAddress: ownerAddress },
@@ -456,7 +456,7 @@ main().catch((error) => {
 `transfer` 和 `merge` 返回：
 
 ```ts
-interface TBC20BuildResult {
+interface TBC20StandardBuildResult {
   transaction: tbc.Transaction; // 已完成签名的最终交易
   txraw: string;                 // 可直接广播
   feeSatoshis: number;           // 实际支付的矿工费
@@ -471,7 +471,7 @@ interface TBC20BuildResult {
 Mint 额外返回：
 
 ```ts
-interface TBC20MintResult extends TBC20BuildResult {
+interface TBC20StandardMintResult extends TBC20StandardBuildResult {
   sourceTransaction: tbc.Transaction;
   sourceTxraw: string;
   sourceFeeSatoshis: number;
@@ -504,7 +504,7 @@ requiredFee = max(80, ceil(finalTransactionBytes * 80 / 1000)) satoshis
 | --- | --- | --- |
 | `missing ancestor transaction` | resolver 缺少非零 Tape 槽对应的直接前序交易 | 先获取交易并加入 Map 或数组 |
 | `utxo txId does not match parentTx` | UTXO 与 `parentTxs[i]` 错位 | 按 Token 输入索引重新排列三个数组 |
-| `belongs to a different TBC20 instance` | 输入不属于已加载的 Code identity | 检查可信创世锚点和索引器分类 |
+| `belongs to a different TBC20Standard instance` | 输入不属于已加载的 Code identity | 检查可信创世锚点和索引器分类 |
 | `tape extension data differs` | metadata/Tape envelope 不一致 | 不要混用不同 Token 或自行修改 Tape |
 | `inputs can pay only ...` | fee UTXO 余额不足 | 更换更大的 P2PKH UTXO |
 | `current input ... failed local verification` | 签名、父/祖证明或输出状态不一致 | 不要广播，重新检查完整交易链 |
@@ -516,7 +516,7 @@ requiredFee = max(80, ceil(finalTransactionBytes * 80 / 1000)) satoshis
 2. Mint 必须先广播 Source，再广播 Genesis。
 3. 零确认链必须按照父交易在前、子交易在后的顺序广播。
 4. 广播返回的 txid 应与本地 `transaction.hash` 一致。
-5. 所有 `tokenUTXOs[i]`、`parentTxs[i]`、`ancestorResolvers[i]` 必须一一对应。
+5. 所有 `tokenUtxos[i]`、`parentTxs[i]`、`ancestorResolvers[i]` 必须一一对应。
 6. Token 金额只使用字符串或 `bigint`，不能经过浮点计算。
 7. 发生超时或网络错误时，先按本地 txid 查询交易是否已被节点接受，不要盲目重复广播。
 8. 应用和索引器应拒绝非规范创世中的同 identity 重复 Code/Tape sibling，或明确以 `contractTxid:vout` 作为资产身份。

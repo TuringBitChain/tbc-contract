@@ -47,9 +47,10 @@ npm i tbc-contract
 ### Advanced Docs
 
 1. MultiSig: [docs/multiSIg.md](docs/multiSIg.md)
-2. NFT: [docs/nft.md](docs/nft.md)
-3. FT: [docs/ft.md](docs/ft.md)
-4. Pool: [docs/poolNFT2.0.md](docs/poolNFT2.0.md)
+2. TBC20 Standard: [docs/tbc20-standard.md](docs/tbc20-standard.md)
+3. TBC20 Stablecoin: [docs/tbc20-stablecoin.md](docs/tbc20-stablecoin.md)
+4. TBC721 Standard: [docs/tbc721-standard.md](docs/tbc721-standard.md)
+5. Pool 3.0 and TBC20 LP: [docs/poolNFT3.0.md](docs/poolNFT3.0.md)
 
 ### Security Notes
 

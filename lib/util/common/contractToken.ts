@@ -1,41 +1,41 @@
 import * as tbc from 'tbc-lib-js';
-import { TBC20 } from '../../contract/tbc20';
-import { CoinTBC20 } from '../coin/coinTbc20Code';
-import { buildCoinTBC20UnlockScriptWithSignature } from '../coin/coinTbc20unlock';
+import { TBC20Standard } from '../../contract/tbc20-standard';
+import { TBC20StablecoinCodec } from '../tbc20-stablecoin/tbc20-stablecoin-codec';
+import { buildTbc20StablecoinUnlockScriptWithSignature } from '../tbc20-stablecoin/tbc20-stablecoin-unlock';
 import {
-  TBC20TransactionResolver, TBC20CurrentOutputGroup,
-  buildTBC20UnlockScriptWithSignature, readTBC20TapeAmounts,
-  replaceTBC20TapeAmounts,
-} from '../tbc20/tbc20unlock';
+  TBC20StandardTransactionResolver, TBC20StandardCurrentOutputGroup,
+  buildTbc20StandardUnlockScriptWithSignature, readTbc20StandardTapeAmounts,
+  replaceTbc20StandardTapeAmounts,
+} from '../tbc20-standard/tbc20-standard-unlock';
 import { getFTPartialOffset as legacyOffset, getFTVersion as legacyVersion,
   isCoinCodeScript as legacyCoin } from '../ft/ftscript';
 const LegacyFT = require('../../contract/ft');
 const API = require('../../api/api');
 
-/** Legacy FT uses encoded proofs; TBC20 families require authenticated ancestor transactions. */
-export type ContractTokenProof = string | TBC20TransactionResolver;
-export type ContractTokenKind = 'legacy' | 'tbc20' | 'coinTbc20';
+/** Legacy FT uses encoded proofs; TBC20Standard families require authenticated ancestor transactions. */
+export type ContractTokenProof = string | TBC20StandardTransactionResolver;
+export type ContractTokenKind = 'legacy' | 'tbc20-standard' | 'tbc20-stablecoin';
 export const modernCodeOffsets = new Map([
-  [TBC20.codeBytes, TBC20.partialOffset],
-  [CoinTBC20.codeSize, CoinTBC20.partialOffset],
+  [TBC20Standard.codeBytes, TBC20Standard.partialOffset],
+  [TBC20StablecoinCodec.codeSize, TBC20StablecoinCodec.partialOffset],
 ]);
 
 export function tokenKind(code: string): ContractTokenKind {
   const bytes = Buffer.from(code, 'hex');
   if (bytes.subarray(-14).equals(Buffer.from('COINTBC20CODE2'))) {
-    CoinTBC20.parseCode(code);
-    return 'coinTbc20';
+    TBC20StablecoinCodec.parseCode(code);
+    return 'tbc20-stablecoin';
   }
   if (bytes.subarray(-10).equals(Buffer.from('TBC20CODE2'))) {
-    TBC20.validateCode(code);
-    return 'tbc20';
+    TBC20Standard.validateCode(code);
+    return 'tbc20-standard';
   }
   return 'legacy';
 }
 
 export function isCoinCodeScript(code: string): boolean {
   const kind = tokenKind(code);
-  return kind === 'coinTbc20' || (kind === 'legacy' && legacyCoin(code));
+  return kind === 'tbc20-stablecoin' || (kind === 'legacy' && legacyCoin(code));
 }
 
 export function getFTPartialOffset(code: string): number {
@@ -56,7 +56,7 @@ export function isTokenProof(proof: ContractTokenProof): boolean {
 export async function fetchTokenProof(parent: tbc.Transaction, vout: number, network: string): Promise<ContractTokenProof> {
   if (tokenKind(parent.outputs[vout].script.toHex()) === 'legacy')
     return API.fetchFtPrePreTxData(parent, vout, network);
-  const amounts = readTBC20TapeAmounts(parent.outputs[vout + 1].script);
+  const amounts = readTbc20StandardTapeAmounts(parent.outputs[vout + 1].script);
   const ids = new Set<string>();
   amounts.forEach((amount, vin) => {
     if (amount === 0n) return;
@@ -66,8 +66,8 @@ export async function fetchTokenProof(parent: tbc.Transaction, vout: number, net
   return Promise.all([...ids].map(id => API.fetchTXraw(id, network)));
 }
 
-function outputGroups(tx: tbc.Transaction): TBC20CurrentOutputGroup[] {
-  const groups: TBC20CurrentOutputGroup[] = [];
+function outputGroups(tx: tbc.Transaction): TBC20StandardCurrentOutputGroup[] {
+  const groups: TBC20StandardCurrentOutputGroup[] = [];
   for (let i = 0; i < tx.outputs.length; i++) {
     const next = tx.outputs[i + 1]?.script.toBuffer();
     const tape = next?.subarray(0, 3).equals(Buffer.from('006a30', 'hex')) &&
@@ -89,12 +89,12 @@ function attachParent(tx: tbc.Transaction, vin: number, parent: tbc.Transaction,
 function modernUnlock(signature: string, publicKey: string, tx: tbc.Transaction,
   parent: tbc.Transaction, proof: ContractTokenProof, vin: number, vout: number,
   contract?: tbc.Transaction, contractVin = 0): tbc.Script {
-  if (typeof proof === 'string') throw new Error('Token contract: TBC20 requires ancestor transactions, not legacy proof hex');
-  if (tx.inputs.length > 6) throw new Error('Token contract: TBC20 transactions must have at most six inputs to remain spendable');
+  if (typeof proof === 'string') throw new Error('Token contract: TBC20Standard requires ancestor transactions, not legacy proof hex');
+  if (tx.inputs.length > 6) throw new Error('Token contract: TBC20Standard transactions must have at most six inputs to remain spendable');
   attachParent(tx, vin, parent, vout);
   if (contract) attachParent(tx, contractVin, contract, tx.inputs[contractVin].outputIndex);
-  const build = tokenKind(parent.outputs[vout].script.toHex()) === 'coinTbc20'
-    ? buildCoinTBC20UnlockScriptWithSignature : buildTBC20UnlockScriptWithSignature;
+  const build = tokenKind(parent.outputs[vout].script.toHex()) === 'tbc20-stablecoin'
+    ? buildTbc20StablecoinUnlockScriptWithSignature : buildTbc20StandardUnlockScriptWithSignature;
   return build({ currentTx: tx, inputIndex: vin, preTx: parent, preTxVout: vout,
     signature, publicKey, ancestorTransactions: proof, outputGroups: outputGroups(tx),
     contractController: contract ? { transaction: contract, currentInputIndex: contractVin } : undefined });
@@ -109,8 +109,8 @@ export class ContractToken extends LegacyFT {
     if (kind === 'legacy') return LegacyFT.buildFTtransferCode(code, destination);
     const controller = /^[0-9a-fA-F]{40}$/.test(destination)
       ? Buffer.concat([Buffer.from(destination, 'hex'), Buffer.from([1])])
-      : TBC20.addressController(destination);
-    return kind === 'coinTbc20' ? CoinTBC20.replaceController(code, controller) : TBC20.replaceController(code, controller);
+      : TBC20Standard.addressController(destination);
+    return kind === 'tbc20-stablecoin' ? TBC20StablecoinCodec.replaceController(code, controller) : TBC20Standard.replaceController(code, controller);
   }
 
   static buildFTtransferTape(tape: string, amounts: string): tbc.Script {
@@ -118,7 +118,7 @@ export class ContractToken extends LegacyFT {
       return LegacyFT.buildFTtransferTape(tape, amounts);
     if (!/^[0-9a-fA-F]{96}$/.test(amounts)) throw new Error('Token contract: amounts must contain six uint64 slots');
     const data = Buffer.from(amounts, 'hex');
-    return replaceTBC20TapeAmounts(tape, Array.from({ length: 6 }, (_, i) => data.readBigUInt64LE(i * 8)));
+    return replaceTbc20StandardTapeAmounts(tape, Array.from({ length: 6 }, (_, i) => data.readBigUInt64LE(i * 8)));
   }
 
   static getFTunlock(sig: string, pub: string, tx: tbc.Transaction, parent: tbc.Transaction,

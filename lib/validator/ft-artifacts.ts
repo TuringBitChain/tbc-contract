@@ -56,7 +56,7 @@ const FT_TAPE_MARKER = Buffer.from("054654617065", "hex");
  * All repeated TapeSize bytes must also agree, Controller is required to be a
  * canonical SDK address/contract selector (00/01), and the final push must be
  * the exact direct-push `2Code` marker.  Consequently a random script with a
- * known length cannot be hidden from a TBC20 scanner as an opaque legacy FT.
+ * known length cannot be hidden from a TBC20Standard scanner as an opaque legacy FT.
  */
 const ARTIFACTS: readonly FTArtifactDescriptor[] = Object.freeze([
   artifact({

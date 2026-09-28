@@ -1,23 +1,23 @@
 import * as tbc from 'tbc-lib-js';
 import { getPool3Artifact } from '../util/poolnft3/artifacts';
-import { getTBC20PartialScriptData, TBC20_MAX_SLOT_AMOUNT } from '../util/tbc20/tbc20unlock';
+import { getTbc20StandardPartialScriptData, TBC20_STANDARD_MAX_SLOT_AMOUNT } from '../util/tbc20-standard/tbc20-standard-unlock';
 
-export type FTLPScriptLike = tbc.Script | Buffer | string;
+export type TBC20LPScriptLike = tbc.Script | Buffer | string;
 
-export interface FTLPCodeOptions {
+export interface TBC20LPCodeOptions {
   poolCodeHash: Buffer;
   tapeSize: number;
   controller: Buffer;
   timelocked: boolean;
 }
 
-export interface FTLPCodeDescriptor extends FTLPCodeOptions {
+export interface TBC20LPCodeDescriptor extends TBC20LPCodeOptions {
   /** SHA256 intermediate state of the immutable prefix followed by ScriptNum size. */
   identity: Buffer;
   codeSize: number;
 }
 
-export interface FTLPTapeOptions {
+export interface TBC20LPTapeOptions {
   amounts: readonly bigint[];
   tapeSize: number;
   timelocked: boolean;
@@ -25,7 +25,7 @@ export interface FTLPTapeOptions {
   lockTime?: number;
 }
 
-export interface FTLPTapeDescriptor {
+export interface TBC20LPTapeDescriptor {
   amounts: readonly bigint[];
   balance: bigint;
   tapeSize: number;
@@ -35,8 +35,8 @@ export interface FTLPTapeDescriptor {
 
 // Full JSON, ABI and template hashes are checked before either artifact is used.
 const ARTIFACTS = [
-  getPool3Artifact('ftlp_tbc20'),
-  getPool3Artifact('ftlp_tbc20_locktime'),
+  getPool3Artifact('tbc20-lp'),
+  getPool3Artifact('tbc20-lp-locktime'),
 ] as const;
 const PLACEHOLDER = /(<self\.(?:PoolCodeHash32|ConstTapeSize1|Controller21)>)/;
 const CODE_MARKER = Buffer.from('LPTBC20CODE2', 'ascii');
@@ -47,10 +47,10 @@ const UINT32_MAX = 0xffffffff;
 const LOCKTIME_THRESHOLD = 500000000;
 
 function fail(message: string): never {
-  throw new Error(`FTLP TBC20: ${message}`);
+  throw new Error(`TBC20 LP: ${message}`);
 }
 
-function scriptBytes(value: FTLPScriptLike): Buffer {
+function scriptBytes(value: TBC20LPScriptLike): Buffer {
   if (value instanceof tbc.Script) return Buffer.from(value.toBuffer());
   if (Buffer.isBuffer(value)) return Buffer.from(value);
   if (typeof value !== 'string' || value.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(value)) {
@@ -83,7 +83,7 @@ function assertController(value: Buffer): void {
   }
 }
 
-function assertCodeOptions(options: FTLPCodeOptions): void {
+function assertCodeOptions(options: TBC20LPCodeOptions): void {
   if (!options || typeof options !== 'object') fail('code options are required');
   assertTapeSize(options.tapeSize, options.timelocked);
   if (!Buffer.isBuffer(options.poolCodeHash) || options.poolCodeHash.length !== 32) {
@@ -103,12 +103,12 @@ function template(timelocked: boolean): string {
 }
 
 /** Strict codecs for the two PoolNFT 3.0 LP templates; no network or broadcasts. */
-export class FTLPTBC20 {
+export class TBC20LP {
   static readonly codeSatoshis = 500;
-  static readonly maxSlotAmount = TBC20_MAX_SLOT_AMOUNT;
+  static readonly maxSlotAmount = TBC20_STANDARD_MAX_SLOT_AMOUNT;
   static readonly lockTimeThreshold = LOCKTIME_THRESHOLD;
 
-  static instantiateCode(options: FTLPCodeOptions): tbc.Script {
+  static instantiateCode(options: TBC20LPCodeOptions): tbc.Script {
     assertCodeOptions(options);
     const hex = template(options.timelocked)
       .replaceAll('<self.PoolCodeHash32>', '20' + options.poolCodeHash.toString('hex'))
@@ -117,13 +117,13 @@ export class FTLPTBC20 {
     if (hex.includes('<')) fail('unresolved LP constructor parameter');
     const script = tbc.Script.fromHex(hex);
     const size = script.toBuffer().length;
-    if ((size - SUFFIX_BYTES) % 64 !== 0 || getTBC20PartialScriptData(script).size.length !== 2) {
+    if ((size - SUFFIX_BYTES) % 64 !== 0 || getTbc20StandardPartialScriptData(script).size.length !== 2) {
       fail('LP artifact must have a block-aligned immutable prefix and two-byte Code size');
     }
     return script;
   }
 
-  static parseCode(value: FTLPScriptLike): FTLPCodeDescriptor {
+  static parseCode(value: TBC20LPScriptLike): TBC20LPCodeDescriptor {
     const code = scriptBytes(value);
     for (const timelocked of [false, true]) {
       const fields = new Map<string, Buffer>();
@@ -155,15 +155,15 @@ export class FTLPTBC20 {
         }
       }
       if (!matches || offset !== code.length) continue;
-      const options: FTLPCodeOptions = {
+      const options: TBC20LPCodeOptions = {
         poolCodeHash: fields.get('<self.PoolCodeHash32>')!,
         tapeSize: fields.get('<self.ConstTapeSize1>')![0],
         controller: fields.get('<self.Controller21>')!,
         timelocked,
       };
-      const rebuilt = FTLPTBC20.instantiateCode(options);
+      const rebuilt = TBC20LP.instantiateCode(options);
       if (!rebuilt.toBuffer().equals(code)) fail('LP code is not canonical');
-      const partial = getTBC20PartialScriptData(rebuilt);
+      const partial = getTbc20StandardPartialScriptData(rebuilt);
       return {
         ...options,
         identity: Buffer.concat([partial.partialHash, partial.size]),
@@ -174,10 +174,10 @@ export class FTLPTBC20 {
   }
 
   static validateCode(
-    value: FTLPScriptLike,
-    expected: Partial<FTLPCodeOptions> = {}
-  ): FTLPCodeDescriptor {
-    const descriptor = FTLPTBC20.parseCode(value);
+    value: TBC20LPScriptLike,
+    expected: Partial<TBC20LPCodeOptions> = {}
+  ): TBC20LPCodeDescriptor {
+    const descriptor = TBC20LP.parseCode(value);
     for (const field of ['poolCodeHash', 'controller'] as const) {
       const wanted = expected[field];
       if (wanted !== undefined && (!Buffer.isBuffer(wanted) || !wanted.equals(descriptor[field]))) {
@@ -192,19 +192,19 @@ export class FTLPTBC20 {
     return descriptor;
   }
 
-  static getCodeIdentity(value: FTLPScriptLike): Buffer {
-    return FTLPTBC20.parseCode(value).identity;
+  static getCodeIdentity(value: TBC20LPScriptLike): Buffer {
+    return TBC20LP.parseCode(value).identity;
   }
 
-  static replaceController(value: FTLPScriptLike, controller: Buffer): tbc.Script {
-    const previous = FTLPTBC20.parseCode(value);
-    const script = FTLPTBC20.instantiateCode({ ...previous, controller });
-    if (!FTLPTBC20.getCodeIdentity(script).equals(previous.identity))
+  static replaceController(value: TBC20LPScriptLike, controller: Buffer): tbc.Script {
+    const previous = TBC20LP.parseCode(value);
+    const script = TBC20LP.instantiateCode({ ...previous, controller });
+    if (!TBC20LP.getCodeIdentity(script).equals(previous.identity))
       fail('controller replacement changed LP identity');
     return script;
   }
 
-  static buildTape(options: FTLPTapeOptions): tbc.Script {
+  static buildTape(options: TBC20LPTapeOptions): tbc.Script {
     if (!options || typeof options !== 'object') fail('tape options are required');
     assertTapeSize(options.tapeSize, options.timelocked);
     if (!Array.isArray(options.amounts) || options.amounts.length !== 6)
@@ -215,7 +215,7 @@ export class FTLPTBC20 {
     const result = Buffer.alloc(options.tapeSize);
     PREFIX.copy(result);
     options.amounts.forEach((amount, index) => {
-      if (typeof amount !== 'bigint' || amount < 0n || amount > TBC20_MAX_SLOT_AMOUNT) {
+      if (typeof amount !== 'bigint' || amount < 0n || amount > TBC20_STANDARD_MAX_SLOT_AMOUNT) {
         fail(`amounts[${index}] must be a bigint in the signed-63-bit nonnegative range`);
       }
       result.writeBigUInt64LE(amount, 3 + index * 8);
@@ -231,9 +231,9 @@ export class FTLPTBC20 {
 
   /** LP extensions are deliberately canonical: fixed lock field, zero padding, terminal marker. */
   static parseTape(
-    value: FTLPScriptLike,
+    value: TBC20LPScriptLike,
     profile: { timelocked: boolean; tapeSize?: number }
-  ): FTLPTapeDescriptor {
+  ): TBC20LPTapeDescriptor {
     if (!profile || typeof profile !== 'object') fail('LP tape profile is required');
     const bytes = scriptBytes(value);
     assertTapeSize(bytes.length, profile.timelocked);
@@ -251,7 +251,7 @@ export class FTLPTBC20 {
     if (bytes.subarray(paddingStart, bytes.length - 10).some((byte) => byte !== 0))
       fail('LP Tape padding must contain only OP_0 bytes');
     const amounts = Array.from({ length: 6 }, (_, index) => bytes.readBigUInt64LE(3 + index * 8));
-    if (amounts.some((amount) => amount > TBC20_MAX_SLOT_AMOUNT))
+    if (amounts.some((amount) => amount > TBC20_STANDARD_MAX_SLOT_AMOUNT))
       fail('LP amount slot exceeds signed-63-bit contract range');
     return {
       amounts: Object.freeze(amounts),
@@ -282,8 +282,8 @@ export class FTLPTBC20 {
   static verifyInputLock(
     tx: tbc.Transaction,
     inputIndex: number,
-    tape: FTLPScriptLike,
-    profile: Pick<FTLPCodeOptions, 'timelocked' | 'tapeSize'>
+    tape: TBC20LPScriptLike,
+    profile: Pick<TBC20LPCodeOptions, 'timelocked' | 'tapeSize'>
   ): void {
     if (
       !(tx instanceof tbc.Transaction) ||
@@ -293,7 +293,7 @@ export class FTLPTBC20 {
     ) {
       fail('invalid transaction or LP input index');
     }
-    const parsed = FTLPTBC20.parseTape(tape, profile);
+    const parsed = TBC20LP.parseTape(tape, profile);
     if (!profile.timelocked) return;
     assertLockTime(tx.nLockTime);
     if (tx.inputs[inputIndex].sequenceNumber === UINT32_MAX)
@@ -309,4 +309,4 @@ export class FTLPTBC20 {
   }
 }
 
-export default FTLPTBC20;
+export default TBC20LP;

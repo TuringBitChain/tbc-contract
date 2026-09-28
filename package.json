@@ -1,18 +1,19 @@
 {
   "name": "tbc-contract",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "main": "index.js",
   "types": "index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test:orderbook": "npm run build && node --test test/orderBook.tbc20.test.cjs",
+    "test:orderbook": "npm run build && node --test test/orderBook.tbc20-standard.test.cjs",
     "test:versions": "npm run build && node --test test/common/*.test.cjs",
     "test:pool3": "npm run build && node --test test/pool3/pool3-*.test.cjs",
-    "test:tbc721": "npm run build && node --test test/tbc721/*.test.cjs",
-    "test:coin": "npm run build && node --test test/coin/*.test.cjs test/coinTbc20.local.test.cjs",
-    "test:coin:testnet": "node test/coin/coin-testnet-production.cjs",
-    "test:coin:audit": "node test/coin/coin-testnet-audit.cjs --write-report",
-    "test:htlc": "npm run build && node --test test/htlc.tbc20.test.cjs"
+    "test:htlc": "npm run build && node --test test/htlc.tbc20-standard.test.cjs",
+    "test:tbc20-standard": "npm run build && node --test test/tbc20-standard.local.test.js test/tbc20-standard.validator.local.test.js",
+    "test:tbc721-standard": "npm run build && node --test test/tbc721-standard/*.test.cjs",
+    "test:tbc20-stablecoin": "npm run build && node --test test/tbc20-stablecoin/*.test.cjs test/tbc20-stablecoin.local.test.cjs",
+    "test:tbc20-stablecoin:testnet": "node test/tbc20-stablecoin/coin-testnet-production.cjs",
+    "test:tbc20-stablecoin:audit": "node test/tbc20-stablecoin/coin-testnet-audit.cjs --write-report"
   },
   "author": "Edmund",
   "dependencies": {

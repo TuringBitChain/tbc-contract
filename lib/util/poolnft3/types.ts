@@ -1,5 +1,5 @@
 import type * as tbc from 'tbc-lib-js';
-import type { TBC20TransactionResolver } from '../tbc20/tbc20unlock';
+import type { TBC20StandardTransactionResolver } from '../tbc20-standard/tbc20-standard-unlock';
 import type { PoolAuthorization } from './authorization';
 import type { PoolMathState } from './math';
 import type { Pool3Quote } from '../../contract/poolNFT3.0';
@@ -12,7 +12,7 @@ import type {
 } from './transaction';
 
 export interface PoolNFT3Config {
-  /** Canonical TBC20 genesis transaction; its Code/Tape pair must be vout 0/1. */
+  /** Canonical TBC20Standard genesis transaction; its Code/Tape pair must be vout 0/1. */
   ftGenesisTx: tbc.Transaction;
   authorization?: PoolAuthorization;
   lp?: { kind: 'plain' | 'timelocked' };
@@ -20,7 +20,7 @@ export interface PoolNFT3Config {
   serviceFeeRate?: number;
 }
 export interface Pool3AssetInput extends Pool3SignedInput {
-  ancestors: TBC20TransactionResolver;
+  ancestors: TBC20StandardTransactionResolver;
 }
 export interface Pool3PoolInput {
   parentTx: tbc.Transaction;
@@ -117,7 +117,7 @@ export interface Pool3MintOptions {
 }
 export interface Pool3AssetOutput {
   role: 'pool-ft' | 'user-ft' | 'ft-change' | 'new-lp' | 'lp-burn' | 'lp-change' | 'lp-transfer';
-  family: 'tbc20' | 'ftlp';
+  family: 'tbc20-standard' | 'tbc20-lp';
   codeVout: number;
   tapeVout: number;
   amountRaw: bigint;

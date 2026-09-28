@@ -95,14 +95,14 @@ function preseedAdminInputsAndFreezeFee(
   tx.sign(feePrivateKey);
 }
 
-/** Original FT-based stablecoin; Coin TBC20 is exposed separately as Coin. */
+/** FT-based stablecoin API. TBC20 Stablecoin uses the TBC20Stablecoin class. */
 class stableCoin extends FT {
   initialize(info: { codeScript: string; tapeScript: string; totalSupply: bigint | string;
     decimal: number; name: string; symbol: string; contractTxid?: string }): void {
     let legacyCoin = false;
     try { legacyCoin = isCoinCodeScript(info.codeScript); } catch { /* Invalid legacy Code. */ }
     if (!legacyCoin) {
-      throw new Error("stableCoin: expected legacy Coin Code; use Coin for Coin TBC20");
+      throw new Error("stableCoin: expected legacy stablecoin Code; use TBC20Stablecoin for TBC20 Stablecoin");
     }
     const totalSupply = BigInt(info.totalSupply);
     super.initialize({ ...info, totalSupply });

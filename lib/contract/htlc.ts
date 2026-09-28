@@ -14,7 +14,7 @@ import {
   ContractToken as FT, ContractTokenProof, tokenKind, isCoinCodeScript,
   getFTVersion, getFTPartialOffset, isTokenProof, modernCodeOffsets,
 } from "../util/common/contractToken";
-import { CoinTBC20 } from "../util/coin/coinTbc20Code";
+import { TBC20StablecoinCodec } from "../util/tbc20-stablecoin/tbc20-stablecoin-codec";
 export type HTLCTokenProof = ContractTokenProof;
 const stableCoin = require("./stableCoin");
 
@@ -33,8 +33,8 @@ const validateFTCodeLength = (codeLength: number): void => {
   }
 };
 const tokenLockTime = (code: string, tape: tbc.Script): number =>
-  tokenKind(code) === "coinTbc20"
-    ? CoinTBC20.parseTape(tape).lockTime
+  tokenKind(code) === "tbc20-stablecoin"
+    ? TBC20StablecoinCodec.parseTape(tape).lockTime
     : stableCoin.getLockTimeFromTape(tape);
 
 const mergeLockTimes = (a: number, b: number): number => {
@@ -303,7 +303,7 @@ export function refundWithSign(
   return txraw;
 }
 
-// ==================== HTLC with Token (FT / StableCoin / TBC20 / Coin TBC20) ====================
+// ==================== HTLC with Token (FT / StableCoin / TBC20Standard / TBC20 Stablecoin) ====================
 
 // ========== Non-sign variants (build + fillSig pattern) ==========
 // build functions return an unsigned raw tx with all SIGHASH-relevant fields

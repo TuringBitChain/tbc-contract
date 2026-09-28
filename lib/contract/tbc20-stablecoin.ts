@@ -1,17 +1,17 @@
 import * as tbc from 'tbc-lib-js';
-import { CoinTBC20 } from '../util/coin/coinTbc20Code';
-import { buildCoinTBC20UnlockScript, buildCoinTBC20UnlockScriptWithSignature } from '../util/coin/coinTbc20unlock';
-import type { CoinCodeDescriptor } from '../util/coin/coinTbc20Code';
-import type { TBC20TransactionResolver, TBC20CurrentOutputGroup } from '../util/tbc20/tbc20unlock';
+import { TBC20StablecoinCodec } from '../util/tbc20-stablecoin/tbc20-stablecoin-codec';
+import { buildTbc20StablecoinUnlockScript, buildTbc20StablecoinUnlockScriptWithSignature } from '../util/tbc20-stablecoin/tbc20-stablecoin-unlock';
+import type { TBC20StablecoinCodeDescriptor } from '../util/tbc20-stablecoin/tbc20-stablecoin-codec';
+import type { TBC20StandardTransactionResolver, TBC20StandardCurrentOutputGroup } from '../util/tbc20-standard/tbc20-standard-unlock';
 import type { AdminPrepared, AdminSighash } from './stableCoin';
 const StableCoin = require('./stableCoin');
-const TBC721 = require('./tbc721');
+const TBC721Standard = require('./tbc721-standard');
 
 export type { AdminPrepared, AdminSighash } from './stableCoin';
-/** Authenticated ancestor transactions for Coin TBC20. */
-export type CoinAncestors = TBC20TransactionResolver | readonly TBC20TransactionResolver[];
-export interface CoinDefinition { name: string; symbol: string; amount: number | string; decimal: number }
-interface CoinCertificateData {
+/** Authenticated ancestor transactions for TBC20 Stablecoin. */
+export type TBC20StablecoinAncestors = TBC20StandardTransactionResolver | readonly TBC20StandardTransactionResolver[];
+export interface TBC20StablecoinDefinition { name: string; symbol: string; amount: number | string; decimal: number }
+interface TBC20StablecoinCertificateData {
   nftName: string; nftSymbol: string; description: string; coinDecimal: number; coinTotalSupply: string;
 }
 
@@ -21,7 +21,7 @@ const MAX_DER = Buffer.from('304502210080000000000000000000000000000000000000000
 const EMPTY_SCHNORR = Buffer.concat([Buffer.alloc(64), Buffer.from([SIGHASH])]);
 const hash160 = (b: Buffer): Buffer => tbc.crypto.Hash.sha256ripemd160(b);
 const sha = (b: Buffer): Buffer => tbc.crypto.Hash.sha256(b);
-function fail(message: string): never { throw new Error(`Coin: ${message}`); }
+function fail(message: string): never { throw new Error(`TBC20Stablecoin: ${message}`); }
 function decimal(value: unknown): asserts value is number {
   if (!Number.isInteger(value) || (value as number) < 0 || (value as number) > 18) fail('decimal must be an integer from 0 to 18');
 }
@@ -44,14 +44,14 @@ function controller(value: string): Buffer {
   if (/^[a-fA-F0-9]{40}$/.test(value)) return Buffer.concat([Buffer.from(value, 'hex'), Buffer.from([1])]);
   return Buffer.concat([tbc.Address.fromString(value).hashBuffer, Buffer.from([0])]);
 }
-function resolverFor(proofs: CoinAncestors, index: number, count: number): TBC20TransactionResolver {
+function resolverFor(proofs: TBC20StablecoinAncestors, index: number, count: number): TBC20StandardTransactionResolver {
   if (typeof proofs === 'function' || (proofs && !Array.isArray(proofs) && typeof (proofs as any).get === 'function'))
-    return proofs as TBC20TransactionResolver;
+    return proofs as TBC20StandardTransactionResolver;
   if (!Array.isArray(proofs)) return fail('ancestor transactions or a resolver are required');
-  if (proofs.some(p => typeof p === 'string')) fail('Coin TBC20 requires ancestor transactions, not legacy FT proof strings');
+  if (proofs.some(p => typeof p === 'string')) fail('TBC20 Stablecoin requires ancestor transactions, not legacy FT proof strings');
   if ((proofs as unknown[]).every(p => p instanceof tbc.Transaction)) return proofs as unknown as tbc.Transaction[];
   if (proofs.length !== count) fail('per-input ancestor resolvers must match coin input count');
-  return proofs[index] as unknown as TBC20TransactionResolver;
+  return proofs[index] as unknown as TBC20StandardTransactionResolver;
 }
 function core(tx: tbc.Transaction): string {
   return JSON.stringify({ version: (tx as any).version, lockTime: tx.nLockTime,
@@ -65,18 +65,18 @@ function sighash(tx: tbc.Transaction, vin: number): Buffer {
 function utxoFrom(tx: tbc.Transaction, vout: number, coin = false): tbc.Transaction.IUnspentOutput {
   const output = tx.outputs[vout];
   return { txId: tx.id, outputIndex: vout, script: output.script.toHex(), satoshis: output.satoshis,
-    ...(coin ? { ftBalance: CoinTBC20.parseTape(tx.outputs[vout + 1].script).balance } : {}) };
+    ...(coin ? { ftBalance: TBC20StablecoinCodec.parseTape(tx.outputs[vout + 1].script).balance } : {}) };
 }
-function certificateTape(data: CoinCertificateData): tbc.Script {
+function certificateTape(data: TBC20StablecoinCertificateData): tbc.Script {
   return new tbc.Script().add(tbc.Opcode.OP_0).add(tbc.Opcode.OP_RETURN)
     .add(Buffer.from(JSON.stringify(data), 'utf8')).add(Buffer.from('NTape'));
 }
-function readCertificate(parent: tbc.Transaction): CoinCertificateData {
+function readCertificate(parent: tbc.Transaction): TBC20StablecoinCertificateData {
   const tape = parent.outputs[2];
   if (parent.outputs[0]?.satoshis !== 200 || parent.outputs[1]?.satoshis !== 100 || tape?.satoshis !== 0 ||
     tape.script.chunks.length !== 4 || !tape.script.isSafeDataOut() ||
     !tape.script.chunks[3].buf?.equals(Buffer.from('NTape'))) fail('invalid issuance certificate layout');
-  let data: CoinCertificateData;
+  let data: TBC20StablecoinCertificateData;
   try { data = JSON.parse(tape.script.chunks[2].buf!.toString('utf8')); }
   catch { return fail('invalid issuance certificate metadata'); }
   if (!data || typeof data.nftName !== 'string' || typeof data.nftSymbol !== 'string' ||
@@ -106,22 +106,22 @@ function fundIssuance(tx: tbc.Transaction, feeKey: tbc.PrivateKey, feeVin: numbe
     tx.inputs[feeVin].output!.script, tx.inputs[feeVin].output!.satoshisBN).toTxFormat();
   tx.inputs[feeVin].setScript(new tbc.Script().add(signature).add(feeKey.publicKey.toBuffer()));
 }
-interface CoinInput { utxo: tbc.Transaction.IUnspentOutput; parent: tbc.Transaction; ancestors: TBC20TransactionResolver;
-  descriptor: CoinCodeDescriptor; balance: bigint; tape: tbc.Script; lockTime: number }
+interface TBC20StablecoinInput { utxo: tbc.Transaction.IUnspentOutput; parent: tbc.Transaction; ancestors: TBC20StandardTransactionResolver;
+  descriptor: TBC20StablecoinCodeDescriptor; balance: bigint; tape: tbc.Script; lockTime: number }
 interface Allocation { controller: Buffer; amounts: bigint[]; tape: tbc.Script; lockTime: number }
 
-/** Coin TBC20 business API, exported as Coin from the package root. */
-class Coin extends StableCoin {
+/** TBC20 Stablecoin issuance, transfers and administrator operations. */
+class TBC20Stablecoin extends StableCoin {
   private initialAmount?: string;
   private creating = false;
 
-  constructor(config: string | CoinDefinition) {
+  constructor(config: string | TBC20StablecoinDefinition) {
     super(typeof config === 'string' ? config : '0'.repeat(64));
     if (typeof config === 'string') return;
     if (!config || typeof config.name !== 'string' || typeof config.symbol !== 'string') fail('name and symbol are required');
     decimal(config.decimal);
     const raw = positive(config.amount, config.decimal);
-    if (raw > MAX_SLOT) fail('initial supply exceeds the Coin Tape slot limit');
+    if (raw > MAX_SLOT) fail('initial supply exceeds the TBC20Stablecoin Tape slot limit');
     this.name = config.name; this.symbol = config.symbol; this.decimal = config.decimal;
     this.initialAmount = String(config.amount); this.totalSupply = 0n; this.contractTxid = '';
   }
@@ -130,8 +130,8 @@ class Coin extends StableCoin {
     name: string; symbol: string; contractTxid?: string }): void {
     if (this.creating) fail('finish the pending issuance before reinitializing');
     decimal(info.decimal);
-    const code = CoinTBC20.parseCode(info.codeScript);
-    CoinTBC20.parseTape(info.tapeScript, code);
+    const code = TBC20StablecoinCodec.parseCode(info.codeScript);
+    TBC20StablecoinCodec.parseTape(info.tapeScript, code);
     if (BigInt(info.totalSupply) < 0n) fail('totalSupply must be nonnegative atomic units');
     this.name = info.name; this.symbol = info.symbol; this.decimal = info.decimal;
     this.totalSupply = BigInt(info.totalSupply);
@@ -141,18 +141,18 @@ class Coin extends StableCoin {
   }
 
   protected buildIssuanceScripts(adminHash: string, recipient: string, issuerHash: string, raw: bigint): { codeScript: tbc.Script; tapeScript: tbc.Script } {
-    if (raw <= 0n || raw > MAX_SLOT) fail('issuance amount exceeds the Coin Tape slot range');
+    if (raw <= 0n || raw > MAX_SLOT) fail('issuance amount exceeds the TBC20Stablecoin Tape slot range');
     let tapeScript: tbc.Script;
     if (this.codeScript) {
-      const previous = CoinTBC20.parseCode(this.codeScript);
+      const previous = TBC20StablecoinCodec.parseCode(this.codeScript);
       if (!previous.coinNftCodeHash.equals(Buffer.from(issuerHash, 'hex')) || !previous.adminPubKeyHash.equals(Buffer.from(adminHash, 'hex')))
         fail('issuance certificate or administrator differs from this coin');
-      tapeScript = CoinTBC20.setLockTime(CoinTBC20.replaceTapeAmounts(this.tapeScript, [raw, 0n, 0n, 0n, 0n, 0n]), 0);
+      tapeScript = TBC20StablecoinCodec.setLockTime(TBC20StablecoinCodec.replaceTapeAmounts(this.tapeScript, [raw, 0n, 0n, 0n, 0n, 0n]), 0);
     } else {
       const metadata = new tbc.Script().add(Buffer.from([this.decimal])).add(Buffer.from(this.name, 'utf8')).add(Buffer.from(this.symbol, 'utf8')).toBuffer();
-      tapeScript = CoinTBC20.buildTape({ amounts: [raw, 0n, 0n, 0n, 0n, 0n], tapeSize: 66 + metadata.length, lockTime: 0, metadata });
+      tapeScript = TBC20StablecoinCodec.buildTape({ amounts: [raw, 0n, 0n, 0n, 0n, 0n], tapeSize: 66 + metadata.length, lockTime: 0, metadata });
     }
-    return { tapeScript, codeScript: Coin.getCoinMintCode(adminHash, recipient, issuerHash, tapeScript.toBuffer().length) };
+    return { tapeScript, codeScript: TBC20Stablecoin.getCoinMintCode(adminHash, recipient, issuerHash, tapeScript.toBuffer().length) };
   }
 
   createCoin(admin: Buffer, feeKey: tbc.PrivateKey, recipient: string, fee: tbc.Transaction.IUnspentOutput,
@@ -164,12 +164,12 @@ class Coin extends StableCoin {
     const raw = positive(this.initialAmount, this.decimal);
     const snapshot = this.issuanceState();
     try {
-      const data: CoinCertificateData = {
+      const data: TBC20StablecoinCertificateData = {
         nftName: this.name + ' NFT', nftSymbol: this.symbol + ' NFT',
         description: 'The issuance certificate for the stablecoin, recording cumulative supply and issuance history.',
         coinDecimal: this.decimal, coinTotalSupply: '0',
       };
-      const source = Coin.buildCoinNftTX(feeKey, hash160(admin).toString('hex'), fee, data);
+      const source = TBC20Stablecoin.buildCoinNftTx(feeKey, hash160(admin).toString('hex'), fee, data);
       const sourceRaw = source.uncheckedSerialize();
       const issuance = this.prepareIssuance(admin, feeKey, recipient, utxoFrom(source, 3), source, funding,
         raw, { ...data, coinTotalSupply: raw.toString() }, message);
@@ -183,7 +183,7 @@ class Coin extends StableCoin {
 
   mintCoin(admin: Buffer, feeKey: tbc.PrivateKey, recipient: string, humanAmount: number | string,
     fee: tbc.Transaction.IUnspentOutput, parent: tbc.Transaction, grandparent: tbc.Transaction, message?: string): AdminPrepared<string> {
-    const code = CoinTBC20.parseCode(this.codeScript);
+    const code = TBC20StablecoinCodec.parseCode(this.codeScript);
     if (!Buffer.isBuffer(admin) || admin.length !== 32 || !hash160(admin).equals(code.adminPubKeyHash)) fail('wrong administrator');
     if (!(parent instanceof tbc.Transaction) || !parent.outputs[0] || !sha(parent.outputs[0].script.toBuffer()).equals(code.coinNftCodeHash)) fail('wrong issuance certificate');
     this.checkFee(fee, feeKey);
@@ -191,16 +191,16 @@ class Coin extends StableCoin {
     const previousSupply = BigInt(data.coinTotalSupply);
     if (previousSupply < 0n || data.coinDecimal !== this.decimal) fail('invalid issuance certificate metadata');
     const raw = positive(humanAmount, this.decimal);
-    if (raw > MAX_SLOT) fail('mint amount exceeds the Coin Tape slot limit');
+    if (raw > MAX_SLOT) fail('mint amount exceeds the TBC20Stablecoin Tape slot limit');
     if (this.creating) fail('finish the pending issuance first');
     const snapshot = this.issuanceState();
     try {
       let prepared: AdminPrepared<string>;
-      if (TBC721.isTBC721Code(parent.outputs[0].script)) {
+      if (TBC721Standard.isTbc721StandardCode(parent.outputs[0].script)) {
         prepared = this.prepareIssuance(admin, feeKey, recipient, fee, parent, grandparent,
           raw, { ...data, coinTotalSupply: (previousSupply + raw).toString() }, message);
       } else {
-        // Coin TBC20 issued before this migration retains its original certificate identity.
+        // The issuance certificate selects the matching NFT unlock ABI.
         this.totalSupply = previousSupply;
         prepared = super.mintCoin(admin, feeKey, recipient, humanAmount, fee, parent, grandparent, message);
       }
@@ -211,22 +211,22 @@ class Coin extends StableCoin {
 
   private prepareIssuance(admin: Buffer, feeKey: tbc.PrivateKey, recipient: string,
     fee: tbc.Transaction.IUnspentOutput, parent: tbc.Transaction, grandparent: tbc.Transaction,
-    raw: bigint, data: CoinCertificateData, message?: string): AdminPrepared<string> {
+    raw: bigint, data: TBC20StablecoinCertificateData, message?: string): AdminPrepared<string> {
     if (fee.txId.toLowerCase() === parent.id.toLowerCase() && [0, 1, 2].includes(fee.outputIndex))
       fail('fee input duplicates an issuance certificate output');
     const adminHash = hash160(admin).toString('hex');
-    const expectedHold = TBC721.getHoldScriptFromHash(adminHash, data.nftName);
+    const expectedHold = TBC721Standard.getHoldScriptFromHash(adminHash, data.nftName);
     if (!parent.outputs[1]?.script.equals(expectedHold)) fail('wrong issuance certificate administrator or Hold script');
     const scripts = this.buildIssuanceScripts(adminHash, recipient, sha(parent.outputs[0].script.toBuffer()).toString('hex'), raw);
     const tx = new tbc.Transaction().addInputFromPrevTx(parent, 0).addInputFromPrevTx(parent, 1).from(fee);
-    Coin.buildCoinNftOutput(parent.outputs[0].script, parent.outputs[1].script, certificateTape(data))
+    TBC20Stablecoin.buildCoinNftOutput(parent.outputs[0].script, parent.outputs[1].script, certificateTape(data))
       .forEach((output: tbc.Transaction.Output) => tx.addOutput(output));
     tx.addOutput(new tbc.Transaction.Output({ satoshis: 500, script: scripts.codeScript }));
     tx.addOutput(new tbc.Transaction.Output({ satoshis: 0, script: scripts.tapeScript }));
     if (message) tx.addOutput(new tbc.Transaction.Output({ satoshis: 0,
       script: new tbc.Script().add(tbc.Opcode.OP_0).add(tbc.Opcode.OP_RETURN).add(Buffer.from(message, 'utf8')) }));
     const unlock = (signatures: Buffer[]) => {
-      tx.inputs[0].setScript(TBC721.buildUnlockScriptSchnorr(signatures[0], admin, tx, parent, grandparent, 0));
+      tx.inputs[0].setScript(TBC721Standard.buildUnlockScriptSchnorr(signatures[0], admin, tx, parent, grandparent, 0));
       tx.inputs[1].setScript(new tbc.Script().add(Buffer.concat([signatures[1], Buffer.from([SIGHASH])])).add(admin));
     };
     fundIssuance(tx, feeKey, 2, () => unlock([Buffer.alloc(64), Buffer.alloc(64)]));
@@ -235,14 +235,14 @@ class Coin extends StableCoin {
       finalize: signatures => { unlock(signatures); return tx.uncheckedSerialize(); } };
   }
 
-  /** Builds a new TBC721 issuance certificate; the legacy class retains coinNft. */
-  static buildCoinNftTX(feeKey: tbc.PrivateKey, adminHash: string, fee: tbc.Transaction.IUnspentOutput,
-    data: CoinCertificateData): tbc.Transaction {
+  /** Builds a new TBC721Standard issuance certificate; the legacy class retains coinNft. */
+  static buildCoinNftTx(feeKey: tbc.PrivateKey, adminHash: string, fee: tbc.Transaction.IUnspentOutput,
+    data: TBC20StablecoinCertificateData): tbc.Transaction {
     if (!/^[a-fA-F0-9]{40}$/.test(adminHash)) fail('administrator hash must be 20 bytes');
     if (!(feeKey instanceof tbc.PrivateKey) || !fee || !Number.isSafeInteger(fee.satoshis) || fee.satoshis <= 0 ||
       fee.script !== tbc.Script.buildPublicKeyHashOut(feeKey.toAddress()).toHex()) fail('fee UTXO must belong to the fee key');
-    const outputs = Coin.buildCoinNftOutput(TBC721.buildCodeScript(fee.txId, fee.outputIndex),
-      TBC721.getHoldScriptFromHash(adminHash, data.nftName), certificateTape(data));
+    const outputs = TBC20Stablecoin.buildCoinNftOutput(TBC721Standard.buildCodeScript(fee.txId, fee.outputIndex),
+      TBC721Standard.getHoldScriptFromHash(adminHash, data.nftName), certificateTape(data));
     const tx = new tbc.Transaction().from(fee);
     outputs.forEach((output: tbc.Transaction.Output) => tx.addOutput(output));
     readCertificate(tx);
@@ -289,19 +289,19 @@ class Coin extends StableCoin {
       !Number.isSafeInteger(fee.outputIndex) || fee.outputIndex < 0 || !Number.isSafeInteger(fee.satoshis) || fee.satoshis <= 0 ||
       fee.script !== tbc.Script.buildPublicKeyHashOut(key.toAddress()).toHex()) fail('fee UTXO must be a positive P2PKH output owned by the fee key');
   }
-  private inputs(utxos: tbc.Transaction.IUnspentOutput[], parents: tbc.Transaction[], proofs: CoinAncestors): CoinInput[] {
+  private inputs(utxos: tbc.Transaction.IUnspentOutput[], parents: tbc.Transaction[], proofs: TBC20StablecoinAncestors): TBC20StablecoinInput[] {
     if (!Array.isArray(utxos) || !utxos.length || !Array.isArray(parents) || parents.length !== utxos.length) fail('coin UTXOs and parents must have matching nonzero lengths');
-    const identity = CoinTBC20.getCodeIdentity(this.codeScript);
+    const identity = TBC20StablecoinCodec.getCodeIdentity(this.codeScript);
     const seen = new Set<string>();
     return utxos.map((utxo, i) => {
       this.checkParent(utxo, parents[i]);
       const point = `${utxo.txId.toLowerCase()}:${utxo.outputIndex}`;
       if (seen.has(point)) fail('duplicate coin input'); seen.add(point);
-      const descriptor = CoinTBC20.parseCode(utxo.script);
+      const descriptor = TBC20StablecoinCodec.parseCode(utxo.script);
       if (!descriptor.identity.equals(identity)) fail('coin inputs must share this coin identity');
       const tape = parents[i].outputs[utxo.outputIndex + 1]?.script;
-      if (!tape || utxo.satoshis !== 500 || parents[i].outputs[utxo.outputIndex + 1].satoshis !== 0) fail('Coin Code/Tape values must be 500/0 satoshis');
-      const parsed = CoinTBC20.parseTape(tape, descriptor);
+      if (!tape || utxo.satoshis !== 500 || parents[i].outputs[utxo.outputIndex + 1].satoshis !== 0) fail('TBC20Stablecoin Code/Tape values must be 500/0 satoshis');
+      const parsed = TBC20StablecoinCodec.parseTape(tape, descriptor);
       if (parsed.balance <= 0n) fail('coin input balance must be positive');
       if (utxo.ftBalance !== undefined && BigInt(utxo.ftBalance) !== parsed.balance) fail('claimed ftBalance differs from authenticated Tape');
       return { utxo, parent: parents[i], ancestors: resolverFor(proofs, i, utxos.length), descriptor, tape,
@@ -309,11 +309,11 @@ class Coin extends StableCoin {
     });
   }
 
-  private build(inputs: CoinInput[], fee: tbc.Transaction.IUnspentOutput, feeKey: tbc.PrivateKey,
+  private build(inputs: TBC20StablecoinInput[], fee: tbc.Transaction.IUnspentOutput, feeKey: tbc.PrivateKey,
     allocations: Allocation[], signer: tbc.PrivateKey | Buffer, extra?: { recipient?: string; satoshis?: number; data?: Buffer }): tbc.Transaction {
-    if (inputs.length < 1 || inputs.length > 5) fail('at most five Coin inputs plus one fee input are supported');
+    if (inputs.length < 1 || inputs.length > 5) fail('at most five TBC20Stablecoin inputs plus one fee input are supported');
     this.checkFee(fee, feeKey);
-    if (inputs.some(i => i.utxo.txId.toLowerCase() === fee.txId.toLowerCase() && i.utxo.outputIndex === fee.outputIndex)) fail('fee input duplicates a Coin input');
+    if (inputs.some(i => i.utxo.txId.toLowerCase() === fee.txId.toLowerCase() && i.utxo.outputIndex === fee.outputIndex)) fail('fee input duplicates a TBC20Stablecoin input');
     const admin = Buffer.isBuffer(signer);
     if (admin && (signer.length !== 32 || inputs.some(i => !hash160(signer).equals(i.descriptor.adminPubKeyHash)))) fail('wrong administrator');
     let lockTime = 0;
@@ -329,11 +329,11 @@ class Coin extends StableCoin {
     const tx = new tbc.Transaction();
     inputs.forEach(input => tx.addInputFromPrevTx(input.parent, input.utxo.outputIndex)); tx.from(fee);
     inputs.forEach((_, i) => tx.setInputSequence(i, 0xfffffffe)); tx.setLockTime(lockTime);
-    const groups: TBC20CurrentOutputGroup[] = [];
+    const groups: TBC20StandardCurrentOutputGroup[] = [];
     for (const allocation of allocations) {
       const codeVout = tx.outputs.length;
-      tx.addOutput(new tbc.Transaction.Output({ satoshis: 500, script: CoinTBC20.replaceController(this.codeScript, allocation.controller) }));
-      tx.addOutput(new tbc.Transaction.Output({ satoshis: 0, script: CoinTBC20.setLockTime(CoinTBC20.replaceTapeAmounts(allocation.tape, allocation.amounts), allocation.lockTime) }));
+      tx.addOutput(new tbc.Transaction.Output({ satoshis: 500, script: TBC20StablecoinCodec.replaceController(this.codeScript, allocation.controller) }));
+      tx.addOutput(new tbc.Transaction.Output({ satoshis: 0, script: TBC20StablecoinCodec.setLockTime(TBC20StablecoinCodec.replaceTapeAmounts(allocation.tape, allocation.amounts), allocation.lockTime) }));
       groups.push({ codeVout, tapeVout: codeVout + 1 });
     }
     if (extra?.satoshis) {
@@ -359,7 +359,7 @@ class Coin extends StableCoin {
       const compressedAdmin = hash160(pubkey).equals(input.descriptor.adminPubKeyHash);
       const useXOnly = !admin && (hash160(pubkey.subarray(1)).equals(input.descriptor.adminPubKeyHash) ||
         (!compressedAdmin && input.descriptor.controller[20] === 0 && hash160(pubkey.subarray(1)).equals(input.descriptor.controller.subarray(0, 20))));
-      tx.inputs[vin].setScript(buildCoinTBC20UnlockScriptWithSignature({ ...options(vin), signature: admin || useXOnly ? EMPTY_SCHNORR : MAX_DER,
+      tx.inputs[vin].setScript(buildTbc20StablecoinUnlockScriptWithSignature({ ...options(vin), signature: admin || useXOnly ? EMPTY_SCHNORR : MAX_DER,
         publicKey: useXOnly ? pubkey.subarray(1) : pubkey }));
     });
     const feeVin = inputs.length;
@@ -370,14 +370,14 @@ class Coin extends StableCoin {
     // All output values are fixed before obtaining real signatures. No automatic change callbacks remain.
     tx.fee(feeSat); tx.seal();
     inputs.forEach((_, vin) => tx.inputs[vin].setScript(admin
-      ? buildCoinTBC20UnlockScriptWithSignature({ ...options(vin), signature: EMPTY_SCHNORR, publicKey: signer as Buffer })
-      : buildCoinTBC20UnlockScript({ ...options(vin), privateKey: signer as tbc.PrivateKey })));
+      ? buildTbc20StablecoinUnlockScriptWithSignature({ ...options(vin), signature: EMPTY_SCHNORR, publicKey: signer as Buffer })
+      : buildTbc20StablecoinUnlockScript({ ...options(vin), privateKey: signer as tbc.PrivateKey })));
     const feeSig = (tbc.Transaction as any).sighash.sign(tx, feeKey, SIGHASH, feeVin, tx.inputs[feeVin].output!.script, tx.inputs[feeVin].output!.satoshisBN).toTxFormat();
     tx.inputs[feeVin].setScript(new tbc.Script().add(feeSig).add(feeKey.publicKey.toBuffer()));
     return tx;
   }
 
-  private distribute(inputs: CoinInput[], recipients: { controller: Buffer; amount: bigint }[]): Allocation[] {
+  private distribute(inputs: TBC20StablecoinInput[], recipients: { controller: Buffer; amount: bigint }[]): Allocation[] {
     const remaining = inputs.map(input => input.balance);
     return recipients.map(recipient => {
       let wanted = recipient.amount;
@@ -386,50 +386,50 @@ class Coin extends StableCoin {
         const take = remaining[vin] < wanted ? remaining[vin] : wanted;
         slots[vin] = take; remaining[vin] -= take; wanted -= take;
       }
-      if (wanted > 0n) fail('insufficient Coin balance');
+      if (wanted > 0n) fail('insufficient TBC20Stablecoin balance');
       return { controller: recipient.controller, amounts: slots, tape: inputs[0].tape, lockTime: 0 };
     });
   }
   private send(key: tbc.PrivateKey, recipients: { address: string; amount: number | string }[], utxos: tbc.Transaction.IUnspentOutput[], fee: tbc.Transaction.IUnspentOutput,
-    parents: tbc.Transaction[], proofs: CoinAncestors, extra?: { recipient?: string; satoshis?: number; data?: Buffer }): { tx: tbc.Transaction; changeVout?: number } {
+    parents: tbc.Transaction[], proofs: TBC20StablecoinAncestors, extra?: { recipient?: string; satoshis?: number; data?: Buffer }): { tx: tbc.Transaction; changeVout?: number } {
     const inputs = this.inputs(utxos, parents, proofs);
     const targets = recipients.map(item => ({ controller: controller(item.address), amount: positive(item.amount, this.decimal) }));
     const total = inputs.reduce((sum, input) => sum + input.balance, 0n);
     const spent = targets.reduce((sum, output) => sum + output.amount, 0n);
-    if (spent > total) fail('insufficient Coin balance');
+    if (spent > total) fail('insufficient TBC20Stablecoin balance');
     const changeVout = spent < total ? targets.length * 2 : undefined;
     if (spent < total) targets.push({ controller: controller(key.toAddress().toString()), amount: total - spent });
     return { tx: this.build(inputs, fee, key, this.distribute(inputs, targets), key, extra), changeVout };
   }
 
   transfer(key: tbc.PrivateKey, recipient: string, value: number | string, utxos: tbc.Transaction.IUnspentOutput[], fee: tbc.Transaction.IUnspentOutput,
-    parents: tbc.Transaction[], proofs: CoinAncestors, tbcAmount?: number | string): string {
+    parents: tbc.Transaction[], proofs: TBC20StablecoinAncestors, tbcAmount?: number | string): string {
     const raw = tbcAmount === undefined ? 0n : amount(tbcAmount, 6);
     if (raw > BigInt(Number.MAX_SAFE_INTEGER) || (raw > 0n && raw < 24n)) fail('additional TBC value is outside the supported range');
     return this.send(key, [{ address: recipient, amount: value }], utxos, fee, parents, proofs, { recipient, satoshis: Number(raw) }).tx.uncheckedSerialize();
   }
 
   transferWithAdditionalInfo(key: tbc.PrivateKey, recipient: string, value: number | string, utxos: tbc.Transaction.IUnspentOutput[], fee: tbc.Transaction.IUnspentOutput,
-    parents: tbc.Transaction[], proofs: CoinAncestors, data: Buffer): string {
+    parents: tbc.Transaction[], proofs: TBC20StablecoinAncestors, data: Buffer): string {
     if (!Buffer.isBuffer(data)) fail('additionalInfo must be a Buffer');
     return this.send(key, [{ address: recipient, amount: value }], utxos, fee, parents, proofs, { data }).tx.uncheckedSerialize();
   }
 
   batchTransfer(key: tbc.PrivateKey, recipients: { address: string; amount: number | string }[], utxos: tbc.Transaction.IUnspentOutput[], fee: tbc.Transaction.IUnspentOutput,
-    parents: tbc.Transaction[], proofs: CoinAncestors): { txraw: string }[] {
+    parents: tbc.Transaction[], proofs: TBC20StablecoinAncestors): { txraw: string }[] {
     if (!Array.isArray(recipients) || !recipients.length) fail('receivers must not be empty');
     const inputs = this.inputs(utxos, parents, proofs);
     const required = recipients.reduce((sum, item) => { controller(item.address); return sum + positive(item.amount, this.decimal); }, 0n);
-    if (required > inputs.reduce((sum, item) => sum + item.balance, 0n)) fail('insufficient Coin balance for batch');
+    if (required > inputs.reduce((sum, item) => sum + item.balance, 0n)) fail('insufficient TBC20Stablecoin balance for batch');
     const result: { txraw: string }[] = [];
-    let currentUTXOs = utxos, currentParents = parents, currentProofs = proofs, currentFee = fee;
+    let currentUtxos = utxos, currentParents = parents, currentProofs = proofs, currentFee = fee;
     for (let start = 0; start < recipients.length; start += 5) {
-      const built = this.send(key, recipients.slice(start, start + 5), currentUTXOs, currentFee, currentParents, currentProofs);
+      const built = this.send(key, recipients.slice(start, start + 5), currentUtxos, currentFee, currentParents, currentProofs);
       result.push({ txraw: built.tx.uncheckedSerialize() });
       if (start + 5 < recipients.length) {
-        if (built.changeVout === undefined) fail('batch has no Coin change for the next transaction');
+        if (built.changeVout === undefined) fail('batch has no TBC20Stablecoin change for the next transaction');
         currentProofs = currentParents;
-        currentParents = [built.tx]; currentUTXOs = [utxoFrom(built.tx, built.changeVout, true)];
+        currentParents = [built.tx]; currentUtxos = [utxoFrom(built.tx, built.changeVout, true)];
         currentFee = utxoFrom(built.tx, built.tx.outputs.length - 1);
       }
     }
@@ -437,10 +437,10 @@ class Coin extends StableCoin {
   }
 
   mergeCoin(key: tbc.PrivateKey, utxos: tbc.Transaction.IUnspentOutput[], fee: tbc.Transaction.IUnspentOutput,
-    parents: tbc.Transaction[], proofs: CoinAncestors, localTX: tbc.Transaction[] = []): { txraw: string }[] {
+    parents: tbc.Transaction[], proofs: TBC20StablecoinAncestors, localTxs: tbc.Transaction[] = []): { txraw: string }[] {
     const pending = this.inputs(utxos, parents, proofs);
     if (pending.length < 2) return [];
-    const local = new Map<string, tbc.Transaction>([...localTX, ...parents].map(tx => [tx.id, tx]));
+    const local = new Map<string, tbc.Transaction>([...localTxs, ...parents].map(tx => [tx.id, tx]));
     const result: { txraw: string }[] = [];
     let currentFee = fee;
     while (pending.length > 1) {
@@ -450,23 +450,23 @@ class Coin extends StableCoin {
       const tx = this.build(group, currentFee, key, allocations, key);
       result.push({ txraw: tx.uncheckedSerialize() }); local.set(tx.id, tx);
       const coin = utxoFrom(tx, 0, true);
-      pending.unshift({ utxo: coin, parent: tx, ancestors: local, descriptor: CoinTBC20.parseCode(coin.script),
+      pending.unshift({ utxo: coin, parent: tx, ancestors: local, descriptor: TBC20StablecoinCodec.parseCode(coin.script),
         balance: raw, tape: tx.outputs[1].script, lockTime: 0 });
       currentFee = utxoFrom(tx, tx.outputs.length - 1);
     }
     return result;
   }
 
-  freezeCoinUTXO(admin: Buffer, feeKey: tbc.PrivateKey, lockTime: number, utxos: tbc.Transaction.IUnspentOutput[], fee: tbc.Transaction.IUnspentOutput,
-    parents: tbc.Transaction[], proofs: CoinAncestors): AdminPrepared<string> {
+  freezeCoinUtxo(admin: Buffer, feeKey: tbc.PrivateKey, lockTime: number, utxos: tbc.Transaction.IUnspentOutput[], fee: tbc.Transaction.IUnspentOutput,
+    parents: tbc.Transaction[], proofs: TBC20StablecoinAncestors): AdminPrepared<string> {
     return this.changeLocks(admin, feeKey, lockTime, utxos, fee, parents, proofs);
   }
-  unfreezeCoinUTXO(admin: Buffer, feeKey: tbc.PrivateKey, utxos: tbc.Transaction.IUnspentOutput[], fee: tbc.Transaction.IUnspentOutput,
-    parents: tbc.Transaction[], proofs: CoinAncestors): AdminPrepared<string> {
+  unfreezeCoinUtxo(admin: Buffer, feeKey: tbc.PrivateKey, utxos: tbc.Transaction.IUnspentOutput[], fee: tbc.Transaction.IUnspentOutput,
+    parents: tbc.Transaction[], proofs: TBC20StablecoinAncestors): AdminPrepared<string> {
     return this.changeLocks(admin, feeKey, 0, utxos, fee, parents, proofs);
   }
   private changeLocks(admin: Buffer, feeKey: tbc.PrivateKey, lockTime: number, utxos: tbc.Transaction.IUnspentOutput[], fee: tbc.Transaction.IUnspentOutput,
-    parents: tbc.Transaction[], proofs: CoinAncestors): AdminPrepared<string> {
+    parents: tbc.Transaction[], proofs: TBC20StablecoinAncestors): AdminPrepared<string> {
     const inputs = this.inputs(utxos, parents, proofs);
     const groups = new Map<string, Allocation>();
     inputs.forEach((input, vin) => {
@@ -479,11 +479,11 @@ class Coin extends StableCoin {
       allocation.amounts[vin] = input.balance;
     });
     const tx = this.build(inputs, fee, feeKey, [...groups.values()], admin);
-    const outputGroups: TBC20CurrentOutputGroup[] = [...groups.values()].map((_, i) => ({ codeVout: i * 2, tapeVout: i * 2 + 1 }));
+    const outputGroups: TBC20StandardCurrentOutputGroup[] = [...groups.values()].map((_, i) => ({ codeVout: i * 2, tapeVout: i * 2 + 1 }));
     outputGroups.push({ codeVout: tx.outputs.length - 1 });
     const sighashes = inputs.map((_, inputIndex) => ({ inputIndex, sighash: sighash(tx, inputIndex) }));
     return this.guardPrepared({ tx, sighashes, finalize: signatures => {
-      inputs.forEach((input, inputIndex) => tx.inputs[inputIndex].setScript(buildCoinTBC20UnlockScriptWithSignature({
+      inputs.forEach((input, inputIndex) => tx.inputs[inputIndex].setScript(buildTbc20StablecoinUnlockScriptWithSignature({
         currentTx: tx, inputIndex, preTx: input.parent, preTxVout: input.utxo.outputIndex, ancestorTransactions: input.ancestors,
         outputGroups, publicKey: admin, signature: Buffer.concat([signatures[inputIndex], Buffer.from([SIGHASH])]) })));
       return tx.uncheckedSerialize();
@@ -492,55 +492,75 @@ class Coin extends StableCoin {
 
   static getCoinMintCode(adminHash: string, recipient: string, issuerHash: string, tapeSize: number): tbc.Script {
     if (!/^[0-9a-fA-F]{40}$/.test(adminHash) || !/^[0-9a-fA-F]{64}$/.test(issuerHash)) fail('invalid administrator or issuance code hash');
-    return CoinTBC20.instantiateCode({ adminPubKeyHash: Buffer.from(adminHash, 'hex'), coinNftCodeHash: Buffer.from(issuerHash, 'hex'), tapeSize, controller: controller(recipient) });
+    return TBC20StablecoinCodec.instantiateCode({ adminPubKeyHash: Buffer.from(adminHash, 'hex'), coinNftCodeHash: Buffer.from(issuerHash, 'hex'), tapeSize, controller: controller(recipient) });
   }
   static setLockTimeInTape(tape: tbc.Script, lockTime: number): tbc.Script {
-    return CoinTBC20.setLockTime(tape, lockTime);
+    return TBC20StablecoinCodec.setLockTime(tape, lockTime);
   }
-  static getLockTimeFromTape(tape: tbc.Script): number { return CoinTBC20.parseTape(tape).lockTime; }
+  static getLockTimeFromTape(tape: tbc.Script): number { return TBC20StablecoinCodec.parseTape(tape).lockTime; }
   static getAddressFromCode(code: string): { address: string; type: 'address' | 'contract' } {
-    const data = CoinTBC20.parseCode(code).controller;
+    const data = TBC20StablecoinCodec.parseCode(code).controller;
     return { address: data.subarray(0, 20).toString('hex'), type: data[20] === 0 ? 'address' : 'contract' };
   }
-  static buildFTtransferCode(code: string, address: string): tbc.Script {
-    return CoinTBC20.replaceController(code, controller(address));
+  static buildFtTransferCode(code: string, address: string): tbc.Script {
+    return TBC20StablecoinCodec.replaceController(code, controller(address));
   }
-  static buildFTtransferTape(tape: string, amountHex: string): tbc.Script {
+  static buildFtTransferTape(tape: string, amountHex: string): tbc.Script {
     if (!/^[0-9a-fA-F]{96}$/.test(amountHex)) fail('amount data must contain six uint64 slots');
     const bytes = Buffer.from(amountHex, 'hex');
-    return CoinTBC20.replaceTapeAmounts(tape, Array.from({ length: 6 }, (_, i) => bytes.readBigUInt64LE(i * 8)));
+    return TBC20StablecoinCodec.replaceTapeAmounts(tape, Array.from({ length: 6 }, (_, i) => bytes.readBigUInt64LE(i * 8)));
   }
-  static buildUTXO(tx: tbc.Transaction, vout: number): tbc.Transaction.IUnspentOutput {
-    const output = tx.outputs[vout]; if (!output) fail('Coin output index is out of range');
-    const code = CoinTBC20.parseCode(output.script); CoinTBC20.parseTape(tx.outputs[vout + 1]?.script, code);
-    if (output.satoshis !== 500 || tx.outputs[vout + 1].satoshis !== 0) fail('Coin Code/Tape values must be 500/0');
+  static buildUtxo(tx: tbc.Transaction, vout: number): tbc.Transaction.IUnspentOutput {
+    const output = tx.outputs[vout]; if (!output) fail('TBC20Stablecoin output index is out of range');
+    const code = TBC20StablecoinCodec.parseCode(output.script); TBC20StablecoinCodec.parseTape(tx.outputs[vout + 1]?.script, code);
+    if (output.satoshis !== 500 || tx.outputs[vout + 1].satoshis !== 0) fail('TBC20Stablecoin Code/Tape values must be 500/0');
     return utxoFrom(tx, vout, true);
   }
-  static getUnlockScript = buildCoinTBC20UnlockScript;
-  static getUnlockScriptWithSignature = buildCoinTBC20UnlockScriptWithSignature;
+  static getUnlockScript = buildTbc20StablecoinUnlockScript;
+  static getUnlockScriptWithSignature = buildTbc20StablecoinUnlockScriptWithSignature;
 
-  mergeFT(...args: any[]): { txraw: string }[] {
-    return (this.mergeCoin as any)(...args);
+  mergeFt(...args: Parameters<TBC20Stablecoin['mergeCoin']>): { txraw: string }[] {
+    return this.mergeCoin(...args);
   }
-  batchTransfer_old(key: tbc.PrivateKey, receivers: Map<string, number | string>, ...args: any[]): { txraw: string }[] {
-    return (this.batchTransfer as any)(key, [...receivers].map(([address, value]) => ({ address, amount: value })), ...args);
+  batchTransferLegacy(key: tbc.PrivateKey, receivers: Map<string, number | string>,
+    utxos: tbc.Transaction.IUnspentOutput[], fee: tbc.Transaction.IUnspentOutput,
+    parents: tbc.Transaction[], proofs: TBC20StablecoinAncestors): { txraw: string }[] {
+    return this.batchTransfer(key, [...receivers].map(([address, value]) => ({ address, amount: value })),
+      utxos, fee, parents, proofs);
   }
-  // Block inherited FT witness builders: Coin TBC20 uses a different ABI.
-  _mergeCoin(...args: any[]): any { fail('use mergeCoin for Coin TBC20'); }
-  _mergeFT(...args: any[]): any { fail('use mergeCoin for Coin TBC20'); }
-  mergeFT_(...args: any[]): any { fail('use mergeCoin for Coin TBC20'); }
-  _batchTransfer(...args: any[]): any { fail('use batchTransfer for Coin TBC20'); }
-  _batchTransfer_old(...args: any[]): any { fail('use batchTransfer for Coin TBC20'); }
+  // Shadow inherited spellings so dispatch uses the stablecoin transaction builders.
+  private static buildCoinNftTX = TBC20Stablecoin.buildCoinNftTx;
+  private static buildFTtransferCode = TBC20Stablecoin.buildFtTransferCode;
+  private static buildFTtransferTape = TBC20Stablecoin.buildFtTransferTape;
+  private freezeCoinUTXO(...args: Parameters<TBC20Stablecoin['freezeCoinUtxo']>): AdminPrepared<string> {
+    return this.freezeCoinUtxo(...args);
+  }
+  private unfreezeCoinUTXO(...args: Parameters<TBC20Stablecoin['unfreezeCoinUtxo']>): AdminPrepared<string> {
+    return this.unfreezeCoinUtxo(...args);
+  }
+  private mergeFT(...args: Parameters<TBC20Stablecoin['mergeFt']>): { txraw: string }[] {
+    return this.mergeFt(...args);
+  }
+  private batchTransfer_old(...args: Parameters<TBC20Stablecoin['batchTransferLegacy']>): { txraw: string }[] {
+    return this.batchTransferLegacy(...args);
+  }
+
+  // Block inherited FT witness builders: TBC20 Stablecoin uses a different ABI.
+  private _mergeCoin(...args: any[]): any { fail('use mergeCoin for TBC20 Stablecoin'); }
+  private _mergeFT(...args: any[]): any { fail('use mergeCoin for TBC20 Stablecoin'); }
+  private mergeFT_(...args: any[]): any { fail('use mergeCoin for TBC20 Stablecoin'); }
+  private _batchTransfer(...args: any[]): any { fail('use batchTransfer for TBC20 Stablecoin'); }
+  private _batchTransfer_old(...args: any[]): any { fail('use batchTransfer for TBC20 Stablecoin'); }
   static getBalanceFromTape(tape: string): bigint {
-    return CoinTBC20.parseTape(tape).balance;
+    return TBC20StablecoinCodec.parseTape(tape).balance;
   }
-  MintFT(...args: any[]): any { fail('Coin issuance requires createCoin or mintCoin'); }
-  getFTmintCode(...args: any[]): any { fail('Coin issuance requires getCoinMintCode'); }
-  transferContract(...args: any[]): any { fail('use getUnlockScript with an explicit contractController witness for contract-held Coin'); }
-  getFTunlock(...args: any[]): any { fail('use Coin.getUnlockScript for the Coin TBC20 ABI'); }
-  getFTunlockSwap(...args: any[]): any { fail('use Coin.getUnlockScript with contractController'); }
-  static getFTunlock(...args: any[]): any { fail('use Coin.getUnlockScriptWithSignature for Coin TBC20'); }
-  static getFTunlockSwap(...args: any[]): any { fail('use Coin.getUnlockScriptWithSignature with contractController'); }
+  private MintFT(...args: any[]): any { fail('TBC20Stablecoin issuance requires createCoin or mintCoin'); }
+  private getFTmintCode(...args: any[]): any { fail('TBC20Stablecoin issuance requires getCoinMintCode'); }
+  private transferContract(...args: any[]): any { fail('use getUnlockScript with an explicit contractController witness for contract-held TBC20Stablecoin'); }
+  private getFTunlock(...args: any[]): any { fail('use TBC20Stablecoin.getUnlockScript for the TBC20 Stablecoin ABI'); }
+  private getFTunlockSwap(...args: any[]): any { fail('use TBC20Stablecoin.getUnlockScript with contractController'); }
+  private static getFTunlock(...args: any[]): any { fail('use TBC20Stablecoin.getUnlockScriptWithSignature for TBC20 Stablecoin'); }
+  private static getFTunlockSwap(...args: any[]): any { fail('use TBC20Stablecoin.getUnlockScriptWithSignature with contractController'); }
 }
 
-module.exports = Coin;
+module.exports = TBC20Stablecoin;

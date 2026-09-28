@@ -1,13 +1,13 @@
 # StableCoin：旧版 FT 稳定币
 
-`stableCoin` 保留原 FT 稳定币实现，使用 `FTape` 和旧 coinNft 发行凭证。新版基于 TBC20 的稳定币独立为 `lib/contract/coinTbc20.ts`，包根导出名为 [`Coin`](./coinTbc20.md)。两者与 `NFT` / `TBC721` 一样，通过不同入口使用。
+`stableCoin` 是 FT 稳定币业务类，使用 `FTape` 和 coinNft 发行凭证。TBC20 Stablecoin 使用独立的业务类 [`TBC20Stablecoin`](./tbc20-stablecoin.md)，实现在 `lib/contract/tbc20-stablecoin.ts`。
 
 | 业务 | 包根导出 | 实现 | 发行凭证 |
 | --- | --- | --- | --- |
 | 旧版 FT 稳定币 | `stableCoin` | `lib/contract/stableCoin.ts` | 旧 coinNft |
-| 新版 TBC20 稳定币 | `Coin` | `lib/contract/coinTbc20.ts` | 新发行使用 TBC721，既有 Coin TBC20 保留绑定的凭证 |
+| TBC20 Stablecoin | `TBC20Stablecoin` | `lib/contract/tbc20-stablecoin.ts` | TBC721 Standard |
 
-原有调用方继续导入 `stableCoin`，不会创建新版资产。旧版转账、批量转账、合并和冻结／解冻仍接受 `prepreTxData: string[]`，不能把新版 Coin 祖交易对象替换成旧证明字符串。
+FT 稳定币通过 `stableCoin` 发行和管理。转账、批量转账、合并和冻结／解冻的祖交易证明参数为 `prepreTxData: string[]`。
 
 ```ts
 import * as tbc from "tbc-lib-js";
@@ -44,8 +44,8 @@ function transferLegacy(
 }
 ```
 
-已有旧币可通过 `new stableCoin(contractTxid)` 和 `initialize` 恢复元数据。`API.fetchCoinInfo`、`API.fetchCoinUTXOs` 与 `API.fetchFtPrePreTxData` 的旧币调用方式保留；这些索引接口是否支持新版 Coin 应另行确认。
+已有 FT 稳定币可通过 `new stableCoin(contractTxid)` 和 `initialize` 恢复元数据。`API.fetchCoinInfo`、`API.fetchCoinUTXOs` 与 `API.fetchFtPrePreTxData` 分别用于查询元数据、UTXO 和祖交易证明。
 
-`createCoin`、`mintCoin`、`freezeCoinUTXO` 和 `unfreezeCoinUTXO` 返回 `AdminPrepared<R>`。管理员使用 32 字节 MuSig2 聚合公钥，对每个 `sighashes` 中的消息提供一个 64 字节 Schnorr 签名，再调用 `finalize(signatures64)`；手续费输入使用独立普通私钥。MuSig2 聚合流程参见 [Coin TBC20 签名示例](./coinTbc20.md#管理员-musig2-签名)。首次发行返回 `[issuerRaw, firstMintRaw]`，增发返回一笔交易原文。
+`createCoin`、`mintCoin`、`freezeCoinUTXO` 和 `unfreezeCoinUTXO` 返回 `AdminPrepared<R>`。管理员使用 32 字节 MuSig2 聚合公钥，对每个 `sighashes` 中的消息提供一个 64 字节 Schnorr 签名，再调用 `finalize(signatures64)`；手续费输入使用独立普通私钥。MuSig2 聚合流程参见 [TBC20 Stablecoin 签名示例](./tbc20-stablecoin.md#管理员-musig2-签名)。首次发行返回 `[issuerRaw, firstMintRaw]`，增发返回一笔交易原文。
 
-所有构造方法只返回交易，不会自动广播。调用方按依赖顺序发送发行、批量转账或合并返回的交易。旧版 `mergeCoin` 的可选 `localTX` 参数保留，用于维护合并链的祖交易数据；旧资产的 Code、Tape、锁字段及解锁 ABI 不随新版入口拆分而迁移。
+所有构造方法只返回交易，不会自动广播。调用方按依赖顺序发送发行、批量转账或合并返回的交易。`mergeCoin` 的可选 `localTX` 参数用于维护合并链的祖交易数据。

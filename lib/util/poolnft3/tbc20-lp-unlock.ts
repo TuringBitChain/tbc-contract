@@ -1,31 +1,31 @@
 import * as tbc from 'tbc-lib-js';
-import { CoinTBC20 } from './coinTbc20Code';
+import { TBC20LP } from '../../contract/tbc20-lp';
 import {
-  encodeTBC20UnsignedLE,
-  getTBC20ContractTxData,
-  getTBC20CurrentInputsData,
-  getTBC20CurrentOutputData,
-  getTBC20PrePreTxArray,
-  getTBC20PreTxData,
-  readTBC20TapeAmounts,
-} from '../tbc20/tbc20unlock';
-import type { CoinCodeDescriptor } from './coinTbc20Code';
+  encodeTbc20StandardUnsignedLe,
+  getTbc20StandardContractTxData,
+  getTbc20StandardCurrentInputsData,
+  getTbc20StandardCurrentOutputData,
+  getTbc20StandardPrePreTxArray,
+  getTbc20StandardPreTxData,
+  readTbc20StandardTapeAmounts,
+} from '../tbc20-standard/tbc20-standard-unlock';
+import type { TBC20LPCodeDescriptor } from '../../contract/tbc20-lp';
 import type {
-  TBC20ContractTxData,
-  TBC20OutputData,
-  TBC20OutputGroupData,
-  TBC20PrePreTxData,
-  TBC20PreTxData,
-  TBC20TransactionResolver,
-  TBC20UnlockWithPrivateKeyOptions,
-  TBC20UnlockWithSignatureOptions,
-} from '../tbc20/tbc20unlock';
+  TBC20StandardContractTxData,
+  TBC20StandardOutputData,
+  TBC20StandardOutputGroupData,
+  TBC20StandardPrePreTxData,
+  TBC20StandardPreTxData,
+  TBC20StandardTransactionResolver,
+  TBC20StandardUnlockWithPrivateKeyOptions,
+  TBC20StandardUnlockWithSignatureOptions,
+} from '../tbc20-standard/tbc20-standard-unlock';
 
-export type CoinTBC20UnlockWithSignatureOptions = TBC20UnlockWithSignatureOptions;
-export type CoinTBC20UnlockWithPrivateKeyOptions = TBC20UnlockWithPrivateKeyOptions;
+export type TBC20LPUnlockWithSignatureOptions = TBC20StandardUnlockWithSignatureOptions;
+export type TBC20LPUnlockWithPrivateKeyOptions = TBC20StandardUnlockWithPrivateKeyOptions;
 
 function fail(message: string): never {
-  throw new Error(`Coin TBC20 unlock: ${message}`);
+  throw new Error(`TBC20 LP unlock: ${message}`);
 }
 
 function bytes(value: Buffer | string, name: string): Buffer {
@@ -67,7 +67,7 @@ function assertLinked(
   }
 }
 
-function lookup(resolver: TBC20TransactionResolver, txid: string): tbc.Transaction | undefined {
+function lookup(resolver: TBC20StandardTransactionResolver, txid: string): tbc.Transaction | undefined {
   if (typeof resolver === 'function') return resolver(txid);
   if (Array.isArray(resolver)) return resolver.find((tx) => tx.hash.toLowerCase() === txid);
   if (resolver && typeof (resolver as ReadonlyMap<string, tbc.Transaction>).get === 'function') {
@@ -77,10 +77,10 @@ function lookup(resolver: TBC20TransactionResolver, txid: string): tbc.Transacti
 }
 
 function ancestors(
-  options: CoinTBC20UnlockWithSignatureOptions,
-  descriptor: CoinCodeDescriptor,
+  options: TBC20LPUnlockWithSignatureOptions,
+  descriptor: TBC20LPCodeDescriptor,
   amounts: readonly bigint[]
-): TBC20PrePreTxData[] {
+): TBC20StandardPrePreTxData[] {
   // Resolve each TXID once. The same immutable view supplies prechecks and ABI proofs.
   const resolved = new Map<string, tbc.Transaction>();
   for (let slot = 0; slot < 6; slot += 1) {
@@ -92,46 +92,44 @@ function ancestors(
     if (!parent) {
       parent = lookup(options.ancestorTransactions, txid);
       if (!(parent instanceof tbc.Transaction) || parent.hash.toLowerCase() !== txid) {
-        fail(`missing or mismatched Coin ancestor ${txid}`);
+        fail(`missing or mismatched LP ancestor ${txid}`);
       }
       resolved.set(txid, parent);
     }
-    index(source.outputIndex, parent.outputs.length, 'Coin ancestor vout');
+    index(source.outputIndex, parent.outputs.length, 'LP ancestor vout');
     const code = parent.outputs[source.outputIndex].script;
     let sameIdentity = false;
     try {
-      sameIdentity = CoinTBC20.getCodeIdentity(code).equals(descriptor.identity);
+      sameIdentity = TBC20LP.getCodeIdentity(code).equals(descriptor.identity);
     } catch {
-      /* Coin certificate issuance is checked separately. */
+      /* Pool issuance is checked separately. */
     }
     if (
       !sameIdentity &&
       !(
         slot === 0 &&
         source.outputIndex === 0 &&
-        tbc.crypto.Hash.sha256(code.toBuffer()).equals(descriptor.coinNftCodeHash)
+        tbc.crypto.Hash.sha256(code.toBuffer()).equals(descriptor.poolCodeHash)
       )
     ) {
       fail(
-        `parent Tape slot ${slot} is neither the same Coin identity nor its authorized Coin certificate issuance source`
+        `parent Tape slot ${slot} is neither the same LP identity nor its authorized Pool issuance source`
       );
     }
   }
-  return getTBC20PrePreTxArray(options.preTx, options.preTxVout, resolved);
+  return getTbc20StandardPrePreTxArray(options.preTx, options.preTxVout, resolved);
 }
 
 function controllerProof(
-  options: CoinTBC20UnlockWithSignatureOptions,
-  descriptor: CoinCodeDescriptor,
+  options: TBC20LPUnlockWithSignatureOptions,
+  descriptor: TBC20LPCodeDescriptor,
   publicKey: Buffer
-): { data: TBC20ContractTxData; vin: number } {
+): { data: TBC20StandardContractTxData; vin: number } {
   const expected = descriptor.controller.subarray(0, 20);
-  const publicKeyHash = tbc.crypto.Hash.sha256ripemd160(publicKey);
-  const administrator = publicKeyHash.equals(descriptor.adminPubKeyHash);
-  if (administrator || descriptor.controller[20] === 0) {
-    if (options.contractController) fail('contractController must be omitted for administrator or address-held Coin');
-    if (!administrator && !publicKeyHash.equals(expected))
-      fail('publicKey does not belong to the Coin owner');
+  if (descriptor.controller[20] === 0) {
+    if (options.contractController) fail('contractController must be omitted for address-held LP');
+    if (!tbc.crypto.Hash.sha256ripemd160(publicKey).equals(expected))
+      fail('publicKey does not belong to the LP owner');
     return {
       vin: 0,
       data: {
@@ -144,10 +142,10 @@ function controllerProof(
     };
   }
   const witness = options.contractController;
-  if (!witness) fail('contract-held Coin requires an explicit controlling-contract witness');
+  if (!witness) fail('contract-held LP requires an explicit controlling-contract witness');
   index(witness.currentInputIndex, options.currentTx.inputs.length, 'contract currentInputIndex');
   if (witness.currentInputIndex === options.inputIndex)
-    fail('a Coin input cannot be its own controlling-contract input');
+    fail('an LP input cannot be its own controlling-contract input');
   const controllingInput = options.currentTx.inputs[witness.currentInputIndex];
   assertLinked(
     options.currentTx,
@@ -159,19 +157,19 @@ function controllerProof(
     witness.transaction.outputs[controllingInput.outputIndex].script.toBuffer()
   );
   if (!tbc.crypto.Hash.sha256ripemd160(hash).equals(expected))
-    fail('controlling-contract hash does not match Coin Controller');
+    fail('controlling-contract hash does not match LP Controller');
   return {
     vin: witness.currentInputIndex,
-    data: getTBC20ContractTxData(witness.transaction, controllingInput.outputIndex),
+    data: getTbc20StandardContractTxData(witness.transaction, controllingInput.outputIndex),
   };
 }
 
 function verifyOutputAllocations(
-  options: CoinTBC20UnlockWithSignatureOptions,
-  descriptor: CoinCodeDescriptor,
+  options: TBC20LPUnlockWithSignatureOptions,
+  descriptor: TBC20LPCodeDescriptor,
   inputBalance: bigint
-): TBC20OutputGroupData[] {
-  const groups = getTBC20CurrentOutputData(options.currentTx, options.outputGroups);
+): TBC20StandardOutputGroupData[] {
+  const groups = getTbc20StandardCurrentOutputData(options.currentTx, options.outputGroups);
   let allocated = 0n;
   for (const group of options.outputGroups) {
     const code = options.currentTx.outputs[group.codeVout];
@@ -180,27 +178,27 @@ function verifyOutputAllocations(
       codeBytes.length === descriptor.tapeSize &&
       codeBytes.subarray(-9).equals(Buffer.from('TBC20TAPE'))
     ) {
-      fail('an FT/Coin Tape cannot be hidden in a Code output field');
+      fail('an FT/LP Tape cannot be hidden in a Code output field');
     }
     if (group.tapeVout === undefined) continue;
     const tape = options.currentTx.outputs[group.tapeVout];
     if (tape.script.toBuffer().length !== descriptor.tapeSize) continue;
-    const amount = readTBC20TapeAmounts(tape.script)[options.inputIndex];
+    const amount = readTbc20StandardTapeAmounts(tape.script)[options.inputIndex];
     allocated += amount;
     if (amount === 0n) continue;
-    const recipient = CoinTBC20.validateCode(code.script, {
-      coinNftCodeHash: descriptor.coinNftCodeHash,
+    const recipient = TBC20LP.validateCode(code.script, {
+      poolCodeHash: descriptor.poolCodeHash,
       tapeSize: descriptor.tapeSize,
-      adminPubKeyHash: descriptor.adminPubKeyHash,
+      timelocked: descriptor.timelocked,
     });
     if (!recipient.identity.equals(descriptor.identity))
-      fail('Coin output changes its source identity');
-    CoinTBC20.parseTape(tape.script, recipient);
+      fail('LP output changes its source identity');
+    TBC20LP.parseTape(tape.script, recipient);
     if (code.satoshis !== 500 || tape.satoshis !== 0)
-      fail('Coin output Code/Tape values must be 500/0 satoshis');
+      fail('LP output Code/Tape values must be 500/0 satoshis');
   }
   if (allocated !== inputBalance)
-    fail("Coin output amounts do not conserve this input's absolute vin slot");
+    fail("LP output amounts do not conserve this input's absolute vin slot");
   return groups;
 }
 
@@ -211,20 +209,20 @@ function push(script: tbc.Script, value: Buffer): void {
   else script.add(value);
 }
 
-function pushOutput(script: tbc.Script, data: TBC20OutputData): void {
+function pushOutput(script: tbc.Script, data: TBC20StandardOutputData): void {
   push(script, data.value);
   push(script, data.lockingScript.suffixData);
   push(script, data.lockingScript.partialHash);
   push(script, data.lockingScript.size);
 }
 
-function pushGroup(script: tbc.Script, data: TBC20OutputGroupData): void {
+function pushGroup(script: tbc.Script, data: TBC20StandardOutputGroupData): void {
   pushOutput(script, data.code);
   push(script, data.tape.value);
   push(script, data.tape.lockingScript);
 }
 
-function pushAncestor(script: tbc.Script, data: TBC20PrePreTxData): void {
+function pushAncestor(script: tbc.Script, data: TBC20StandardPrePreTxData): void {
   push(script, data.vlio);
   push(script, data.txInputsHashData);
   push(script, data.outputsFirstPart);
@@ -232,7 +230,7 @@ function pushAncestor(script: tbc.Script, data: TBC20PrePreTxData): void {
   push(script, data.outputsLastPart);
 }
 
-function pushParent(script: tbc.Script, data: TBC20PreTxData): void {
+function pushParent(script: tbc.Script, data: TBC20StandardPreTxData): void {
   push(script, data.vlio);
   data.inputs.forEach((input) => push(script, input));
   push(script, data.unlockingScriptHash);
@@ -241,49 +239,54 @@ function pushParent(script: tbc.Script, data: TBC20PreTxData): void {
   push(script, data.outputsLastPart);
 }
 
-/** Build the frozen 123-field Coin ABI; does not sign, fetch, broadcast or mutate the transaction. */
-export function buildCoinTBC20UnlockScriptWithSignature(
-  options: CoinTBC20UnlockWithSignatureOptions
+/** Build the frozen 123-field LP ABI; does not sign, fetch, broadcast or mutate the transaction. */
+export function buildTbc20LpUnlockScriptWithSignature(
+  options: TBC20LPUnlockWithSignatureOptions
 ): tbc.Script {
   if (!options || typeof options !== 'object') fail('unlock options are required');
   assertLinked(options.currentTx, options.inputIndex, options.preTx, options.preTxVout);
   if (options.currentTx.inputs.length > 6 || options.inputIndex >= 6)
-    fail('Coin transactions support at most six total inputs');
-  const descriptor = CoinTBC20.parseCode(options.preTx.outputs[options.preTxVout].script);
-  const preData = getTBC20PreTxData(options.preTx, options.preTxVout);
-  const tape = CoinTBC20.parseTape(preData.outputsGotData.tape.lockingScript, descriptor);
+    fail('LP transactions support at most six total inputs');
+  const descriptor = TBC20LP.parseCode(options.preTx.outputs[options.preTxVout].script);
+  const preData = getTbc20StandardPreTxData(options.preTx, options.preTxVout);
+  const tape = TBC20LP.parseTape(preData.outputsGotData.tape.lockingScript, descriptor);
+  TBC20LP.verifyInputLock(
+    options.currentTx,
+    options.inputIndex,
+    preData.outputsGotData.tape.lockingScript,
+    descriptor
+  );
   const signature = bytes(options.signature, 'signature');
+  if (
+    signature.length === 65 ||
+    signature.length > 72 ||
+    !tbc.crypto.Signature.isTxDER(signature)
+  ) {
+    fail('signature must be a canonical DER transaction signature of at most 72 bytes');
+  }
+  const decoded = tbc.crypto.Signature.fromTxFormat(signature) as unknown as {
+    hasLowS(): boolean;
+    hasDefinedHashtype(): boolean;
+    nhashtype: number;
+  };
+  if (!decoded.hasLowS() || !decoded.hasDefinedHashtype() || decoded.nhashtype !== 0x41) {
+    fail('signature must be low-S and use SIGHASH_ALL | SIGHASH_FORKID (0x41)');
+  }
   const publicKey =
     options.publicKey instanceof tbc.PublicKey
       ? options.publicKey.toBuffer()
       : bytes(options.publicKey, 'publicKey');
-  if (signature.length === 65) {
-    if (signature[64] !== 0x41 || publicKey.length !== 32)
-      fail('Schnorr signature must be 65 bytes ending in 41 with a 32-byte x-only publicKey');
-    tbc.PublicKey.fromXOnly(publicKey);
-  } else {
-    if (signature.length > 72 || !tbc.crypto.Signature.isTxDER(signature))
-      fail('signature must be canonical DER of at most 72 bytes or a 65-byte Schnorr transaction signature');
-    const decoded = tbc.crypto.Signature.fromTxFormat(signature) as unknown as {
-      hasLowS(): boolean; hasDefinedHashtype(): boolean; nhashtype: number;
-    };
-    if (!decoded.hasLowS() || !decoded.hasDefinedHashtype() || decoded.nhashtype !== 0x41)
-      fail('DER signature must be low-S and use SIGHASH_ALL | SIGHASH_FORKID (0x41)');
-    if (publicKey.length !== 33) fail('DER signature requires a compressed 33-byte publicKey');
-    tbc.PublicKey.fromBuffer(publicKey);
-  }
-  const administrator = tbc.crypto.Hash.sha256ripemd160(publicKey).equals(descriptor.adminPubKeyHash);
-  CoinTBC20.verifyInputLock(options.currentTx, options.inputIndex,
-    preData.outputsGotData.tape.lockingScript, descriptor, administrator);
+  if (publicKey.length !== 33) fail('publicKey must be a compressed 33-byte key');
+  tbc.PublicKey.fromBuffer(publicKey);
   const contract = controllerProof(options, descriptor, publicKey);
   const outputs = verifyOutputAllocations(options, descriptor, tape.balance);
-  const inputs = getTBC20CurrentInputsData(options.currentTx);
+  const inputs = getTbc20StandardCurrentInputsData(options.currentTx);
   const preceding = ancestors(options, descriptor, tape.amounts);
 
   const result = new tbc.Script();
   outputs.forEach((output) => pushGroup(result, output));
   push(result, inputs);
-  push(result, encodeTBC20UnsignedLE(options.inputIndex));
+  push(result, encodeTbc20StandardUnsignedLe(options.inputIndex));
   preceding.forEach((ancestor) => pushAncestor(result, ancestor));
   push(result, signature);
   push(result, publicKey);
@@ -293,36 +296,20 @@ export function buildCoinTBC20UnlockScriptWithSignature(
   push(result, contract.data.outputsMiddlePart.value);
   push(result, contract.data.outputsMiddlePart.lockingScript);
   push(result, contract.data.outputsLastPart);
-  push(result, encodeTBC20UnsignedLE(contract.vin));
+  push(result, encodeTbc20StandardUnsignedLe(contract.vin));
   pushParent(result, preData);
-  if (result.chunks.length !== 123) fail('internal Coin ABI error: expected exactly 123 pushes');
+  if (result.chunks.length !== 123) fail('internal LP ABI error: expected exactly 123 pushes');
   return result;
 }
 
-export function buildCoinTBC20UnlockScript(options: CoinTBC20UnlockWithPrivateKeyOptions): tbc.Script {
+export function buildTbc20LpUnlockScript(options: TBC20LPUnlockWithPrivateKeyOptions): tbc.Script {
   if (!options || !(options.privateKey instanceof tbc.PrivateKey))
     fail('privateKey must be a tbc.PrivateKey');
-  assertLinked(options.currentTx, options.inputIndex, options.preTx, options.preTxVout);
-  const descriptor = CoinTBC20.parseCode(options.preTx.outputs[options.preTxVout].script);
-  const signingPublicKey = options.privateKey.toPublicKey();
-  const xOnly = signingPublicKey.toXOnly();
-  const xOnlyHash = tbc.crypto.Hash.sha256ripemd160(xOnly);
-  const compressedAdministrator = tbc.crypto.Hash.sha256ripemd160(signingPublicKey.toBuffer())
-    .equals(descriptor.adminPubKeyHash);
-  if (xOnlyHash.equals(descriptor.adminPubKeyHash) ||
-      (!compressedAdministrator && descriptor.controller[20] === 0 &&
-        xOnlyHash.equals(descriptor.controller.subarray(0, 20)))) {
-    const previousOutput = options.currentTx.inputs[options.inputIndex].output!;
-    const signature = tbc.Transaction.Sighash.signSchnorr(options.currentTx, options.privateKey,
-      0x41, options.inputIndex, previousOutput.script, previousOutput.satoshisBN,
-      tbc.Script.Interpreter.DEFAULT_FLAGS).toTxFormat();
-    return buildCoinTBC20UnlockScriptWithSignature({ ...options, signature, publicKey: xOnly });
-  }
   const signature = options.currentTx.getSignature(options.inputIndex, options.privateKey);
   if (typeof signature !== 'string') fail('privateKey did not produce one transaction signature');
-  return buildCoinTBC20UnlockScriptWithSignature({
+  return buildTbc20LpUnlockScriptWithSignature({
     ...options,
     signature,
-    publicKey: signingPublicKey,
+    publicKey: options.privateKey.toPublicKey(),
   });
 }

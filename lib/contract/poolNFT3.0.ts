@@ -1,13 +1,13 @@
 import * as tbc from 'tbc-lib-js';
-import { TBC20 } from './tbc20';
-import { FTLPTBC20 } from './ftlpTbc20';
-import { buildFTLPUnlockScriptWithSignature } from '../util/poolnft3/ftlpTbc20unlock';
+import { TBC20Standard } from './tbc20-standard';
+import { TBC20LP } from './tbc20-lp';
+import { buildTbc20LpUnlockScriptWithSignature } from '../util/poolnft3/tbc20-lp-unlock';
 import {
-  buildTBC20UnlockScriptWithSignature,
-  getTBC20CodeIdentity,
-  getTBC20Controller,
-  replaceTBC20TapeAmounts,
-} from '../util/tbc20/tbc20unlock';
+  buildTbc20StandardUnlockScriptWithSignature,
+  getTbc20StandardCodeIdentity,
+  getTbc20StandardController,
+  replaceTbc20StandardTapeAmounts,
+} from '../util/tbc20-standard/tbc20-standard-unlock';
 import {
   assertPoolControllerPublicKey,
   normalizePoolAuthorization,
@@ -40,7 +40,7 @@ import {
   publicKeyBytes,
   referenceOutput,
 } from '../util/poolnft3/transaction';
-import type { TBC20CurrentOutputGroup } from '../util/tbc20/tbc20unlock';
+import type { TBC20StandardCurrentOutputGroup } from '../util/tbc20-standard/tbc20-standard-unlock';
 import type {
   Pool3InputPlan,
   Pool3Signature,
@@ -86,7 +86,7 @@ const slots = (entries: readonly (readonly [number, bigint])[]): bigint[] => {
 };
 const signerAddress = (input: Pool3SignedInput): string =>
   tbc.PublicKey.fromBuffer(publicKeyBytes(input.signer.publicKey)).toAddress().toString();
-const ownerController = (address: string): Buffer => TBC20.addressController(address);
+const ownerController = (address: string): Buffer => TBC20Standard.addressController(address);
 const cloneTransaction = (tx: tbc.Transaction): tbc.Transaction =>
   new tbc.Transaction(tx.uncheckedSerialize());
 function copyDetails<T>(value: T): T {
@@ -165,20 +165,20 @@ export class PoolNFT3 {
       this.ftGenesis.outputs.length < 2 ||
       this.ftGenesis.outputs.length > 3
     )
-      pool3Fail('expected canonical TBC20 genesis Code/Tape at vout 0/1');
+      pool3Fail('expected canonical TBC20Standard genesis Code/Tape at vout 0/1');
     const root = { parentTx: this.ftGenesis, outputIndex: 0 };
     this.ftCode = referenceOutput(root).script;
     this.ftTape = this.ftGenesis.outputs[1].script;
     if (this.ftGenesis.outputs[0].satoshis !== 500 || this.ftGenesis.outputs[1].satoshis !== 0)
       pool3Fail('FT genesis Code/Tape must be 500/0 sat');
-    const tape = TBC20.parseTape(this.ftTape);
+    const tape = TBC20Standard.parseTape(this.ftTape);
     this.tapeSize = tape.size;
-    TBC20.validateCode(this.ftCode, this.tapeSize);
+    TBC20Standard.validateCode(this.ftCode, this.tapeSize);
     const input = this.ftGenesis.inputs[0];
-    const expectedCode = TBC20.instantiateCode({
+    const expectedCode = TBC20Standard.instantiateCode({
       originalUTXO: { txId: input.prevTxId.toString('hex'), outputIndex: input.outputIndex },
       tapeSize: this.tapeSize,
-      controller: getTBC20Controller(this.ftCode),
+      controller: getTbc20StandardController(this.ftCode),
     });
     if (!expectedCode.toBuffer().equals(this.ftCode.toBuffer()))
       pool3Fail('FT reference is not its genesis transaction');
@@ -194,7 +194,7 @@ export class PoolNFT3 {
       lp: Object.freeze({ kind: lp.kind }),
       lpPlan: this.feePolicy.lpPlan,
     };
-    this.ftIdentity = getTBC20CodeIdentity(this.ftCode);
+    this.ftIdentity = getTbc20StandardCodeIdentity(this.ftCode);
   }
 
   static fromPool(poolTx: tbc.Transaction, ftGenesisTx: tbc.Transaction): PoolNFT3 {
@@ -238,7 +238,7 @@ export class PoolNFT3 {
     )
       pool3Fail('Pool underlying FT partial identity mismatch');
     const lp = this.makeLPCode(parsed.poolCodeHash, Buffer.alloc(21));
-    const lpIdentity = FTLPTBC20.getCodeIdentity(lp);
+    const lpIdentity = TBC20LP.getCodeIdentity(lp);
     if (
       !tape.ftLpPartialHash.equals(lpIdentity.subarray(0, 32)) ||
       tape.ftLpCodeSize !== lp.toBuffer().length
@@ -320,7 +320,7 @@ export class PoolNFT3 {
   }
 
   private makeLPCode(poolCodeHash: Buffer, controller: Buffer): tbc.Script {
-    return FTLPTBC20.instantiateCode({
+    return TBC20LP.instantiateCode({
       poolCodeHash,
       controller,
       tapeSize: this.tapeSize,
@@ -328,7 +328,7 @@ export class PoolNFT3 {
     });
   }
   private makeLPTape(amounts: readonly bigint[], lockTime?: number): tbc.Script {
-    return FTLPTBC20.buildTape({
+    return TBC20LP.buildTape({
       amounts,
       tapeSize: this.tapeSize,
       timelocked: this.config.lp.kind === 'timelocked',
@@ -343,15 +343,15 @@ export class PoolNFT3 {
     const tapeOutput = input.parentTx.outputs[input.outputIndex + 1];
     if (code.satoshis !== 500 || !tapeOutput || tapeOutput.satoshis !== 0)
       pool3Fail('FT Code/Tape must be adjacent 500/0 outputs');
-    TBC20.validateCode(code.script, this.tapeSize);
-    const tape = TBC20.parseTape(tapeOutput.script);
+    TBC20Standard.validateCode(code.script, this.tapeSize);
+    const tape = TBC20Standard.parseTape(tapeOutput.script);
     if (
       tape.size !== this.tapeSize ||
-      !tape.extensionData.equals(TBC20.parseTape(this.ftTape).extensionData) ||
-      !getTBC20CodeIdentity(code.script).equals(this.ftIdentity)
+      !tape.extensionData.equals(TBC20Standard.parseTape(this.ftTape).extensionData) ||
+      !getTbc20StandardCodeIdentity(code.script).equals(this.ftIdentity)
     )
       pool3Fail('wrong underlying FT identity or metadata');
-    const controller = getTBC20Controller(code.script);
+    const controller = getTbc20StandardController(code.script);
     if (state) {
       if (
         !controller.equals(Buffer.concat([h160(state.poolCodeHash), Buffer.from([1])])) ||
@@ -371,7 +371,7 @@ export class PoolNFT3 {
     const tapeOutput = input.parentTx.outputs[input.outputIndex + 1];
     if (output.satoshis !== 500 || !tapeOutput || tapeOutput.satoshis !== 0)
       pool3Fail('LP Code/Tape must be adjacent 500/0 outputs');
-    const code = FTLPTBC20.validateCode(output.script, {
+    const code = TBC20LP.validateCode(output.script, {
       tapeSize: this.tapeSize,
       timelocked: this.config.lp.kind === 'timelocked',
     });
@@ -386,7 +386,7 @@ export class PoolNFT3 {
         !code.identity.subarray(0, 32).equals(state.tape.ftLpPartialHash))
     )
       pool3Fail('LP belongs to a different Pool');
-    const tape = FTLPTBC20.parseTape(tapeOutput.script, {
+    const tape = TBC20LP.parseTape(tapeOutput.script, {
       timelocked: code.timelocked,
       tapeSize: this.tapeSize,
     });
@@ -416,10 +416,10 @@ export class PoolNFT3 {
     tx: tbc.Transaction,
     assets: readonly Pool3AssetOutput[],
     hasPool: boolean
-  ): TBC20CurrentOutputGroup[] {
+  ): TBC20StandardCurrentOutputGroup[] {
     const paired = new Set(assets.map((a) => a.codeVout));
     if (hasPool) paired.add(0);
-    const result: TBC20CurrentOutputGroup[] = [];
+    const result: TBC20StandardCurrentOutputGroup[] = [];
     for (let i = 0; i < tx.outputs.length; i++) {
       if (paired.has(i)) {
         result.push({ codeVout: i, tapeVout: i + 1 });
@@ -431,7 +431,7 @@ export class PoolNFT3 {
   private tokenPlan(
     input: Pool3AssetInput,
     inputIndex: number,
-    family: 'tbc20' | 'ftlp',
+    family: 'tbc20-standard' | 'tbc20-lp',
     assets: readonly Pool3AssetOutput[],
     pool?: Pool3OperationOptions['pool'],
     poolOwned = false,
@@ -439,7 +439,7 @@ export class PoolNFT3 {
   ): Pool3InputPlan {
     return {
       reference: input,
-      role: poolOwned ? 'pool-ft' : family === 'ftlp' ? 'lp-owner' : 'user-ft',
+      role: poolOwned ? 'pool-ft' : family === 'tbc20-lp' ? 'lp-owner' : 'user-ft',
       signer: input.signer,
       sequence,
       unlock: (tx, signature, publicKey) => {
@@ -456,9 +456,9 @@ export class PoolNFT3 {
             ? { transaction: pool!.parentTx, currentInputIndex: 0 }
             : undefined,
         };
-        return family === 'ftlp'
-          ? buildFTLPUnlockScriptWithSignature(options)
-          : buildTBC20UnlockScriptWithSignature(options);
+        return family === 'tbc20-lp'
+          ? buildTbc20LpUnlockScriptWithSignature(options)
+          : buildTbc20StandardUnlockScriptWithSignature(options);
       },
     };
   }
@@ -514,14 +514,14 @@ export class PoolNFT3 {
         this.tokenPlan(
           userInput!,
           1,
-          option === 2 ? 'ftlp' : 'tbc20',
+          option === 2 ? 'tbc20-lp' : 'tbc20-standard',
           layout.assetOutputs,
           options.pool,
           false,
           option === 2 && this.config.lp.kind === 'timelocked' ? 0xfffffffe : undefined
         )
       );
-    plans.push(this.tokenPlan(options.poolFT, 2, 'tbc20', layout.assetOutputs, options.pool, true));
+    plans.push(this.tokenPlan(options.poolFT, 2, 'tbc20-standard', layout.assetOutputs, options.pool, true));
     if (option !== 3) plans.push(p2pkhInputPlan(options.funding));
     const prepared = new PreparedPool3Transaction({
       inputs: plans,
@@ -556,7 +556,7 @@ export class PoolNFT3 {
   prepareMintPoolNFT(options: Pool3MintOptions): PreparedPool3Operation {
     const hashLocked = this.config.authorization.kind === 'controller';
     const code = instantiatePoolCode({
-      originalUTXO: TBC20.encodeOriginalUTXO({
+      originalUTXO: TBC20Standard.encodeOriginalUtxo({
         txId: options.funding.parentTx.id,
         outputIndex: options.funding.outputIndex,
       }),
@@ -566,7 +566,7 @@ export class PoolNFT3 {
     });
     const poolHash = sha(code.toBuffer());
     const lp = this.makeLPCode(poolHash, Buffer.alloc(21));
-    const lpIdentity = FTLPTBC20.getCodeIdentity(lp);
+    const lpIdentity = TBC20LP.getCodeIdentity(lp);
     const tape = encodePoolTape({
       ftLpPartialHash: lpIdentity.subarray(0, 32),
       ftLpCodeSize: lp.toBuffer().length,
@@ -591,9 +591,9 @@ export class PoolNFT3 {
       outputs,
       assets,
       'pool-ft',
-      'tbc20',
-      TBC20.replaceController(this.ftCode, Buffer.concat([h160(poolHash), Buffer.from([1])])),
-      replaceTBC20TapeAmounts(this.ftTape, ZERO_SLOTS),
+      'tbc20-standard',
+      TBC20Standard.replaceController(this.ftCode, Buffer.concat([h160(poolHash), Buffer.from([1])])),
+      replaceTbc20StandardTapeAmounts(this.ftTape, ZERO_SLOTS),
       ZERO_SLOTS
     );
     const prepared = new PreparedPool3Transaction({
@@ -656,9 +656,9 @@ export class PoolNFT3 {
       outputs,
       assets,
       'pool-ft',
-      'tbc20',
+      'tbc20-standard',
       pool.code,
-      replaceTBC20TapeAmounts(pool.tape, poolSlots),
+      replaceTbc20StandardTapeAmounts(pool.tape, poolSlots),
       poolSlots
     );
     const lpSlots = slots([[0, quote.ftLpIncrementRaw]]);
@@ -666,7 +666,7 @@ export class PoolNFT3 {
       outputs,
       assets,
       'new-lp',
-      'ftlp',
+      'tbc20-lp',
       this.makeLPCode(state.poolCodeHash, ownerController(options.lpReceiverAddress)),
       this.makeLPTape(lpSlots, options.lpLockTime),
       lpSlots
@@ -677,9 +677,9 @@ export class PoolNFT3 {
         outputs,
         assets,
         'ft-change',
-        'tbc20',
+        'tbc20-standard',
         user.code,
-        replaceTBC20TapeAmounts(user.tape, change),
+        replaceTbc20StandardTapeAmounts(user.tape, change),
         change
       );
     }
@@ -725,9 +725,9 @@ export class PoolNFT3 {
       outputs,
       assets,
       'user-ft',
-      'tbc20',
-      TBC20.replaceController(pool.code, ownerController(options.receiverAddress)),
-      replaceTBC20TapeAmounts(pool.tape, ftOut),
+      'tbc20-standard',
+      TBC20Standard.replaceController(pool.code, ownerController(options.receiverAddress)),
+      replaceTbc20StandardTapeAmounts(pool.tape, ftOut),
       ftOut
     );
     const burn = slots([[1, options.burnAmountRaw]]);
@@ -735,8 +735,8 @@ export class PoolNFT3 {
       outputs,
       assets,
       'lp-burn',
-      'ftlp',
-      FTLPTBC20.replaceController(lp.codeScript, BURN_CONTROLLER),
+      'tbc20-lp',
+      TBC20LP.replaceController(lp.codeScript, BURN_CONTROLLER),
       this.makeLPTape(burn, this.config.lp.kind === 'timelocked' ? 0 : undefined),
       burn
     );
@@ -745,9 +745,9 @@ export class PoolNFT3 {
       outputs,
       assets,
       'pool-ft',
-      'tbc20',
+      'tbc20-standard',
       pool.code,
-      replaceTBC20TapeAmounts(pool.tape, poolChange),
+      replaceTbc20StandardTapeAmounts(pool.tape, poolChange),
       poolChange
     );
     if (lp.tape.balance > options.burnAmountRaw) {
@@ -756,7 +756,7 @@ export class PoolNFT3 {
         outputs,
         assets,
         'lp-change',
-        'ftlp',
+        'tbc20-lp',
         lp.codeScript,
         this.makeLPTape(change, lp.code.timelocked ? lp.tape.lockTime : undefined),
         change
@@ -794,9 +794,9 @@ export class PoolNFT3 {
       outputs,
       assets,
       'user-ft',
-      'tbc20',
-      TBC20.replaceController(pool.code, ownerController(options.receiverAddress)),
-      replaceTBC20TapeAmounts(pool.tape, userSlots),
+      'tbc20-standard',
+      TBC20Standard.replaceController(pool.code, ownerController(options.receiverAddress)),
+      replaceTbc20StandardTapeAmounts(pool.tape, userSlots),
       userSlots
     );
     outputs.push(this.serviceFeeOutput(quote.fees.serviceFeePaidSat));
@@ -805,9 +805,9 @@ export class PoolNFT3 {
       outputs,
       assets,
       'pool-ft',
-      'tbc20',
+      'tbc20-standard',
       pool.code,
-      replaceTBC20TapeAmounts(pool.tape, poolSlots),
+      replaceTbc20StandardTapeAmounts(pool.tape, poolSlots),
       poolSlots
     );
     return this.operation(options, 3, quote, outputs, {
@@ -841,9 +841,9 @@ export class PoolNFT3 {
       outputs,
       assets,
       'pool-ft',
-      'tbc20',
+      'tbc20-standard',
       pool.code,
-      replaceTBC20TapeAmounts(pool.tape, poolSlots),
+      replaceTbc20StandardTapeAmounts(pool.tape, poolSlots),
       poolSlots
     );
     if (user.balance > options.inputFtRaw) {
@@ -852,9 +852,9 @@ export class PoolNFT3 {
         outputs,
         assets,
         'ft-change',
-        'tbc20',
+        'tbc20-standard',
         user.code,
-        replaceTBC20TapeAmounts(user.tape, change),
+        replaceTbc20StandardTapeAmounts(user.tape, change),
         change
       );
     }
@@ -893,7 +893,7 @@ export class PoolNFT3 {
     if (inputs.some((input) => !input.code.identity.equals(inputs[0].code.identity)))
       pool3Fail('LP inputs must share one Pool and template identity');
     const locks = inputs.map((i) => i.tape.lockTime);
-    const requiredLock = FTLPTBC20.getRequiredLockTime(locks);
+    const requiredLock = TBC20LP.getRequiredLockTime(locks);
     const lockTime = options.lockTime ?? requiredLock;
     const outputLockTime =
       this.config.lp.kind === 'timelocked' ? (options.outputLockTime ?? requiredLock) : undefined;
@@ -915,8 +915,8 @@ export class PoolNFT3 {
       outputs,
       assets,
       'lp-transfer',
-      'ftlp',
-      FTLPTBC20.replaceController(inputs[0].codeScript, ownerController(options.receiverAddress)),
+      'tbc20-lp',
+      TBC20LP.replaceController(inputs[0].codeScript, ownerController(options.receiverAddress)),
       this.makeLPTape(receiverSlots, outputLockTime),
       receiverSlots
     );
@@ -933,8 +933,8 @@ export class PoolNFT3 {
         outputs,
         assets,
         'lp-change',
-        'ftlp',
-        FTLPTBC20.replaceController(inputs[0].codeScript, changeController),
+        'tbc20-lp',
+        TBC20LP.replaceController(inputs[0].codeScript, changeController),
         this.makeLPTape(
           changeSlots,
           this.config.lp.kind === 'timelocked' ? requiredLock : undefined
@@ -946,7 +946,7 @@ export class PoolNFT3 {
       this.tokenPlan(
         input,
         i,
-        'ftlp',
+        'tbc20-lp',
         assets,
         undefined,
         false,

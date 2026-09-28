@@ -1,15 +1,15 @@
 import * as tbc from "tbc-lib-js";
-import { TBC20 as TBC20Class } from "../contract/tbc20";
+import { TBC20Standard as TBC20StandardClass } from "../contract/tbc20-standard";
 import {
-  TBC20_AMOUNT_SLOTS,
-  TBC20_CODE_SATOSHIS,
-  TBC20_MAX_INPUTS,
-  TBC20_MAX_OUTPUT_GROUPS,
-  TBC20_MAX_OUTPUTS,
-  TBC20_TAPE_MARKER,
-  TBC20_TAPE_PREFIX,
-  getTBC20PartialScriptData,
-} from "../util/tbc20/tbc20unlock";
+  TBC20_STANDARD_AMOUNT_SLOTS,
+  TBC20_STANDARD_CODE_SATOSHIS,
+  TBC20_STANDARD_MAX_INPUTS,
+  TBC20_STANDARD_MAX_OUTPUT_GROUPS,
+  TBC20_STANDARD_MAX_OUTPUTS,
+  TBC20_STANDARD_TAPE_MARKER,
+  TBC20_STANDARD_TAPE_PREFIX,
+  getTbc20StandardPartialScriptData,
+} from "../util/tbc20-standard/tbc20-standard-unlock";
 import {
   decodePublishedFTCode,
   isPublishedFTTape,
@@ -17,7 +17,7 @@ import {
 } from "./ft-artifacts";
 import { isFTCodeLength } from "../util/ft/ftscript";
 
-const TBC20: typeof TBC20Class = require("../contract/tbc20");
+const TBC20Standard: typeof TBC20StandardClass = require("../contract/tbc20-standard");
 
 // Deliberately require the shared mutable API object. Tests and applications
 // may replace API.fetchTXraw; capturing the method at module load would bypass
@@ -29,22 +29,22 @@ const API = require("../api/api") as {
 const UINT32_MAX = 0xffffffff;
 const MAX_SLOT_AMOUNT = (1n << 63n) - 1n;
 const PLACEHOLDER = /(<self\.(?:OriginalUTXO36|ConstTapeSize1|Controller21)>)/;
-const TEMPLATE_SEGMENTS = TBC20.lockHexTemplate.split(PLACEHOLDER);
+const TEMPLATE_SEGMENTS = TBC20Standard.lockHexTemplate.split(PLACEHOLDER);
 
-export type TBC20ValidationStatus = "VALID" | "INVALID" | "UNKNOWN";
-export type TBC20ValidationKind = "TRANSITION" | "NON_TOKEN" | "UNDETERMINED";
-export type TokenFamilyName = "TBC20" | "FT";
+export type TBC20StandardValidationStatus = "VALID" | "INVALID" | "UNKNOWN";
+export type TBC20StandardValidationKind = "TRANSITION" | "NON_TOKEN" | "UNDETERMINED";
+export type TokenFamilyName = "TBC20Standard" | "FT";
 
 export type TokenProtocolDescriptor =
-  | Readonly<{ family: "TBC20"; version: 1 }>
+  | Readonly<{ family: "TBC20Standard"; version: 1 }>
   | Readonly<{ family: "FT"; version: 1 | 2 | 3 | 4 }>;
-export type TBC20Assurance =
+export type TBC20StandardAssurance =
   | "OUTPUT_SOURCE_GRAPH_RESOLVED"
   | "STRUCTURE"
   | "TRANSITION"
   | "OUTPUT_SOURCE_LINEAGE";
 
-export type TBC20ValidationErrorCode =
+export type TBC20StandardValidationErrorCode =
   | "INVALID_POLICY"
   | "ROOT_RAW_INVALID"
   | "INVALID_TRANSACTION_VERSION"
@@ -63,12 +63,12 @@ export type TBC20ValidationErrorCode =
   | "INVALID_TOKEN_TAPE"
   | "TOKEN_CODE_WITHOUT_TAPE"
   | "ORPHAN_TOKEN_TAPE"
-  | "UNSUPPORTED_TBC20_ARTIFACT"
-  | "INVALID_TBC20_CODE"
+  | "UNSUPPORTED_TBC20_STANDARD_ARTIFACT"
+  | "INVALID_TBC20_STANDARD_CODE"
   | "EMPTY_LOCKING_SCRIPT"
-  | "TBC20_CODE_WITHOUT_TAPE"
-  | "ORPHAN_TBC20_TAPE"
-  | "INVALID_TBC20_TAPE"
+  | "TBC20_STANDARD_CODE_WITHOUT_TAPE"
+  | "ORPHAN_TBC20_STANDARD_TAPE"
+  | "INVALID_TBC20_STANDARD_TAPE"
   | "INVALID_CODE_VALUE"
   | "INVALID_TAPE_VALUE"
   | "AMOUNT_SLOT_WITHOUT_INPUT"
@@ -86,19 +86,19 @@ export type TBC20ValidationErrorCode =
   | "ANCESTOR_IDENTITY_MISMATCH"
   | "ORIGINAL_UTXO_MISMATCH";
 
-export interface TBC20ValidationPolicy {
+export interface TBC20StandardValidationPolicy {
   preset?: "strict" | "relaxed-metadata";
   requireExactTapeEnvelope?: boolean;
 }
 
-export interface TBC20ValidateTransitionOptions {
+export interface TBC20StandardValidateTransitionOptions {
   transaction: tbc.Transaction | string | Buffer;
   network: string;
-  policy?: TBC20ValidationPolicy;
+  policy?: TBC20StandardValidationPolicy;
 }
 
-export interface TBC20ValidationIssue {
-  code: TBC20ValidationErrorCode;
+export interface TBC20StandardValidationIssue {
+  code: TBC20StandardValidationErrorCode;
   severity: "error" | "warning";
   stage: "SOURCE" | "ROOT" | "PARENT" | "OUTPUT_SCAN" | "MATRIX" | "ANCESTOR";
   message: string;
@@ -109,7 +109,7 @@ export interface TBC20ValidationIssue {
   identity?: string;
 }
 
-export interface TBC20AncestorEdge {
+export interface TBC20StandardAncestorEdge {
   currentVin: number;
   parentTxid: string;
   parentCodeVout: number;
@@ -129,7 +129,7 @@ interface ValidatedInputBase {
   prevVout: number;
 }
 
-export type TBC20ValidatedInput =
+export type TBC20StandardValidatedInput =
   | (ValidatedInputBase & {
       kind: "UNRESOLVED";
       resolution: "NOT_REQUESTED" | "UNAVAILABLE" | "INVALID";
@@ -140,7 +140,7 @@ export type TBC20ValidatedInput =
       parentTxid: string;
     })
   | (ValidatedInputBase & {
-      kind: "TBC20" | "FT";
+      kind: "TBC20Standard" | "FT";
       resolution: "RESOLVED";
       sourceRole?: "POSITIVE_SOURCE" | "ZERO_IDENTITY_WITNESS";
       parentTxid: string;
@@ -152,14 +152,14 @@ export type TBC20ValidatedInput =
       protocol: TokenProtocolDescriptor;
     });
 
-export interface TBC20RecognizedContract {
+export interface TBC20StandardRecognizedContract {
   family: "FT" | "STABLE_COIN";
   version: 1 | 2 | 3 | 4;
 }
 
-export interface TBC20ValidatedOutputGroup {
+export interface TBC20StandardValidatedOutputGroup {
   logicalIndex: number;
-  kind: "TBC20" | "FT" | "ORDINARY";
+  kind: "TBC20Standard" | "FT" | "ORDINARY";
   firstVout: number;
   physicalVoutCount: 1 | 2;
   codeVout?: number;
@@ -168,10 +168,10 @@ export interface TBC20ValidatedOutputGroup {
   slots?: readonly [bigint, bigint, bigint, bigint, bigint, bigint];
   balanceRaw?: bigint;
   protocol?: TokenProtocolDescriptor;
-  recognizedContract?: TBC20RecognizedContract;
+  recognizedContract?: TBC20StandardRecognizedContract;
 }
 
-export interface TBC20ValidatedAssetFlow {
+export interface TBC20StandardValidatedAssetFlow {
   identity: string;
   protocol: TokenProtocolDescriptor;
   inputVins: readonly number[];
@@ -181,7 +181,7 @@ export interface TBC20ValidatedAssetFlow {
   envelopeHash?: string;
 }
 
-export interface TBC20ValidationSource {
+export interface TBC20StandardValidationSource {
   network: string;
   api: "API.fetchTXraw";
   trustModel: "API_FETCH_TXRAW_FULLY_TRUSTED";
@@ -191,19 +191,19 @@ export interface TBC20ValidationSource {
   requiredSourceTxids: readonly string[];
 }
 
-export interface TBC20ValidationResult {
-  status: TBC20ValidationStatus;
+export interface TBC20StandardValidationResult {
+  status: TBC20StandardValidationStatus;
   txid?: string;
-  kind: TBC20ValidationKind;
+  kind: TBC20StandardValidationKind;
   protocol?: TokenProtocolDescriptor;
-  assurances: readonly TBC20Assurance[];
-  issues: readonly TBC20ValidationIssue[];
-  inputs: readonly TBC20ValidatedInput[];
-  outputGroups: readonly TBC20ValidatedOutputGroup[];
-  assets: readonly TBC20ValidatedAssetFlow[];
+  assurances: readonly TBC20StandardAssurance[];
+  issues: readonly TBC20StandardValidationIssue[];
+  inputs: readonly TBC20StandardValidatedInput[];
+  outputGroups: readonly TBC20StandardValidatedOutputGroup[];
+  assets: readonly TBC20StandardValidatedAssetFlow[];
   matrix: readonly (readonly bigint[])[];
-  ancestorEdges: readonly TBC20AncestorEdge[];
-  source?: TBC20ValidationSource;
+  ancestorEdges: readonly TBC20StandardAncestorEdge[];
+  source?: TBC20StandardValidationSource;
   resolvedTransactions: number;
   parentsChecked: number;
   ancestorsChecked: number;
@@ -212,9 +212,9 @@ export interface TBC20ValidationResult {
 }
 
 export class TokenValidationError extends Error {
-  readonly report: TBC20ValidationResult;
+  readonly report: TBC20StandardValidationResult;
 
-  constructor(report: TBC20ValidationResult) {
+  constructor(report: TBC20StandardValidationResult) {
     super(`token validation ${report.status.toLowerCase()}: ${report.issues.map((issue) => issue.code).join(", ") || report.kind}`);
     this.name = "TokenValidationError";
     this.report = report;
@@ -247,7 +247,7 @@ interface DecodedCode {
   tapeSize: number;
   scriptHex: string;
   protocol: TokenProtocolDescriptor;
-  outputKind: "TBC20" | "FT";
+  outputKind: "TBC20Standard" | "FT";
 }
 
 interface DecodedTape {
@@ -267,7 +267,7 @@ interface InternalTokenPair {
 }
 
 interface InternalInput extends ValidatedInputBase {
-  kind: "UNRESOLVED" | "ORDINARY" | "TBC20" | "FT";
+  kind: "UNRESOLVED" | "ORDINARY" | "TBC20Standard" | "FT";
   resolution: "NOT_REQUESTED" | "UNAVAILABLE" | "INVALID" | "RESOLVED";
   attempted: boolean;
   parentTxid?: string;
@@ -276,14 +276,14 @@ interface InternalInput extends ValidatedInputBase {
   pair?: InternalTokenPair;
 }
 
-interface InternalOutputGroup extends TBC20ValidatedOutputGroup {
+interface InternalOutputGroup extends TBC20StandardValidatedOutputGroup {
   pair?: InternalTokenPair;
   /** Includes known-but-unsupported protocols so they cannot become opaque. */
   observedProtocolKey?: string;
 }
 
 interface TokenArtifactAdapter {
-  readonly id: "TBC20" | "FT";
+  readonly id: "TBC20Standard" | "FT";
   tryDecodeCode(scriptHex: string): DecodedCode | null;
   isCodeCandidate(scriptHex: string): boolean;
   isTapeCandidate(scriptHex: string): boolean;
@@ -313,18 +313,18 @@ interface NormalizedOptions {
 }
 
 interface Context {
-  kind: TBC20ValidationKind;
+  kind: TBC20StandardValidationKind;
   protocol?: TokenProtocolDescriptor;
   txid?: string;
-  invalidIssues: TBC20ValidationIssue[];
-  unknownIssues: TBC20ValidationIssue[];
-  warnings: TBC20ValidationIssue[];
-  assurances: Set<TBC20Assurance>;
+  invalidIssues: TBC20StandardValidationIssue[];
+  unknownIssues: TBC20StandardValidationIssue[];
+  warnings: TBC20StandardValidationIssue[];
+  assurances: Set<TBC20StandardAssurance>;
   inputs: InternalInput[];
   groups: InternalOutputGroup[];
   matrix: bigint[][];
-  assets: TBC20ValidatedAssetFlow[];
-  ancestorEdges: TBC20AncestorEdge[];
+  assets: TBC20StandardValidatedAssetFlow[];
+  ancestorEdges: TBC20StandardAncestorEdge[];
   fetchCache: Map<string, Promise<FetchOutcome>>;
   queriedTxids: string[];
   resolvedTxids: string[];
@@ -340,15 +340,15 @@ interface Context {
 }
 
 class ProtocolError extends Error {
-  readonly code: TBC20ValidationErrorCode;
-  readonly stage: TBC20ValidationIssue["stage"];
-  readonly details: Partial<TBC20ValidationIssue>;
+  readonly code: TBC20StandardValidationErrorCode;
+  readonly stage: TBC20StandardValidationIssue["stage"];
+  readonly details: Partial<TBC20StandardValidationIssue>;
 
   constructor(
-    code: TBC20ValidationErrorCode,
-    stage: TBC20ValidationIssue["stage"],
+    code: TBC20StandardValidationErrorCode,
+    stage: TBC20StandardValidationIssue["stage"],
     message: string,
-    details: Partial<TBC20ValidationIssue> = {},
+    details: Partial<TBC20StandardValidationIssue> = {},
   ) {
     super(message);
     this.code = code;
@@ -371,7 +371,7 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-function cloneIssue(issue: TBC20ValidationIssue): TBC20ValidationIssue {
+function cloneIssue(issue: TBC20StandardValidationIssue): TBC20StandardValidationIssue {
   return { ...issue };
 }
 
@@ -389,15 +389,15 @@ function jsonSafe(value: unknown): unknown {
   return value;
 }
 
-function issueMessage(code: TBC20ValidationErrorCode): string {
+function issueMessage(code: TBC20StandardValidationErrorCode): string {
   return code.replaceAll("_", " ").toLowerCase();
 }
 
 function addInvalid(
   ctx: Context,
-  code: TBC20ValidationErrorCode,
-  stage: TBC20ValidationIssue["stage"],
-  details: Partial<TBC20ValidationIssue> = {},
+  code: TBC20StandardValidationErrorCode,
+  stage: TBC20StandardValidationIssue["stage"],
+  details: Partial<TBC20StandardValidationIssue> = {},
   message = issueMessage(code),
 ): void {
   ctx.invalidIssues.push({ code, severity: "error", stage, message, ...details });
@@ -405,9 +405,9 @@ function addInvalid(
 
 function addUnknown(
   ctx: Context,
-  code: TBC20ValidationErrorCode,
-  stage: TBC20ValidationIssue["stage"],
-  details: Partial<TBC20ValidationIssue> = {},
+  code: TBC20StandardValidationErrorCode,
+  stage: TBC20StandardValidationIssue["stage"],
+  details: Partial<TBC20StandardValidationIssue> = {},
   message = issueMessage(code),
 ): void {
   ctx.unknownIssues.push({ code, severity: "error", stage, message, ...details });
@@ -415,9 +415,9 @@ function addUnknown(
 
 function addWarning(
   ctx: Context,
-  code: TBC20ValidationErrorCode,
-  stage: TBC20ValidationIssue["stage"],
-  details: Partial<TBC20ValidationIssue> = {},
+  code: TBC20StandardValidationErrorCode,
+  stage: TBC20StandardValidationIssue["stage"],
+  details: Partial<TBC20StandardValidationIssue> = {},
   message = issueMessage(code),
 ): void {
   ctx.warnings.push({ code, severity: "warning", stage, message, ...details });
@@ -427,7 +427,7 @@ function sha256Hex(bytes: Buffer): string {
   return tbc.crypto.Hash.sha256(bytes).toString("hex");
 }
 
-function tokenProtocol(family: "TBC20", version: 1): TokenProtocolDescriptor;
+function tokenProtocol(family: "TBC20Standard", version: 1): TokenProtocolDescriptor;
 function tokenProtocol(family: "FT", version: 1 | 2 | 3 | 4): TokenProtocolDescriptor;
 function tokenProtocol(
   family: TokenFamilyName,
@@ -446,7 +446,7 @@ function unsupportedProtocolKey(artifact: PublishedFTCodeDescriptor): string {
 
 function calculateAbiIdentity(scriptHex: string): string {
   const bytes = Buffer.from(scriptHex, "hex");
-  const partial = getTBC20PartialScriptData(tbc.Script.fromBuffer(bytes));
+  const partial = getTbc20StandardPartialScriptData(tbc.Script.fromBuffer(bytes));
   return Buffer.concat([partial.partialHash, partial.size]).toString("hex");
 }
 
@@ -531,7 +531,7 @@ function parseAndSnapshotRoot(
 }
 
 function normalizeOptions(
-  options: TBC20ValidateTransitionOptions,
+  options: TBC20StandardValidateTransitionOptions,
 ): { kind: "ok"; value: NormalizedOptions } | { kind: "invalid"; message: string } {
   if (!options || typeof options !== "object") {
     return { kind: "invalid", message: "options must be an object" };
@@ -605,17 +605,17 @@ function placeholderBytes(segment: string): number {
 
 function isCurrentArtifactCandidate(scriptHex: string): boolean {
   const code = Buffer.from(scriptHex, "hex");
-  if (code.length !== TBC20.codeBytes) return false;
+  if (code.length !== TBC20Standard.codeBytes) return false;
   let offset = 0;
   let constantMismatches = 0;
   for (const segment of TEMPLATE_SEGMENTS) {
-    if (offset >= TBC20.partialOffset) break;
+    if (offset >= TBC20Standard.partialOffset) break;
     if (segment.startsWith("<self.")) {
       offset += placeholderBytes(segment);
       continue;
     }
     const constant = Buffer.from(segment, "hex");
-    const comparable = Math.min(constant.length, TBC20.partialOffset - offset);
+    const comparable = Math.min(constant.length, TBC20Standard.partialOffset - offset);
     for (let index = 0; index < comparable; index += 1) {
       if (code[offset + index] !== constant[index]) {
         constantMismatches += 1;
@@ -629,12 +629,12 @@ function isCurrentArtifactCandidate(scriptHex: string): boolean {
   return constantMismatches <= 8;
 }
 
-function decodeTBC20CodeStrict(scriptHex: string): DecodedCode {
+function decodeTbc20StandardCodeStrict(scriptHex: string): DecodedCode {
   try {
-    TBC20.validateCode(scriptHex);
+    TBC20Standard.validateCode(scriptHex);
   } catch (error) {
     throw new ProtocolError(
-      isCurrentArtifactCandidate(scriptHex) ? "INVALID_TBC20_CODE" : "UNSUPPORTED_TBC20_ARTIFACT",
+      isCurrentArtifactCandidate(scriptHex) ? "INVALID_TBC20_STANDARD_CODE" : "UNSUPPORTED_TBC20_STANDARD_ARTIFACT",
       "OUTPUT_SCAN",
       (error as Error).message,
     );
@@ -658,21 +658,21 @@ function decodeTBC20CodeStrict(scriptHex: string): DecodedCode {
     }
   }
   if (!originalUTXOWire36Hex || tapeSize === undefined || offset !== code.length) {
-    throw new ProtocolError("INVALID_TBC20_CODE", "OUTPUT_SCAN", "cannot decode TBC20 code parameters");
+    throw new ProtocolError("INVALID_TBC20_STANDARD_CODE", "OUTPUT_SCAN", "cannot decode TBC20Standard code parameters");
   }
   return {
     identity: calculateAbiIdentity(scriptHex),
     originalUTXOWire36Hex,
     tapeSize,
     scriptHex,
-    protocol: tokenProtocol("TBC20", 1),
-    outputKind: "TBC20",
+    protocol: tokenProtocol("TBC20Standard", 1),
+    outputKind: "TBC20Standard",
   };
 }
 
-function tryDecodeTBC20Code(scriptHex: string): DecodedCode | null {
+function tryDecodeTbc20StandardCode(scriptHex: string): DecodedCode | null {
   try {
-    return decodeTBC20CodeStrict(scriptHex);
+    return decodeTbc20StandardCodeStrict(scriptHex);
   } catch {
     return null;
   }
@@ -680,21 +680,21 @@ function tryDecodeTBC20Code(scriptHex: string): DecodedCode | null {
 
 function isTapeCandidate(scriptHex: string): boolean {
   const bytes = Buffer.from(scriptHex, "hex");
-  return bytes.length >= TBC20.minTapeBytes &&
-    bytes.length <= TBC20.maxTapeBytes &&
-    bytes.subarray(0, TBC20_TAPE_PREFIX.length).equals(TBC20_TAPE_PREFIX) &&
-    bytes.subarray(bytes.length - TBC20_TAPE_MARKER.length).equals(TBC20_TAPE_MARKER);
+  return bytes.length >= TBC20Standard.minTapeBytes &&
+    bytes.length <= TBC20Standard.maxTapeBytes &&
+    bytes.subarray(0, TBC20_STANDARD_TAPE_PREFIX.length).equals(TBC20_STANDARD_TAPE_PREFIX) &&
+    bytes.subarray(bytes.length - TBC20_STANDARD_TAPE_MARKER.length).equals(TBC20_STANDARD_TAPE_MARKER);
 }
 
-function decodeTBC20TapeStrict(scriptHex: string, expectedSize: number): DecodedTape {
+function decodeTbc20StandardTapeStrict(scriptHex: string, expectedSize: number): DecodedTape {
   try {
-    const parsed = TBC20.parseTape(scriptHex);
+    const parsed = TBC20Standard.parseTape(scriptHex);
     if (parsed.size !== expectedSize) {
       throw new Error(`Tape size ${parsed.size} differs from Code size ${expectedSize}`);
     }
     const bytes = Buffer.from(scriptHex, "hex");
     const slots = parsed.amounts.slice() as [bigint, bigint, bigint, bigint, bigint, bigint];
-    if (slots.length !== TBC20_AMOUNT_SLOTS || slots.some((amount) => amount < 0n || amount > MAX_SLOT_AMOUNT)) {
+    if (slots.length !== TBC20_STANDARD_AMOUNT_SLOTS || slots.some((amount) => amount < 0n || amount > MAX_SLOT_AMOUNT)) {
       throw new Error("Tape amounts are outside the canonical signed-63 range");
     }
     const envelope = Buffer.concat([bytes.subarray(0, 3), bytes.subarray(51)]);
@@ -707,7 +707,7 @@ function decodeTBC20TapeStrict(scriptHex: string, expectedSize: number): Decoded
       size: parsed.size,
     };
   } catch (error) {
-    throw new ProtocolError("INVALID_TBC20_TAPE", "OUTPUT_SCAN", (error as Error).message);
+    throw new ProtocolError("INVALID_TBC20_STANDARD_TAPE", "OUTPUT_SCAN", (error as Error).message);
   }
 }
 
@@ -765,12 +765,12 @@ function decodeFTTapeStrict(scriptHex: string, expectedSize: number): DecodedTap
   }
 }
 
-const TBC20_ADAPTER: TokenArtifactAdapter = Object.freeze({
-  id: "TBC20" as const,
-  tryDecodeCode: tryDecodeTBC20Code,
+const TBC20_STANDARD_ADAPTER: TokenArtifactAdapter = Object.freeze({
+  id: "TBC20Standard" as const,
+  tryDecodeCode: tryDecodeTbc20StandardCode,
   isCodeCandidate: isCurrentArtifactCandidate,
   isTapeCandidate,
-  decodeTape: decodeTBC20TapeStrict,
+  decodeTape: decodeTbc20StandardTapeStrict,
 });
 
 const FT_ADAPTER: TokenArtifactAdapter = Object.freeze({
@@ -782,7 +782,7 @@ const FT_ADAPTER: TokenArtifactAdapter = Object.freeze({
 });
 
 const TOKEN_ADAPTERS: readonly TokenArtifactAdapter[] = Object.freeze([
-  TBC20_ADAPTER,
+  TBC20_STANDARD_ADAPTER,
   FT_ADAPTER,
 ]);
 
@@ -800,13 +800,13 @@ function classifyCode(
     return { kind: "KNOWN_UNSUPPORTED", artifact: publishedFT };
   }
 
-  if (TBC20_ADAPTER.isCodeCandidate(scriptHex)) {
+  if (TBC20_STANDARD_ADAPTER.isCodeCandidate(scriptHex)) {
     return {
       kind: "CANDIDATE_INVALID",
       error: new ProtocolError(
-        "INVALID_TBC20_CODE",
+        "INVALID_TBC20_STANDARD_CODE",
         "OUTPUT_SCAN",
-        "script resembles the registered TBC20 artifact but fails strict decoding",
+        "script resembles the registered TBC20Standard artifact but fails strict decoding",
       ),
     };
   }
@@ -827,7 +827,7 @@ function classifyCode(
   return { kind: "NOT_TOKEN" };
 }
 
-function toRecognizedContract(artifact: PublishedFTCodeDescriptor): TBC20RecognizedContract {
+function toRecognizedContract(artifact: PublishedFTCodeDescriptor): TBC20StandardRecognizedContract {
   return {
     family: artifact.coin ? "STABLE_COIN" : "FT",
     version: artifact.version,
@@ -838,8 +838,8 @@ function scanOutputs(root: FrozenTxView, ctx: Context): InternalOutputGroup[] {
   const scanned: InternalOutputGroup[] = [];
   const observedSupported = new Map<string, TokenProtocolDescriptor>();
   const observedUnsupported = new Set<string>();
-  if (root.outputs.length > TBC20_MAX_OUTPUTS) {
-    addInvalid(ctx, "OUTPUT_LIMIT_EXCEEDED", "ROOT", {}, `transaction has ${root.outputs.length} physical outputs; maximum is ${TBC20_MAX_OUTPUTS}`);
+  if (root.outputs.length > TBC20_STANDARD_MAX_OUTPUTS) {
+    addInvalid(ctx, "OUTPUT_LIMIT_EXCEEDED", "ROOT", {}, `transaction has ${root.outputs.length} physical outputs; maximum is ${TBC20_STANDARD_MAX_OUTPUTS}`);
     return scanned;
   }
 
@@ -857,7 +857,7 @@ function scanOutputs(root: FrozenTxView, ctx: Context): InternalOutputGroup[] {
     if (codeClassification.kind === "CANDIDATE_INVALID") {
       addInvalid(ctx, codeClassification.error.code, "OUTPUT_SCAN", { vout }, codeClassification.error.message);
       const consumePair = followingOutput !== undefined && (
-        (codeClassification.error.code === "INVALID_TBC20_CODE" && isTapeCandidate(followingOutput.scriptHex)) ||
+        (codeClassification.error.code === "INVALID_TBC20_STANDARD_CODE" && isTapeCandidate(followingOutput.scriptHex)) ||
         (codeClassification.error.code === "INVALID_TOKEN_CODE" && isPublishedFTTape(followingOutput.scriptHex))
       );
       scanned.push({
@@ -894,7 +894,7 @@ function scanOutputs(root: FrozenTxView, ctx: Context): InternalOutputGroup[] {
       if (vout + 1 >= root.outputs.length) {
         addInvalid(
           ctx,
-          code.outputKind === "TBC20" ? "TBC20_CODE_WITHOUT_TAPE" : "TOKEN_CODE_WITHOUT_TAPE",
+          code.outputKind === "TBC20Standard" ? "TBC20_STANDARD_CODE_WITHOUT_TAPE" : "TOKEN_CODE_WITHOUT_TAPE",
           "OUTPUT_SCAN",
           { vout },
         );
@@ -921,7 +921,7 @@ function scanOutputs(root: FrozenTxView, ctx: Context): InternalOutputGroup[] {
         vout += 2;
         continue;
       }
-      if (output.satoshis !== BigInt(TBC20_CODE_SATOSHIS)) {
+      if (output.satoshis !== BigInt(TBC20_STANDARD_CODE_SATOSHIS)) {
         addInvalid(ctx, "INVALID_CODE_VALUE", "OUTPUT_SCAN", { vout });
       }
       if (tapeOutput.satoshis !== 0n) {
@@ -956,7 +956,7 @@ function scanOutputs(root: FrozenTxView, ctx: Context): InternalOutputGroup[] {
         const protocol = error as ProtocolError;
         addInvalid(
           ctx,
-          protocol.code ?? (code.outputKind === "TBC20" ? "INVALID_TBC20_TAPE" : "INVALID_TOKEN_TAPE"),
+          protocol.code ?? (code.outputKind === "TBC20Standard" ? "INVALID_TBC20_STANDARD_TAPE" : "INVALID_TOKEN_TAPE"),
           "OUTPUT_SCAN",
           { vout: vout + 1 },
           protocol.message,
@@ -974,7 +974,7 @@ function scanOutputs(root: FrozenTxView, ctx: Context): InternalOutputGroup[] {
     }
 
     if (isTapeCandidate(output.scriptHex)) {
-      addInvalid(ctx, "ORPHAN_TBC20_TAPE", "OUTPUT_SCAN", { vout });
+      addInvalid(ctx, "ORPHAN_TBC20_STANDARD_TAPE", "OUTPUT_SCAN", { vout });
     } else if (isPublishedFTTape(output.scriptHex)) {
       addInvalid(ctx, "ORPHAN_TOKEN_TAPE", "OUTPUT_SCAN", { vout });
     }
@@ -1012,7 +1012,7 @@ function scanOutputs(root: FrozenTxView, ctx: Context): InternalOutputGroup[] {
 
   // Raw transactions do not retain the outputGroups array used by the unlock
   // ABI. The two supported families encode ordinary outputs differently:
-  // TBC20 may group two consecutive opaque physical outputs, whereas legacy
+  // TBC20Standard may group two consecutive opaque physical outputs, whereas legacy
   // FT encodes every ordinary physical output as its own tag=2 group. A token
   // Code/Tape pair always occupies one forced two-output group.
   const groups: InternalOutputGroup[] = [];
@@ -1020,19 +1020,19 @@ function scanOutputs(root: FrozenTxView, ctx: Context): InternalOutputGroup[] {
     for (const group of scanned) {
       groups.push({ ...group, logicalIndex: groups.length });
     }
-    if (groups.length > TBC20_MAX_OUTPUT_GROUPS) {
+    if (groups.length > TBC20_STANDARD_MAX_OUTPUT_GROUPS) {
       addInvalid(
         ctx,
         "OUTPUT_LIMIT_EXCEEDED",
         "OUTPUT_SCAN",
         {},
-        `FT outputs require ${groups.length} ABI groups; maximum is ${TBC20_MAX_OUTPUT_GROUPS}`,
+        `FT outputs require ${groups.length} ABI groups; maximum is ${TBC20_STANDARD_MAX_OUTPUT_GROUPS}`,
       );
     }
     return groups;
   }
 
-  // For TBC20, reconstruct the minimum possible grouping: strict pairs are
+  // For TBC20Standard, reconstruct the minimum possible grouping: strict pairs are
   // barriers and every opaque run contributes ceil(physicalOutputs / 2).
   let opaqueRun: InternalOutputGroup[] = [];
   const flushOpaqueRun = (): void => {
@@ -1068,13 +1068,13 @@ function scanOutputs(root: FrozenTxView, ctx: Context): InternalOutputGroup[] {
     }
   }
   flushOpaqueRun();
-  if (groups.length > TBC20_MAX_OUTPUT_GROUPS) {
+  if (groups.length > TBC20_STANDARD_MAX_OUTPUT_GROUPS) {
     addInvalid(
       ctx,
       "OUTPUT_LIMIT_EXCEEDED",
       "OUTPUT_SCAN",
       {},
-      `outputs require at least ${groups.length} ABI groups; maximum is ${TBC20_MAX_OUTPUT_GROUPS}`,
+      `outputs require at least ${groups.length} ABI groups; maximum is ${TBC20_STANDARD_MAX_OUTPUT_GROUPS}`,
     );
   }
   return groups;
@@ -1096,17 +1096,17 @@ function decodePairAt(parent: FrozenTxView, codeVout: number): PairAtResult {
     return {
       kind: "INVALID",
       error: new ProtocolError(
-        classification.code.outputKind === "TBC20" ? "TBC20_CODE_WITHOUT_TAPE" : "TOKEN_CODE_WITHOUT_TAPE",
+        classification.code.outputKind === "TBC20Standard" ? "TBC20_STANDARD_CODE_WITHOUT_TAPE" : "TOKEN_CODE_WITHOUT_TAPE",
         "PARENT",
         "referenced token Code has no following Tape output",
       ),
     };
   }
-  if (codeOutput.satoshis !== BigInt(TBC20_CODE_SATOSHIS) || tapeOutput.satoshis !== 0n) {
+  if (codeOutput.satoshis !== BigInt(TBC20_STANDARD_CODE_SATOSHIS) || tapeOutput.satoshis !== 0n) {
     return {
       kind: "INVALID",
       error: new ProtocolError(
-        codeOutput.satoshis !== BigInt(TBC20_CODE_SATOSHIS) ? "INVALID_CODE_VALUE" : "INVALID_TAPE_VALUE",
+        codeOutput.satoshis !== BigInt(TBC20_STANDARD_CODE_SATOSHIS) ? "INVALID_CODE_VALUE" : "INVALID_TAPE_VALUE",
         "PARENT",
         "referenced token pair has invalid output values",
       ),
@@ -1270,8 +1270,8 @@ function validateRoot(root: FrozenTxView, ctx: Context): void {
   if (root.version !== 10) {
     addInvalid(ctx, "INVALID_TRANSACTION_VERSION", "ROOT", {}, "root transaction version must be 10");
   }
-  if (root.inputs.length < 1 || root.inputs.length > TBC20_MAX_INPUTS) {
-    addInvalid(ctx, "INPUT_LIMIT_EXCEEDED", "ROOT", {}, `root transaction must contain 1-${TBC20_MAX_INPUTS} inputs`);
+  if (root.inputs.length < 1 || root.inputs.length > TBC20_STANDARD_MAX_INPUTS) {
+    addInvalid(ctx, "INPUT_LIMIT_EXCEEDED", "ROOT", {}, `root transaction must contain 1-${TBC20_STANDARD_MAX_INPUTS} inputs`);
   }
   const seen = new Set<string>();
   for (const input of root.inputs) {
@@ -1285,7 +1285,7 @@ function validateRoot(root: FrozenTxView, ctx: Context): void {
 
 function validateOutputOnlyMatrixRules(root: FrozenTxView, groups: InternalOutputGroup[], ctx: Context): void {
   const tokenGroups = collectTokenGroups(groups);
-  for (let vin = 0; vin < TBC20_AMOUNT_SLOTS; vin += 1) {
+  for (let vin = 0; vin < TBC20_STANDARD_AMOUNT_SLOTS; vin += 1) {
     const identities = new Set<string>();
     for (const group of tokenGroups) {
       if (group.pair!.tape.slots[vin] > 0n) identities.add(group.pair!.code.identity);
@@ -1341,7 +1341,7 @@ async function resolvePositiveSources(
       complete = false;
       continue;
     }
-    if ((input.kind !== "TBC20" && input.kind !== "FT") || !input.pair || !input.parent) {
+    if ((input.kind !== "TBC20Standard" && input.kind !== "FT") || !input.pair || !input.parent) {
       addInvalid(ctx, "AMOUNT_SLOT_WITHOUT_TOKEN_INPUT", "MATRIX", { vin });
       complete = false;
       continue;
@@ -1350,7 +1350,7 @@ async function resolvePositiveSources(
     if (input.parent.version !== 10) {
       addInvalid(ctx, "INVALID_TRANSACTION_VERSION", "PARENT", { vin, txid: input.prevTxid });
     }
-    if (input.parent.inputs.length < 1 || input.parent.inputs.length > TBC20_MAX_INPUTS) {
+    if (input.parent.inputs.length < 1 || input.parent.inputs.length > TBC20_STANDARD_MAX_INPUTS) {
       addInvalid(ctx, "INPUT_LIMIT_EXCEEDED", "PARENT", { vin, txid: input.prevTxid });
     }
 
@@ -1422,7 +1422,7 @@ async function searchZeroWitnesses(
       // a deterministic root graph contradiction, never wildcard capacity.
       continue;
     }
-    if ((input.kind !== "TBC20" && input.kind !== "FT") || !input.pair || !input.parent) continue;
+    if ((input.kind !== "TBC20Standard" && input.kind !== "FT") || !input.pair || !input.parent) continue;
 
     const pair = input.pair;
     // A speculative zero-witness lookup may encounter an unrelated token
@@ -1448,7 +1448,7 @@ async function searchZeroWitnesses(
       rejections.set(pair.code.identity, identityRejections);
       continue;
     }
-    if (input.parent.inputs.length < 1 || input.parent.inputs.length > TBC20_MAX_INPUTS) {
+    if (input.parent.inputs.length < 1 || input.parent.inputs.length > TBC20_STANDARD_MAX_INPUTS) {
       identityRejections.push({ code: "INPUT_LIMIT_EXCEEDED", vin });
       rejections.set(pair.code.identity, identityRejections);
       continue;
@@ -1563,7 +1563,7 @@ async function validateLineage(
   for (const source of sources) {
     const parent = source.parent!;
     const pair = source.pair!;
-    for (let slot = 0; slot < TBC20_AMOUNT_SLOTS; slot += 1) {
+    for (let slot = 0; slot < TBC20_STANDARD_AMOUNT_SLOTS; slot += 1) {
       if (pair.tape.slots[slot] === 0n) continue;
       ctx.lineageExpected += 1;
       if (slot >= parent.inputs.length) {
@@ -1665,13 +1665,13 @@ async function validateLineage(
   }
 }
 
-function publicInput(input: InternalInput): TBC20ValidatedInput {
+function publicInput(input: InternalInput): TBC20StandardValidatedInput {
   const base: ValidatedInputBase = {
     vin: input.vin,
     prevTxid: input.prevTxid,
     prevVout: input.prevVout,
   };
-  if ((input.kind === "TBC20" || input.kind === "FT") && input.resolution === "RESOLVED" && input.pair) {
+  if ((input.kind === "TBC20Standard" || input.kind === "FT") && input.resolution === "RESOLVED" && input.pair) {
     return {
       ...base,
       kind: input.kind,
@@ -1700,7 +1700,7 @@ function publicInput(input: InternalInput): TBC20ValidatedInput {
   };
 }
 
-function publicGroup(group: InternalOutputGroup): TBC20ValidatedOutputGroup {
+function publicGroup(group: InternalOutputGroup): TBC20StandardValidatedOutputGroup {
   return {
     logicalIndex: group.logicalIndex,
     kind: group.kind,
@@ -1716,9 +1716,9 @@ function publicGroup(group: InternalOutputGroup): TBC20ValidatedOutputGroup {
   };
 }
 
-function finalize(ctx: Context, includeSource = true): TBC20ValidationResult {
+function finalize(ctx: Context, includeSource = true): TBC20StandardValidationResult {
   if (ctx.invalidIssues.length === 0 && ctx.unknownIssues.length === 0 && ctx.kind === "TRANSITION") {
-    const mandatory: TBC20Assurance[] = [
+    const mandatory: TBC20StandardAssurance[] = [
       "STRUCTURE",
       "TRANSITION",
       "OUTPUT_SOURCE_LINEAGE",
@@ -1728,7 +1728,7 @@ function finalize(ctx: Context, includeSource = true): TBC20ValidationResult {
       addUnknown(ctx, "VALIDATOR_INTERNAL_INCOMPLETE", "ROOT", {}, "mandatory validation assurance is incomplete");
     }
   }
-  const status: TBC20ValidationStatus = ctx.invalidIssues.length > 0
+  const status: TBC20StandardValidationStatus = ctx.invalidIssues.length > 0
     ? "INVALID"
     : ctx.unknownIssues.length > 0
       ? "UNKNOWN"
@@ -1772,11 +1772,11 @@ function finalize(ctx: Context, includeSource = true): TBC20ValidationResult {
     toJSON(): Record<string, unknown> {
       return jsonSafe(data) as Record<string, unknown>;
     },
-  } satisfies TBC20ValidationResult;
+  } satisfies TBC20StandardValidationResult;
   return deepFreeze(result);
 }
 
-function invalidPolicyReport(message: string): TBC20ValidationResult {
+function invalidPolicyReport(message: string): TBC20StandardValidationResult {
   const fallback: NormalizedOptions = {
     transaction: "",
     network: "",
@@ -1789,8 +1789,8 @@ function invalidPolicyReport(message: string): TBC20ValidationResult {
 
 export class TokenValidator {
   static async validateOnChainTransaction(
-    options: TBC20ValidateTransitionOptions,
-  ): Promise<TBC20ValidationResult> {
+    options: TBC20StandardValidateTransitionOptions,
+  ): Promise<TBC20StandardValidationResult> {
     const normalized = normalizeOptions(options);
     if (normalized.kind === "invalid") return invalidPolicyReport(normalized.message);
 
@@ -1899,8 +1899,8 @@ export class TokenValidator {
   }
 
   static async assertValidOnChainTransaction(
-    options: TBC20ValidateTransitionOptions,
-  ): Promise<TBC20ValidationResult> {
+    options: TBC20StandardValidateTransitionOptions,
+  ): Promise<TBC20StandardValidationResult> {
     const report = await TokenValidator.validateOnChainTransaction(options);
     if (report.status !== "VALID" || report.kind !== "TRANSITION") {
       throw new TokenValidationError(report);

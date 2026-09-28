@@ -1,10 +1,10 @@
 import * as tbc from 'tbc-lib-js';
 import {
-  encodeTBC20UInt64LE,
-  encodeTBC20UnsignedLE,
-  getTBC20CurrentInputsData,
-  getTBC20PartialScriptData,
-} from '../tbc20/tbc20unlock';
+  encodeTbc20StandardUint64Le,
+  encodeTbc20StandardUnsignedLe,
+  getTbc20StandardCurrentInputsData,
+  getTbc20StandardPartialScriptData,
+} from '../tbc20-standard/tbc20-standard-unlock';
 
 /** Pool.main options; option 3 consumes exactly two auxiliary input proofs. */
 export type PoolOperation = 1 | 2 | 3 | 4;
@@ -92,7 +92,7 @@ function outputAt(tx: tbc.Transaction, vout: number, name: string): tbc.Transact
 }
 
 function value(output: tbc.Transaction.Output): Buffer {
-  return encodeTBC20UInt64LE(BigInt(output.satoshis));
+  return encodeTbc20StandardUint64Le(BigInt(output.satoshis));
 }
 
 function sha(data: Buffer): Buffer {
@@ -120,7 +120,7 @@ function unlockingScriptsHash(tx: tbc.Transaction): Buffer {
 }
 
 function inputsHashData(tx: tbc.Transaction): Buffer {
-  return Buffer.concat([sha(getTBC20CurrentInputsData(tx)), unlockingScriptsHash(tx)]);
+  return Buffer.concat([sha(getTbc20StandardCurrentInputsData(tx)), unlockingScriptsHash(tx)]);
 }
 
 function outputRecords(tx: tbc.Transaction, start: number, end = tx.outputs.length): Buffer {
@@ -236,7 +236,7 @@ export function getPoolUnlockLeafCount(option: PoolOperation, hashLocked = false
 function outputLeaves(tx: tbc.Transaction, vout: number | undefined): Buffer[] {
   if (vout === undefined) return [EMPTY, EMPTY, EMPTY, EMPTY];
   const output = outputAt(tx, vout, `output ${vout}`);
-  const partial = getTBC20PartialScriptData(output.script);
+  const partial = getTbc20StandardPartialScriptData(output.script);
   return [value(output), partial.suffixData, partial.partialHash, partial.size];
 }
 
@@ -313,7 +313,7 @@ function parentLeaves(tx: tbc.Transaction): Buffer[] {
   const tape = outputAt(tx, 1, 'Pool parent Tape');
   return [
     header(tx),
-    getTBC20CurrentInputsData(tx),
+    getTbc20StandardCurrentInputsData(tx),
     unlockingScriptsHash(tx),
     value(code),
     sha(code.script.toBuffer()),
@@ -409,8 +409,8 @@ export function buildPoolUnlockScript(options: PoolUnlockOptions): tbc.Script {
     leaves.push(...inputProofLeaves(parent, vout));
   });
   leaves.push(
-    getTBC20CurrentInputsData(tx),
-    encodeTBC20UnsignedLE(option),
+    getTbc20StandardCurrentInputsData(tx),
+    encodeTbc20StandardUnsignedLe(option),
     ...ancestorLeaves(prePreTx, ancestorVout),
     ...parentLeaves(preTx)
   );

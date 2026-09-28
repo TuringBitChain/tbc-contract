@@ -1,20 +1,20 @@
 import * as tbc from 'tbc-lib-js';
 
 // Compiled from apc-contract/src/tbc721.ct with --asa (without padding).
-const artifact = require('./artifacts/tbc721.json');
+const artifact = require('./artifacts/tbc721-standard.json');
 const placeholder = '<self.OriginalUTXO36>';
 const [prefixHex, suffixHex] = artifact.lock.hex.split(placeholder);
 const prefix = Buffer.from(prefixHex, 'hex');
 const suffix = Buffer.from(suffixHex, 'hex');
 const sha = (value: Buffer): Buffer => tbc.crypto.Hash.sha256(value);
 
-export interface TBC721CodeDescriptor {
+export interface TBC721StandardCodeDescriptor {
   originalUTXO: Buffer;
   txid: string;
   outputIndex: number;
 }
 
-function fail(message: string): never { throw new Error(`TBC721: ${message}`); }
+function fail(message: string): never { throw new Error(`TBC721Standard: ${message}`); }
 
 function u32(value: number): Buffer {
   if (!Number.isInteger(value) || value < 0 || value > 0xffffffff) fail('value must be a uint32');
@@ -58,21 +58,21 @@ function push(script: tbc.Script, data: Buffer): void {
   else script.add(data);
 }
 
-export function buildTBC721Code(txid: string, outputIndex: number): tbc.Script {
+export function buildTbc721StandardCode(txid: string, outputIndex: number): tbc.Script {
   if (typeof txid !== 'string' || !/^[0-9a-fA-F]{64}$/.test(txid)) fail('root transaction ID must be 32-byte hexadecimal');
   const root = Buffer.concat([Buffer.from(txid, 'hex').reverse(), u32(outputIndex)]);
   return tbc.Script.fromHex(artifact.lock.hex.replace(placeholder, new tbc.Script().add(root).toHex()));
 }
 
 /** Match the complete compiled template, not merely its public marker. */
-export function parseTBC721Code(script: tbc.Script | string): TBC721CodeDescriptor {
+export function parseTbc721StandardCode(script: tbc.Script | string): TBC721StandardCodeDescriptor {
   let buffer: Buffer;
   try {
     buffer = typeof script === 'string' ? tbc.Script.fromHex(script).toBuffer() : script.toBuffer();
   } catch { return fail('invalid Code script'); }
   if (buffer.length !== prefix.length + 37 + suffix.length ||
       !buffer.subarray(0, prefix.length).equals(prefix) || buffer[prefix.length] !== 36 ||
-      !buffer.subarray(prefix.length + 37).equals(suffix)) fail('Code does not match the TBC721 template');
+      !buffer.subarray(prefix.length + 37).equals(suffix)) fail('Code does not match the TBC721Standard template');
   const originalUTXO = Buffer.from(buffer.subarray(prefix.length + 1, prefix.length + 37));
   return { originalUTXO, txid: Buffer.from(originalUTXO.subarray(0, 32)).reverse().toString('hex'),
     outputIndex: originalUTXO.readUInt32LE(32) };
@@ -89,9 +89,9 @@ function linked(input: tbc.Transaction.Input, parent: tbc.Transaction, index: nu
 
 /**
  * Supply the complete signed parent and grandparent transactions. The genesis
- * mint slot may be any vout; subsequent TBC721 Code ancestry always uses vout 0.
+ * mint slot may be any vout; subsequent TBC721Standard Code ancestry always uses vout 0.
  */
-export function buildTBC721UnlockScript(
+export function buildTbc721StandardUnlockScript(
   signature: Buffer,
   publicKey: Buffer,
   currentTX: tbc.Transaction,
@@ -110,8 +110,8 @@ export function buildTBC721UnlockScript(
   linked(currentTX.inputs[0], preTX, 0, 'current Code input');
   const source = preTX.inputs[0];
   linked(source, prepreTX, source.outputIndex, 'parent first input');
-  const descriptor = parseTBC721Code(preTX.outputs[0].script);
-  if (!currentTX.outputs[0].script.equals(preTX.outputs[0].script)) fail('output 0 must preserve the TBC721 Code');
+  const descriptor = parseTbc721StandardCode(preTX.outputs[0].script);
+  if (!currentTX.outputs[0].script.equals(preTX.outputs[0].script)) fail('output 0 must preserve the TBC721Standard Code');
   const ancestorCode = prepreTX.outputs[source.outputIndex].script;
   if (ancestorCode.equals(preTX.outputs[0].script)) {
     if (source.outputIndex !== 0) fail('continued Code ancestry must spend output 0');

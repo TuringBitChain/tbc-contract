@@ -1,6 +1,6 @@
 # PoolNFT 3.0 开发指南
 
-PoolNFT 3.0 为 `TBC20 + FTLPTBC20` 提供建池、添加/移除流动性、双向兑换、LP 转移和 LP 解锁接口，支持普通池、公钥哈希白名单池，以及这两类池的 LP 锁仓版本。底层 FT 与 LP 是不同资产，不能用旧 FT/FTLP 替代。
+PoolNFT 3.0 为 TBC20 Standard 和 TBC20 LP 提供建池、添加/移除流动性、双向兑换、LP 转移和 LP 解锁接口，支持普通池、公钥哈希白名单池，以及这两类池的 LP 锁仓版本。底层 FT 与 LP 是不同资产，不能用旧 FT/FTLP 替代。
 
 SDK 负责离线构造、报价、签名和逐输入脚本验证；交易查询、UTXO 选择、广播和链上状态同步由应用负责。下文先提供公共辅助代码，再给出各功能的完整函数，最后用一个入口串起完整生命周期。
 
@@ -15,7 +15,7 @@ SDK 负责离线构造、报价、签名和逐输入脚本验证；交易查询�
 | TBC 换 FT、FT 换 TBC | [兑换](#8-双向兑换) | `swapFT`、`swapTBC` |
 | 撤出部分或全部流动性 | [撤池](#9-移除流动性) | `quoteRemoveLP`、`removeLP` |
 | LP 转账、合并、解锁 | [LP 操作](#10-lp-转移合并与解锁) | `transferLP`、`unlockLP` |
-| 恢复池、检查 LP 归属 | [状态读取](#11-恢复池与读取状态) | `fromPool`、`decodePoolTape`、`FTLPTBC20` |
+| 恢复池、检查 LP 归属 | [状态读取](#11-恢复池与读取状态) | `fromPool`、`decodePoolTape`、`TBC20LP` |
 | 手续费、钱包签名、本地验证 | [费用](#12-手续费)、[签名](#13-外部签名)、[验证](#14-本地验证与串行广播) | `prepare*`、`finalize` |
 | 跑通完整流程 | [完整入口](#15-完整生命周期入口) | 串联上述用例 |
 
@@ -41,7 +41,7 @@ node dist/pool3-examples.js
 
 ```json
 {
-  "ftGenesisTxid": "<可信 TBC20 创世交易 txid>",
+  "ftGenesisTxid": "<可信 TBC20 Standard 创世交易 txid>",
   "funding": { "txId": "<资金父交易 txid>", "outputIndex": 0 },
   "userFT": { "txId": "<用户 FT 父交易 txid>", "outputIndex": 0 },
   "transactions": [
@@ -69,7 +69,7 @@ node dist/pool3-examples.js
 | FT/LP Tape 长度 | 普通池 `61..127` 字节，锁仓池 `66..127` 字节 |
 | 普通 TBC 付款和找零 | 至少 `10 sat`；具体网络接收还取决于节点策略 |
 
-首次发行 LP 的原始量等于注入的 TBC sat 数，LP 显示精度建议为 6，与底层 FT 显示精度无关。构造器需要可信 TBC20 创世交易，Code/Tape 位于 vout0/1，不能用普通转账交易代替。FT 的 metadata/extension 原样保留；锁仓字段只写入 LP Tape。61 字节 FT Tape 不适用于锁仓池。
+首次发行 LP 的原始量等于注入的 TBC sat 数，LP 显示精度建议为 6，与底层 FT 显示精度无关。构造器需要可信 TBC20 Standard 创世交易，Code/Tape 位于 vout0/1，不能用普通转账交易代替。FT 的 metadata/extension 原样保留；锁仓字段只写入 LP Tape。61 字节 FT Tape 不适用于锁仓池。
 
 输入引用中的 `parentTx` 是创建被花费输出的完整交易，`outputIndex` 是 **父交易的 vout**。Tape 是紧邻 Code 的证明数据，本身不作为输入花费。FT/LP 的 `ancestors` 可使用 Map、交易数组或同步函数 `(txid) => Transaction | undefined`，必须能找到父 Tape 非零槽所对应的真实祖先交易；LP 首次发行还涉及 Pool 发行来源。
 
@@ -92,7 +92,7 @@ Pool 的 `ancestorTx` 必须是 `parentTx.vin0` 的真实父交易；首次加�
 import * as tbc from 'tbc-lib-js';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import {
-  API, PoolNFT3, FTLPTBC20, privateKeySigner, decodePoolTape,
+  API, PoolNFT3, TBC20LP, privateKeySigner, decodePoolTape,
   resolveSwapFeePolicy, calculateSwapFees, deriveFeeRecipient,
   validatePool3Transaction,
 } from 'tbc-contract';
@@ -471,8 +471,8 @@ function inspectLP(input: Pool3AssetInput, expectedPoolCodeHash: Buffer) {
   if (!code || code.satoshis !== 500 || !tapeOutput || tapeOutput.satoshis !== 0) {
     throw new Error('LP Code/Tape 必须是相邻的 500/0 sat 输出');
   }
-  const descriptor = FTLPTBC20.validateCode(code.script, { poolCodeHash: expectedPoolCodeHash });
-  const tape = FTLPTBC20.parseTape(tapeOutput.script, descriptor);
+  const descriptor = TBC20LP.validateCode(code.script, { poolCodeHash: expectedPoolCodeHash });
+  const tape = TBC20LP.parseTape(tapeOutput.script, descriptor);
   return { descriptor, tape };
 }
 
@@ -531,7 +531,7 @@ async function transferLP(
 
 ### 10.2 合并 LP
 
-合并通过 `transferLP` 将 1–5 个 LP UTXO 的全部余额转回自己，无需单独的 `mergeFTLP` 方法。
+合并通过 `transferLP` 将 1–5 个 LP UTXO 的全部余额转回自己。
 
 ```ts
 async function mergeLP(
@@ -564,7 +564,7 @@ async function unlockLP(
     if (!descriptor.timelocked) throw new Error('此用例只接受锁仓 LP');
     return tape.lockTime;
   });
-  const lockTime = FTLPTBC20.getRequiredLockTime(locks);
+  const lockTime = TBC20LP.getRequiredLockTime(locks);
   const result = await pool.unlockLP({
     inputs, funding, receiverAddress: ctx.address, lockTime, feePolicy: minerFee,
   });
@@ -770,7 +770,7 @@ function validateRaw(ctx: Context, txraw: string): void {
 
 本地验证覆盖 Pool、池 FT、用户 FT/LP 和资金的全部输入。`nodeAcceptanceChecked` 恒为 `false`，不证明 UTXO 可用、祖先已接收、时间锁成熟或节点策略满足。
 
-脚本执行的 BIN2NUM 范围固定为 8 字节，非负金额上限为 `2^63-1`；中间乘积仍使用大整数。验证器执行后恢复底层库全局参数。验证报告保留 `altStackDepth`，FTLP 部分成功路径副栈有 2 个记账项，不能自行把副栈非空解释为验证失败。
+脚本执行的 BIN2NUM 范围固定为 8 字节，非负金额上限为 `2^63-1`；中间乘积仍使用大整数。验证器执行后恢复底层库全局参数。验证报告保留 `altStackDepth`，TBC20 LP 部分成功路径副栈有 2 个记账项，不能自行把副栈非空解释为验证失败。
 
 ### 14.2 按依赖顺序广播
 

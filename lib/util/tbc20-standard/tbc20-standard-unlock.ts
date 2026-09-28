@@ -2,48 +2,48 @@ import * as tbc from "tbc-lib-js";
 
 const partialSha256 = require("tbc-lib-js/lib/util/partial-sha256");
 
-export const TBC20_MAX_INPUTS = 6;
-export const TBC20_MAX_OUTPUT_GROUPS = 8;
-export const TBC20_MAX_OUTPUTS = TBC20_MAX_OUTPUT_GROUPS * 2;
-export const TBC20_CODE_SATOSHIS = 500;
-export const TBC20_TAPE_SATOSHIS = 0;
-export const TBC20_AMOUNT_SLOTS = 6;
-export const TBC20_AMOUNT_BYTES = TBC20_AMOUNT_SLOTS * 8;
-export const TBC20_CODE_MARKER = Buffer.from("TBC20CODE2", "ascii");
-export const TBC20_TAPE_PREFIX = Buffer.from("006a30", "hex");
-export const TBC20_TAPE_MARKER = Buffer.from("TBC20TAPE", "ascii");
-export const TBC20_MIN_TAPE_BYTES = TBC20_TAPE_PREFIX.length + TBC20_AMOUNT_BYTES + TBC20_TAPE_MARKER.length;
-export const TBC20_MAX_TAPE_BYTES = 127;
+export const TBC20_STANDARD_MAX_INPUTS = 6;
+export const TBC20_STANDARD_MAX_OUTPUT_GROUPS = 8;
+export const TBC20_STANDARD_MAX_OUTPUTS = TBC20_STANDARD_MAX_OUTPUT_GROUPS * 2;
+export const TBC20_STANDARD_CODE_SATOSHIS = 500;
+export const TBC20_STANDARD_TAPE_SATOSHIS = 0;
+export const TBC20_STANDARD_AMOUNT_SLOTS = 6;
+export const TBC20_STANDARD_AMOUNT_BYTES = TBC20_STANDARD_AMOUNT_SLOTS * 8;
+export const TBC20_STANDARD_CODE_MARKER = Buffer.from("TBC20CODE2", "ascii");
+export const TBC20_STANDARD_TAPE_PREFIX = Buffer.from("006a30", "hex");
+export const TBC20_STANDARD_TAPE_MARKER = Buffer.from("TBC20TAPE", "ascii");
+export const TBC20_STANDARD_MIN_TAPE_BYTES = TBC20_STANDARD_TAPE_PREFIX.length + TBC20_STANDARD_AMOUNT_BYTES + TBC20_STANDARD_TAPE_MARKER.length;
+export const TBC20_STANDARD_MAX_TAPE_BYTES = 127;
 
 // OP_BIN2NUM interprets the eight-byte amount as signed magnitude. Values with
 // bit 63 set would be negative inside the contract even though the tape field
 // is declared uint64, so the SDK deliberately exposes the actual safe range.
-export const TBC20_MAX_SLOT_AMOUNT = (1n << 63n) - 1n;
+export const TBC20_STANDARD_MAX_SLOT_AMOUNT = (1n << 63n) - 1n;
 
-export type TBC20TransactionResolver =
+export type TBC20StandardTransactionResolver =
   | ReadonlyMap<string, tbc.Transaction>
   | readonly tbc.Transaction[]
   | ((txid: string) => tbc.Transaction | undefined);
 
-export interface TBC20PartialScriptData {
+export interface TBC20StandardPartialScriptData {
   suffixData: Buffer;
   partialHash: Buffer;
   size: Buffer;
 }
 
-export interface TBC20OutputData {
+export interface TBC20StandardOutputData {
   value: Buffer;
-  lockingScript: TBC20PartialScriptData;
+  lockingScript: TBC20StandardPartialScriptData;
 }
 
-export interface TBC20TapeOutputData {
+export interface TBC20StandardTapeOutputData {
   value: Buffer;
   lockingScript: Buffer;
 }
 
-export interface TBC20OutputGroupData {
-  code: TBC20OutputData;
-  tape: TBC20TapeOutputData;
+export interface TBC20StandardOutputGroupData {
+  code: TBC20StandardOutputData;
+  tape: TBC20StandardTapeOutputData;
 }
 
 /**
@@ -52,29 +52,29 @@ export interface TBC20OutputGroupData {
  * Every present Code/Tape value witness is encoded as exactly eight-byte
  * UInt64LE; only the padded fields for an absent output remain empty.
  */
-export interface TBC20CurrentOutputGroup {
+export interface TBC20StandardCurrentOutputGroup {
   codeVout: number;
   tapeVout?: number;
 }
 
-export interface TBC20PrePreTxData {
+export interface TBC20StandardPrePreTxData {
   vlio: Buffer;
   txInputsHashData: Buffer;
   outputsFirstPart: Buffer;
-  outputsVerifiedData: TBC20OutputData;
+  outputsVerifiedData: TBC20StandardOutputData;
   outputsLastPart: Buffer;
 }
 
-export interface TBC20PreTxData {
+export interface TBC20StandardPreTxData {
   vlio: Buffer;
   inputs: Buffer[];
   unlockingScriptHash: Buffer;
   outputsFirstPart: Buffer;
-  outputsGotData: TBC20OutputGroupData;
+  outputsGotData: TBC20StandardOutputGroupData;
   outputsLastPart: Buffer;
 }
 
-export interface TBC20ContractTxData {
+export interface TBC20StandardContractTxData {
   vlio: Buffer;
   txInputsHashData: Buffer;
   outputsFirstPart: Buffer;
@@ -85,43 +85,43 @@ export interface TBC20ContractTxData {
   outputsLastPart: Buffer;
 }
 
-export interface TBC20ContractControllerWitness {
+export interface TBC20StandardContractControllerWitness {
   /** Transaction that created the controlling contract UTXO. */
   transaction: tbc.Transaction;
   /** Current transaction vin that spends the controlling contract UTXO. */
   currentInputIndex: number;
 }
 
-export interface TBC20UnlockCommonOptions {
+export interface TBC20StandardUnlockCommonOptions {
   currentTx: tbc.Transaction;
   inputIndex: number;
   preTx: tbc.Transaction;
   preTxVout: number;
   /** Ordered logical groups that must cover every current physical output. */
-  outputGroups: readonly TBC20CurrentOutputGroup[];
-  ancestorTransactions: TBC20TransactionResolver;
-  contractController?: TBC20ContractControllerWitness;
+  outputGroups: readonly TBC20StandardCurrentOutputGroup[];
+  ancestorTransactions: TBC20StandardTransactionResolver;
+  contractController?: TBC20StandardContractControllerWitness;
 }
 
-export interface TBC20UnlockWithSignatureOptions
-  extends TBC20UnlockCommonOptions {
+export interface TBC20StandardUnlockWithSignatureOptions
+  extends TBC20StandardUnlockCommonOptions {
   signature: string | Buffer;
   publicKey: string | Buffer | tbc.PublicKey;
 }
 
-export interface TBC20UnlockWithPrivateKeyOptions
-  extends TBC20UnlockCommonOptions {
+export interface TBC20StandardUnlockWithPrivateKeyOptions
+  extends TBC20StandardUnlockCommonOptions {
   privateKey: tbc.PrivateKey;
 }
 
-const EMPTY_PARTIAL_SCRIPT: TBC20PartialScriptData = Object.freeze({
+const EMPTY_PARTIAL_SCRIPT: TBC20StandardPartialScriptData = Object.freeze({
   suffixData: Buffer.alloc(0),
   partialHash: Buffer.alloc(0),
   size: Buffer.alloc(0),
 });
 
 function fail(message: string): never {
-  throw new Error(`TBC20 unlock: ${message}`);
+  throw new Error(`TBC20Standard unlock: ${message}`);
 }
 
 function assertTransaction(value: unknown, name: string): asserts value is tbc.Transaction {
@@ -202,7 +202,7 @@ function assertSatoshis(value: number, name: string): void {
 }
 
 /** Minimal non-negative ScriptNum encoding used by APC `number` fields. */
-export function encodeTBC20UnsignedLE(value: number | bigint): Buffer {
+export function encodeTbc20StandardUnsignedLe(value: number | bigint): Buffer {
   if (typeof value === "number" && (!Number.isSafeInteger(value) || value < 0)) {
     fail("unsigned integer number must be a non-negative safe integer");
   }
@@ -230,7 +230,7 @@ export function encodeTBC20UnsignedLE(value: number | bigint): Buffer {
   return Buffer.from(bytes);
 }
 
-export function encodeTBC20UInt64LE(value: bigint, name = "amount"): Buffer {
+export function encodeTbc20StandardUint64Le(value: bigint, name = "amount"): Buffer {
   if (typeof value !== "bigint" || value < 0n || value > ((1n << 64n) - 1n)) {
     fail(`${name} must be a uint64 bigint`);
   }
@@ -241,7 +241,7 @@ export function encodeTBC20UInt64LE(value: bigint, name = "amount"): Buffer {
 
 function outputValueBuffer(output: tbc.Transaction.Output, name: string): Buffer {
   assertSatoshis(output.satoshis, `${name}.satoshis`);
-  return encodeTBC20UInt64LE(BigInt(output.satoshis), `${name}.satoshis`);
+  return encodeTbc20StandardUint64Le(BigInt(output.satoshis), `${name}.satoshis`);
 }
 
 function inputRecord(input: any): Buffer {
@@ -313,7 +313,7 @@ function outputHashRecords(
   return Buffer.concat(records);
 }
 
-export function getTBC20PartialScriptData(script: tbc.Script): TBC20PartialScriptData {
+export function getTbc20StandardPartialScriptData(script: tbc.Script): TBC20StandardPartialScriptData {
   if (!(script instanceof tbc.Script)) {
     fail("locking script must be a tbc.Script");
   }
@@ -326,7 +326,7 @@ export function getTBC20PartialScriptData(script: tbc.Script): TBC20PartialScrip
     return {
       suffixData: Buffer.from(lockingScript),
       partialHash: Buffer.alloc(0),
-      size: encodeTBC20UnsignedLE(lockingScript.length),
+      size: encodeTbc20StandardUnsignedLe(lockingScript.length),
     };
   }
   const partialHashHex = partialSha256.calculate_partial_hash(
@@ -339,18 +339,18 @@ export function getTBC20PartialScriptData(script: tbc.Script): TBC20PartialScrip
   return {
     suffixData: Buffer.from(lockingScript.subarray(partialOffset)),
     partialHash,
-    size: encodeTBC20UnsignedLE(lockingScript.length),
+    size: encodeTbc20StandardUnsignedLe(lockingScript.length),
   };
 }
 
-function outputData(output: tbc.Transaction.Output, name: string): TBC20OutputData {
+function outputData(output: tbc.Transaction.Output, name: string): TBC20StandardOutputData {
   return {
     value: outputValueBuffer(output, name),
-    lockingScript: getTBC20PartialScriptData(output.script),
+    lockingScript: getTbc20StandardPartialScriptData(output.script),
   };
 }
 
-function emptyOutputData(): TBC20OutputData {
+function emptyOutputData(): TBC20StandardOutputData {
   return {
     value: Buffer.alloc(0),
     lockingScript: {
@@ -361,7 +361,7 @@ function emptyOutputData(): TBC20OutputData {
   };
 }
 
-function emptyOutputGroupData(): TBC20OutputGroupData {
+function emptyOutputGroupData(): TBC20StandardOutputGroupData {
   return {
     code: emptyOutputData(),
     tape: { value: Buffer.alloc(0), lockingScript: Buffer.alloc(0) },
@@ -372,7 +372,7 @@ function outputGroupData(
   codeOutput: tbc.Transaction.Output,
   tapeOutput: tbc.Transaction.Output | undefined,
   label: string,
-): TBC20OutputGroupData {
+): TBC20StandardOutputGroupData {
   return {
     code: outputData(codeOutput, `${label}.Code`),
     tape: tapeOutput
@@ -384,18 +384,18 @@ function outputGroupData(
   };
 }
 
-export function getTBC20CurrentOutputData(
+export function getTbc20StandardCurrentOutputData(
   tx: tbc.Transaction,
-  outputGroups: readonly TBC20CurrentOutputGroup[],
-): TBC20OutputGroupData[] {
+  outputGroups: readonly TBC20StandardCurrentOutputGroup[],
+): TBC20StandardOutputGroupData[] {
   assertVersion10Transaction(tx, "currentTx");
-  if (tx.outputs.length < 1 || tx.outputs.length > TBC20_MAX_OUTPUTS) {
-    fail(`currentTx must contain 1-${TBC20_MAX_OUTPUTS} outputs`);
+  if (tx.outputs.length < 1 || tx.outputs.length > TBC20_STANDARD_MAX_OUTPUTS) {
+    fail(`currentTx must contain 1-${TBC20_STANDARD_MAX_OUTPUTS} outputs`);
   }
-  if (!Array.isArray(outputGroups) || outputGroups.length < 1 || outputGroups.length > TBC20_MAX_OUTPUT_GROUPS) {
-    fail(`outputGroups must contain 1-${TBC20_MAX_OUTPUT_GROUPS} logical groups`);
+  if (!Array.isArray(outputGroups) || outputGroups.length < 1 || outputGroups.length > TBC20_STANDARD_MAX_OUTPUT_GROUPS) {
+    fail(`outputGroups must contain 1-${TBC20_STANDARD_MAX_OUTPUT_GROUPS} logical groups`);
   }
-  const groups: TBC20OutputGroupData[] = [];
+  const groups: TBC20StandardOutputGroupData[] = [];
   let nextPhysicalVout = 0;
   outputGroups.forEach((group, groupIndex) => {
     if (!group || typeof group !== "object") {
@@ -425,13 +425,13 @@ export function getTBC20CurrentOutputData(
   if (nextPhysicalVout !== tx.outputs.length) {
     fail(`outputGroups cover ${nextPhysicalVout} physical outputs, but currentTx has ${tx.outputs.length}`);
   }
-  while (groups.length < TBC20_MAX_OUTPUT_GROUPS) {
+  while (groups.length < TBC20_STANDARD_MAX_OUTPUT_GROUPS) {
     groups.push(emptyOutputGroupData());
   }
   return groups;
 }
 
-export function getTBC20CurrentInputsData(tx: tbc.Transaction): Buffer {
+export function getTbc20StandardCurrentInputsData(tx: tbc.Transaction): Buffer {
   assertVersion10Transaction(tx, "currentTx");
   if (tx.inputs.length < 1) {
     fail("currentTx must contain at least one input");
@@ -439,26 +439,26 @@ export function getTBC20CurrentInputsData(tx: tbc.Transaction): Buffer {
   return txInputRecords(tx);
 }
 
-export function readTBC20TapeAmounts(script: tbc.Script | string | Buffer): bigint[] {
+export function readTbc20StandardTapeAmounts(script: tbc.Script | string | Buffer): bigint[] {
   let tape: Buffer;
   if (script instanceof tbc.Script) {
     tape = script.toBuffer();
   } else {
     tape = toBuffer(script, "tape script");
   }
-  if (tape.length < TBC20_MIN_TAPE_BYTES || tape.length > TBC20_MAX_TAPE_BYTES) {
-    fail(`tape script must be ${TBC20_MIN_TAPE_BYTES}-${TBC20_MAX_TAPE_BYTES} bytes, got ${tape.length}`);
+  if (tape.length < TBC20_STANDARD_MIN_TAPE_BYTES || tape.length > TBC20_STANDARD_MAX_TAPE_BYTES) {
+    fail(`tape script must be ${TBC20_STANDARD_MIN_TAPE_BYTES}-${TBC20_STANDARD_MAX_TAPE_BYTES} bytes, got ${tape.length}`);
   }
-  if (!tape.subarray(0, TBC20_TAPE_PREFIX.length).equals(TBC20_TAPE_PREFIX)) {
+  if (!tape.subarray(0, TBC20_STANDARD_TAPE_PREFIX.length).equals(TBC20_STANDARD_TAPE_PREFIX)) {
     fail("tape script must start with OP_FALSE OP_RETURN PUSH48 (006a30)");
   }
-  if (!tape.subarray(tape.length - TBC20_TAPE_MARKER.length).equals(TBC20_TAPE_MARKER)) {
+  if (!tape.subarray(tape.length - TBC20_STANDARD_TAPE_MARKER.length).equals(TBC20_STANDARD_TAPE_MARKER)) {
     fail("tape script must end with ASCII TBC20TAPE");
   }
   const amounts: bigint[] = [];
-  for (let index = 0; index < TBC20_AMOUNT_SLOTS; index += 1) {
-    const amount = tape.readBigUInt64LE(TBC20_TAPE_PREFIX.length + index * 8);
-    if (amount > TBC20_MAX_SLOT_AMOUNT) {
+  for (let index = 0; index < TBC20_STANDARD_AMOUNT_SLOTS; index += 1) {
+    const amount = tape.readBigUInt64LE(TBC20_STANDARD_TAPE_PREFIX.length + index * 8);
+    if (amount > TBC20_STANDARD_MAX_SLOT_AMOUNT) {
       fail(`tape amount slot ${index} exceeds the contract-safe signed-63-bit range`);
     }
     amounts.push(amount);
@@ -466,45 +466,45 @@ export function readTBC20TapeAmounts(script: tbc.Script | string | Buffer): bigi
   return amounts;
 }
 
-export function replaceTBC20TapeAmounts(
+export function replaceTbc20StandardTapeAmounts(
   script: tbc.Script | string | Buffer,
   amounts: readonly bigint[],
 ): tbc.Script {
-  if (!Array.isArray(amounts) || amounts.length !== TBC20_AMOUNT_SLOTS) {
-    fail(`amounts must contain exactly ${TBC20_AMOUNT_SLOTS} bigint entries`);
+  if (!Array.isArray(amounts) || amounts.length !== TBC20_STANDARD_AMOUNT_SLOTS) {
+    fail(`amounts must contain exactly ${TBC20_STANDARD_AMOUNT_SLOTS} bigint entries`);
   }
   const source = script instanceof tbc.Script ? script.toBuffer() : toBuffer(script, "tape script");
   // Validate the immutable envelope before copying it.
-  readTBC20TapeAmounts(source);
+  readTbc20StandardTapeAmounts(source);
   const result = Buffer.from(source);
   amounts.forEach((amount, index) => {
-    if (typeof amount !== "bigint" || amount < 0n || amount > TBC20_MAX_SLOT_AMOUNT) {
-      fail(`amounts[${index}] must be a bigint in [0, ${TBC20_MAX_SLOT_AMOUNT}]`);
+    if (typeof amount !== "bigint" || amount < 0n || amount > TBC20_STANDARD_MAX_SLOT_AMOUNT) {
+      fail(`amounts[${index}] must be a bigint in [0, ${TBC20_STANDARD_MAX_SLOT_AMOUNT}]`);
     }
-    result.writeBigUInt64LE(amount, TBC20_TAPE_PREFIX.length + index * 8);
+    result.writeBigUInt64LE(amount, TBC20_STANDARD_TAPE_PREFIX.length + index * 8);
   });
   return tbc.Script.fromBuffer(result);
 }
 
-export function getTBC20PreTxData(tx: tbc.Transaction, codeVout: number): TBC20PreTxData {
+export function getTbc20StandardPreTxData(tx: tbc.Transaction, codeVout: number): TBC20StandardPreTxData {
   assertVersion10Transaction(tx, "preTx");
   assertIndex(codeVout, tx.outputs.length, "preTxVout");
-  if (tx.inputs.length > TBC20_MAX_INPUTS) {
-    fail(`preTx must contain at most ${TBC20_MAX_INPUTS} inputs`);
+  if (tx.inputs.length > TBC20_STANDARD_MAX_INPUTS) {
+    fail(`preTx must contain at most ${TBC20_STANDARD_MAX_INPUTS} inputs`);
   }
   if (codeVout + 1 >= tx.outputs.length) {
-    fail("preTx TBC20 code output must be immediately followed by its tape output");
+    fail("preTx TBC20Standard code output must be immediately followed by its tape output");
   }
-  if (tx.outputs[codeVout].satoshis !== TBC20_CODE_SATOSHIS) {
-    fail(`preTx code output must contain exactly ${TBC20_CODE_SATOSHIS} satoshis`);
+  if (tx.outputs[codeVout].satoshis !== TBC20_STANDARD_CODE_SATOSHIS) {
+    fail(`preTx code output must contain exactly ${TBC20_STANDARD_CODE_SATOSHIS} satoshis`);
   }
-  if (tx.outputs[codeVout + 1].satoshis !== TBC20_TAPE_SATOSHIS) {
+  if (tx.outputs[codeVout + 1].satoshis !== TBC20_STANDARD_TAPE_SATOSHIS) {
     fail("preTx tape output must contain exactly 0 satoshis");
   }
-  readTBC20TapeAmounts(tx.outputs[codeVout + 1].script);
+  readTbc20StandardTapeAmounts(tx.outputs[codeVout + 1].script);
 
   const inputs: Buffer[] = [];
-  for (let index = 0; index < TBC20_MAX_INPUTS; index += 1) {
+  for (let index = 0; index < TBC20_STANDARD_MAX_INPUTS; index += 1) {
     // Every fixed ABI leaf must be either empty or one exact 40-byte record.
     inputs.push(index < tx.inputs.length ? inputRecord(tx.inputs[index]) : Buffer.alloc(0));
   }
@@ -522,7 +522,7 @@ export function getTBC20PreTxData(tx: tbc.Transaction, codeVout: number): TBC20P
   };
 }
 
-function getTBC20PrePreTxData(tx: tbc.Transaction, verifiedVout: number): TBC20PrePreTxData {
+function getTbc20StandardPrePreTxData(tx: tbc.Transaction, verifiedVout: number): TBC20StandardPrePreTxData {
   assertVersion10Transaction(tx, "prepreTx");
   assertIndex(verifiedVout, tx.outputs.length, "prepreTx vout");
   const verifiedOutput = tx.outputs[verifiedVout];
@@ -538,7 +538,7 @@ function getTBC20PrePreTxData(tx: tbc.Transaction, verifiedVout: number): TBC20P
   };
 }
 
-function emptyPrePreTxData(): TBC20PrePreTxData {
+function emptyPrePreTxData(): TBC20StandardPrePreTxData {
   return {
     vlio: Buffer.alloc(0),
     txInputsHashData: Buffer.alloc(0),
@@ -549,7 +549,7 @@ function emptyPrePreTxData(): TBC20PrePreTxData {
 }
 
 function resolverLookup(
-  resolver: TBC20TransactionResolver,
+  resolver: TBC20StandardTransactionResolver,
   txid: string,
 ): tbc.Transaction | undefined {
   const normalized = txid.toLowerCase();
@@ -565,18 +565,18 @@ function resolverLookup(
   fail("ancestorTransactions must be a transaction array, Map, or resolver function");
 }
 
-export function getTBC20PrePreTxArray(
+export function getTbc20StandardPrePreTxArray(
   preTx: tbc.Transaction,
   codeVout: number,
-  resolver: TBC20TransactionResolver,
-): TBC20PrePreTxData[] {
-  const preData = getTBC20PreTxData(preTx, codeVout);
-  const amounts = readTBC20TapeAmounts(preData.outputsGotData.tape.lockingScript);
-  const result = Array.from({ length: TBC20_MAX_INPUTS }, () => emptyPrePreTxData());
+  resolver: TBC20StandardTransactionResolver,
+): TBC20StandardPrePreTxData[] {
+  const preData = getTbc20StandardPreTxData(preTx, codeVout);
+  const amounts = readTbc20StandardTapeAmounts(preData.outputsGotData.tape.lockingScript);
+  const result = Array.from({ length: TBC20_STANDARD_MAX_INPUTS }, () => emptyPrePreTxData());
 
   // The contract scans amount slots 5..0 and writes them into prepreTX[0..5].
   // Therefore parent vin k is authenticated by prepreTX[5-k].
-  for (let parentInputIndex = 0; parentInputIndex < TBC20_MAX_INPUTS; parentInputIndex += 1) {
+  for (let parentInputIndex = 0; parentInputIndex < TBC20_STANDARD_MAX_INPUTS; parentInputIndex += 1) {
     if (amounts[parentInputIndex] === 0n) {
       continue;
     }
@@ -594,7 +594,7 @@ export function getTBC20PrePreTxArray(
       fail(`ancestor transaction hash does not match preTx input ${parentInputIndex}`);
     }
     assertIndex(parentInput.outputIndex, ancestor.outputs.length, `preTx.inputs[${parentInputIndex}].outputIndex`);
-    result[TBC20_MAX_INPUTS - 1 - parentInputIndex] = getTBC20PrePreTxData(
+    result[TBC20_STANDARD_MAX_INPUTS - 1 - parentInputIndex] = getTbc20StandardPrePreTxData(
       ancestor,
       parentInput.outputIndex,
     );
@@ -602,10 +602,10 @@ export function getTBC20PrePreTxArray(
   return result;
 }
 
-export function getTBC20ContractTxData(
+export function getTbc20StandardContractTxData(
   tx: tbc.Transaction,
   contractVout: number,
-): TBC20ContractTxData {
+): TBC20StandardContractTxData {
   assertVersion10Transaction(tx, "contractTx");
   assertIndex(contractVout, tx.outputs.length, "contractTx vout");
   const middle = tx.outputs[contractVout];
@@ -627,7 +627,7 @@ export function getTBC20ContractTxData(
   };
 }
 
-function emptyContractTxData(): TBC20ContractTxData {
+function emptyContractTxData(): TBC20StandardContractTxData {
   return {
     vlio: Buffer.alloc(0),
     txInputsHashData: Buffer.alloc(0),
@@ -638,11 +638,11 @@ function emptyContractTxData(): TBC20ContractTxData {
 }
 
 /** Return the terminal 21-byte controller: hash160 || controlOption. */
-export function getTBC20Controller(codeScript: tbc.Script | string | Buffer): Buffer {
+export function getTbc20StandardController(codeScript: tbc.Script | string | Buffer): Buffer {
   const code = codeScript instanceof tbc.Script ? codeScript.toBuffer() : toBuffer(codeScript, "code script");
   const terminalMarker = Buffer.concat([
-    Buffer.from([TBC20_CODE_MARKER.length]),
-    TBC20_CODE_MARKER,
+    Buffer.from([TBC20_STANDARD_CODE_MARKER.length]),
+    TBC20_STANDARD_CODE_MARKER,
   ]);
   const terminalSuffixBytes = 1 + 21 + terminalMarker.length;
   if (code.length < terminalSuffixBytes ||
@@ -656,11 +656,11 @@ export function getTBC20Controller(codeScript: tbc.Script | string | Buffer): Bu
   return Buffer.from(code.subarray(controllerPushOffset + 1, controllerPushOffset + 22));
 }
 
-export function getTBC20CodeIdentity(codeScript: tbc.Script | string | Buffer): Buffer {
+export function getTbc20StandardCodeIdentity(codeScript: tbc.Script | string | Buffer): Buffer {
   const script = codeScript instanceof tbc.Script
     ? codeScript
     : tbc.Script.fromBuffer(toBuffer(codeScript, "code script"));
-  const partial = getTBC20PartialScriptData(script);
+  const partial = getTbc20StandardPartialScriptData(script);
   return Buffer.concat([partial.partialHash, partial.size]);
 }
 
@@ -694,13 +694,13 @@ function assertCurrentInputLinksPreTx(
 function resolveContractWitness(
   currentTx: tbc.Transaction,
   controller: Buffer,
-  witness: TBC20ContractControllerWitness | undefined,
-): { data: TBC20ContractTxData; currentInputIndex: number } {
+  witness: TBC20StandardContractControllerWitness | undefined,
+): { data: TBC20StandardContractTxData; currentInputIndex: number } {
   const controllerHash = controller.subarray(0, 20);
   const controlOption = controller[20];
   if (controlOption === 0) {
     if (witness) {
-      fail("contractController must be omitted for address-controlled TBC20 inputs");
+      fail("contractController must be omitted for address-controlled TBC20Standard inputs");
     }
     return { data: emptyContractTxData(), currentInputIndex: 0 };
   }
@@ -708,7 +708,7 @@ function resolveContractWitness(
     fail("controller option 80 is non-canonical ScriptNum negative zero");
   }
   if (!witness) {
-    fail("contract-controlled TBC20 input requires contractController witness data");
+    fail("contract-controlled TBC20Standard input requires contractController witness data");
   }
   assertTransaction(witness.transaction, "contractController.transaction");
   assertIndex(witness.currentInputIndex, currentTx.inputs.length, "contractController.currentInputIndex");
@@ -731,7 +731,7 @@ function resolveContractWitness(
     fail("contract controller hash160 does not match the controlling output script");
   }
   return {
-    data: getTBC20ContractTxData(witness.transaction, currentInput.outputIndex),
+    data: getTbc20StandardContractTxData(witness.transaction, currentInput.outputIndex),
     currentInputIndex: witness.currentInputIndex,
   };
 }
@@ -763,24 +763,24 @@ function addScriptNumber(script: tbc.Script, value: number, name: string): void 
   if (value <= 16) {
     addSmallScriptNumber(script, value, name);
   } else {
-    addBuffer(script, encodeTBC20UnsignedLE(value));
+    addBuffer(script, encodeTbc20StandardUnsignedLe(value));
   }
 }
 
-function addOutputData(script: tbc.Script, output: TBC20OutputData): void {
+function addOutputData(script: tbc.Script, output: TBC20StandardOutputData): void {
   addBuffer(script, output.value);
   addBuffer(script, output.lockingScript.suffixData);
   addBuffer(script, output.lockingScript.partialHash);
   addBuffer(script, output.lockingScript.size);
 }
 
-function addOutputGroupData(script: tbc.Script, output: TBC20OutputGroupData): void {
+function addOutputGroupData(script: tbc.Script, output: TBC20StandardOutputGroupData): void {
   addOutputData(script, output.code);
   addBuffer(script, output.tape.value);
   addBuffer(script, output.tape.lockingScript);
 }
 
-function addPrePreTxData(script: tbc.Script, tx: TBC20PrePreTxData): void {
+function addPrePreTxData(script: tbc.Script, tx: TBC20StandardPrePreTxData): void {
   addBuffer(script, tx.vlio);
   addBuffer(script, tx.txInputsHashData);
   addBuffer(script, tx.outputsFirstPart);
@@ -788,7 +788,7 @@ function addPrePreTxData(script: tbc.Script, tx: TBC20PrePreTxData): void {
   addBuffer(script, tx.outputsLastPart);
 }
 
-function addContractTxData(script: tbc.Script, tx: TBC20ContractTxData): void {
+function addContractTxData(script: tbc.Script, tx: TBC20StandardContractTxData): void {
   addBuffer(script, tx.vlio);
   addBuffer(script, tx.txInputsHashData);
   addBuffer(script, tx.outputsFirstPart);
@@ -797,7 +797,7 @@ function addContractTxData(script: tbc.Script, tx: TBC20ContractTxData): void {
   addBuffer(script, tx.outputsLastPart);
 }
 
-function addPreTxData(script: tbc.Script, tx: TBC20PreTxData): void {
+function addPreTxData(script: tbc.Script, tx: TBC20StandardPreTxData): void {
   addBuffer(script, tx.vlio);
   tx.inputs.forEach((input) => addBuffer(script, input));
   addBuffer(script, tx.unlockingScriptHash);
@@ -806,8 +806,8 @@ function addPreTxData(script: tbc.Script, tx: TBC20PreTxData): void {
   addBuffer(script, tx.outputsLastPart);
 }
 
-export function buildTBC20UnlockScriptWithSignature(
-  options: TBC20UnlockWithSignatureOptions,
+export function buildTbc20StandardUnlockScriptWithSignature(
+  options: TBC20StandardUnlockWithSignatureOptions,
 ): tbc.Script {
   if (!options || typeof options !== "object") {
     fail("options are required");
@@ -818,15 +818,15 @@ export function buildTBC20UnlockScriptWithSignature(
   if (currentTx.inputs.length < 1) {
     fail("currentTx must contain at least one input");
   }
-  if (options.inputIndex >= TBC20_AMOUNT_SLOTS) {
-    fail(`a TBC20 input must be in current vin 0-${TBC20_AMOUNT_SLOTS - 1}`);
+  if (options.inputIndex >= TBC20_STANDARD_AMOUNT_SLOTS) {
+    fail(`a TBC20Standard input must be in current vin 0-${TBC20_STANDARD_AMOUNT_SLOTS - 1}`);
   }
   assertCurrentInputLinksPreTx(currentTx, inputIndex, preTx, preTxVout);
 
   const signature = toSignatureBuffer(options.signature);
   const publicKey = toPublicKeyBuffer(options.publicKey);
-  const preTxData = getTBC20PreTxData(preTx, preTxVout);
-  const controller = getTBC20Controller(preTx.outputs[preTxVout].script);
+  const preTxData = getTbc20StandardPreTxData(preTx, preTxVout);
+  const controller = getTbc20StandardController(preTx.outputs[preTxVout].script);
   if (controller[20] === 0) {
     const expectedHash = controller.subarray(0, 20);
     if (!tbc.crypto.Hash.sha256ripemd160(publicKey).equals(expectedHash)) {
@@ -834,9 +834,9 @@ export function buildTBC20UnlockScriptWithSignature(
     }
   }
   const contract = resolveContractWitness(currentTx, controller, options.contractController);
-  const currentOutputs = getTBC20CurrentOutputData(currentTx, options.outputGroups);
-  const currentInputs = getTBC20CurrentInputsData(currentTx);
-  const ancestors = getTBC20PrePreTxArray(
+  const currentOutputs = getTbc20StandardCurrentOutputData(currentTx, options.outputGroups);
+  const currentInputs = getTbc20StandardCurrentInputsData(currentTx);
+  const ancestors = getTbc20StandardPrePreTxArray(
     preTx,
     preTxVout,
     options.ancestorTransactions,
@@ -865,8 +865,8 @@ export function buildTBC20UnlockScriptWithSignature(
   return unlockingScript;
 }
 
-export function buildTBC20UnlockScript(
-  options: TBC20UnlockWithPrivateKeyOptions,
+export function buildTbc20StandardUnlockScript(
+  options: TBC20StandardUnlockWithPrivateKeyOptions,
 ): tbc.Script {
   if (!options || !(options.privateKey instanceof tbc.PrivateKey)) {
     fail("privateKey must be a tbc.PrivateKey");
@@ -875,7 +875,7 @@ export function buildTBC20UnlockScript(
   if (typeof signature !== "string") {
     fail("privateKey did not produce exactly one transaction signature");
   }
-  return buildTBC20UnlockScriptWithSignature({
+  return buildTbc20StandardUnlockScriptWithSignature({
     currentTx: options.currentTx,
     inputIndex: options.inputIndex,
     preTx: options.preTx,

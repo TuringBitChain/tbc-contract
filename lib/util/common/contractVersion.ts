@@ -1,14 +1,14 @@
 import * as tbc from 'tbc-lib-js';
-import { TBC20 } from '../../contract/tbc20';
+import { TBC20Standard } from '../../contract/tbc20-standard';
 // These legacy modules use module.exports rather than TypeScript exports.
 const NFT = require('../../contract/nft');
 const PoolNFT = require('../../contract/poolNFT');
 const PoolNFT2 = require('../../contract/poolNFT2.0');
 import { decodePublishedFTCode } from '../../validator/ft-artifacts';
-import { CoinTBC20 } from '../coin/coinTbc20Code';
+import { TBC20StablecoinCodec } from '../tbc20-stablecoin/tbc20-stablecoin-codec';
 import { parsePoolCode } from '../poolnft3/artifacts';
 import { resolveSwapFeePolicy } from '../poolnft3/fees';
-import { parseTBC721Code } from '../tbc721/tbc721unlock';
+import { parseTbc721StandardCode } from '../tbc721-standard/tbc721-standard-unlock';
 import { getOpCode } from './util';
 
 /** The locking script of a Code output, never a txid, raw transaction, Hold or Tape. */
@@ -22,15 +22,15 @@ export type PoolVersionInfo = CodeSize & (
 );
 export type FTVersionInfo = CodeSize & (
   | { readonly family: 'ft'; readonly version: 'legacy'; readonly sdk: 'FT'; readonly legacyVersion: 1 | 2 | 3 | 4 }
-  | { readonly family: 'ft'; readonly version: 'tbc20'; readonly sdk: 'TBC20' }
+  | { readonly family: 'ft'; readonly version: 'tbc20-standard'; readonly sdk: 'TBC20Standard' }
 );
 export type StableCoinVersionInfo = CodeSize & (
   | { readonly family: 'stablecoin'; readonly version: 'legacy'; readonly sdk: 'stableCoin'; readonly legacyVersion: 1 | 2 | 3 | 4 }
-  | { readonly family: 'stablecoin'; readonly version: 'tbc20'; readonly sdk: 'Coin' }
+  | { readonly family: 'stablecoin'; readonly version: 'tbc20-stablecoin'; readonly sdk: 'TBC20Stablecoin' }
 );
 export type NFTVersionInfo = CodeSize & (
   | { readonly family: 'nft'; readonly version: 'legacy'; readonly sdk: 'NFT'; readonly legacyVersion: 0 | 1 | 2 }
-  | { readonly family: 'nft'; readonly version: 'tbc721'; readonly sdk: 'TBC721' }
+  | { readonly family: 'nft'; readonly version: 'tbc721-standard'; readonly sdk: 'TBC721Standard' }
 );
 export type ContractVersionInfo = PoolVersionInfo | FTVersionInfo | StableCoinVersionInfo | NFTVersionInfo;
 
@@ -179,8 +179,8 @@ function ftVersion(script: tbc.Script): FTVersionInfo | null {
   const legacy = decodePublishedFTCode(script.toHex());
   if (legacy && !legacy.coin) return Object.freeze({ family: 'ft', version: 'legacy', sdk: 'FT', legacyVersion: legacy.version, codeBytes });
   try {
-    TBC20.validateCode(script);
-    return Object.freeze({ family: 'ft', version: 'tbc20', sdk: 'TBC20', codeBytes });
+    TBC20Standard.validateCode(script);
+    return Object.freeze({ family: 'ft', version: 'tbc20-standard', sdk: 'TBC20Standard', codeBytes });
   } catch { return null; }
 }
 
@@ -189,16 +189,16 @@ function stableCoinVersion(script: tbc.Script): StableCoinVersionInfo | null {
   const legacy = decodePublishedFTCode(script.toHex());
   if (legacy?.coin) return Object.freeze({ family: 'stablecoin', version: 'legacy', sdk: 'stableCoin', legacyVersion: legacy.version, codeBytes });
   try {
-    CoinTBC20.parseCode(script);
-    return Object.freeze({ family: 'stablecoin', version: 'tbc20', sdk: 'Coin', codeBytes });
+    TBC20StablecoinCodec.parseCode(script);
+    return Object.freeze({ family: 'stablecoin', version: 'tbc20-stablecoin', sdk: 'TBC20Stablecoin', codeBytes });
   } catch { return null; }
 }
 
 function nftVersion(script: tbc.Script): NFTVersionInfo | null {
   const codeBytes = script.toBuffer().length;
   try {
-    parseTBC721Code(script);
-    return Object.freeze({ family: 'nft', version: 'tbc721', sdk: 'TBC721', codeBytes });
+    parseTbc721StandardCode(script);
+    return Object.freeze({ family: 'nft', version: 'tbc721-standard', sdk: 'TBC721Standard', codeBytes });
   } catch { /* Compare the complete legacy Code before recommending NFT. */ }
   for (const entry of nftPatterns()) {
     if (matches(script, entry.template)) return Object.freeze({ family: 'nft', version: 'legacy', sdk: 'NFT', legacyVersion: entry.version, codeBytes });
@@ -218,13 +218,13 @@ export function detectPoolVersion(codeScript: ContractCodeScript): PoolVersionIn
   return script ? poolVersion(script) : null;
 }
 
-/** Ordinary FT only; stablecoins and LP tokens are not routed to FT/TBC20. */
+/** Ordinary FT only; stablecoins and LP tokens are not routed to FT/TBC20Standard. */
 export function detectFTVersion(codeScript: ContractCodeScript): FTVersionInfo | null {
   const script = readCode(codeScript);
   return script ? ftVersion(script) : null;
 }
 
-/** Coin TBC20 routes to the Coin business SDK, not the CoinTBC20 codec. */
+/** TBC20 Stablecoin routes to the TBC20Stablecoin business SDK, not the TBC20StablecoinCodec codec. */
 export function detectStableCoinVersion(codeScript: ContractCodeScript): StableCoinVersionInfo | null {
   const script = readCode(codeScript);
   return script ? stableCoinVersion(script) : null;

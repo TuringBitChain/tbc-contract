@@ -1,12 +1,12 @@
 # TokenValidator 调用文档
 
-`TokenValidator` 是协议中立的已上链 Token 输出校验入口。调用方不需要预先判断交易使用 TBC20 还是旧版 FT；校验器会扫描整笔交易并自动识别协议与版本。
+`TokenValidator` 是协议中立的已上链 Token 输出校验入口。调用方不需要预先判断交易使用 TBC20 Standard 还是旧版 FT；校验器会扫描整笔交易并自动识别协议与版本。
 
 ## 1. 支持范围
 
 当前支持：
 
-- TBC20 v1；
+- TBC20 Standard v1；
 - 普通 FT v1；
 - 普通 FT v2；
 - 普通 FT v3；
@@ -16,7 +16,7 @@
 
 ```ts
 type TokenProtocolDescriptor =
-  | Readonly<{ family: "TBC20"; version: 1 }>
+  | Readonly<{ family: "TBC20Standard"; version: 1 }>
   | Readonly<{ family: "FT"; version: 1 | 2 | 3 | 4 }>;
 ```
 
@@ -67,7 +67,7 @@ const report = await TokenValidator.validateOnChainTransaction({
 校验器会自动完成：
 
 1. 扫描当前交易全部物理输出；
-2. 识别 TBC20 或普通 FT 的 Code/Tape 与版本；
+2. 识别 TBC20 Standard 或普通 FT 的 Code/Tape 与版本；
 3. 拒绝 Token 输出及实际选中来源中的协议或 FT 版本混合；
 4. 建立六槽金额矩阵，并对每个正金额来源 vin 检查金额守恒；
 5. 检查输出 identity 是否存在对应输入来源；
@@ -109,7 +109,7 @@ console.log(report.protocol);
 ```js
 function findTokenOutputGroup(report, targetVout) {
   return report.outputGroups.find((group) =>
-    (group.kind === "TBC20" || group.kind === "FT") &&
+    (group.kind === "TBC20Standard" || group.kind === "FT") &&
     (group.codeVout === targetVout || group.tapeVout === targetVout)
   );
 }
@@ -153,8 +153,8 @@ inspectTokenVout("创建Token输出的交易txid", 2, "mainnet")
 ```js
 if (report.status === "VALID") {
   switch (report.protocol.family) {
-    case "TBC20":
-      console.log("TBC20 v1");
+    case "TBC20Standard":
+      console.log("TBC20 Standard v1");
       break;
 
     case "FT":
@@ -399,7 +399,7 @@ async function validateTokenOutput({
   }
 
   const output = report.outputGroups.find((group) =>
-    (group.kind === "TBC20" || group.kind === "FT") &&
+    (group.kind === "TBC20Standard" || group.kind === "FT") &&
     (group.codeVout === vout || group.tapeVout === vout)
   );
 

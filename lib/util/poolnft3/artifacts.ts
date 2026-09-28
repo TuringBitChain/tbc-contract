@@ -8,7 +8,7 @@ import {
 } from './authorization';
 import type { PoolAuthorization } from './authorization';
 
-export type Pool3ArtifactName = 'pool' | 'pool_hash_lock' | 'ftlp_tbc20' | 'ftlp_tbc20_locktime';
+export type Pool3ArtifactName = 'pool' | 'pool_hash_lock' | 'tbc20-lp' | 'tbc20-lp-locktime';
 export interface Pool3Artifact {
   readonly metadata: {
     readonly compiler_name: string;
@@ -69,7 +69,7 @@ export const POOL3_ARTIFACT_MANIFEST = Object.freeze({
       codeBytes: 5314,
       activeAbiFields: Object.freeze([68, 78, 58, 70]),
     }),
-    ftlp_tbc20: Object.freeze({
+    'tbc20-lp': Object.freeze({
       sourceSha256: '578b40b052dddddf500e1a4db03cd8c45f5160568900d6e3e4242445940ddd7b',
       sourceArtifactSha256: '11aaa0a25012b77e2a36d07455997ecf706689f4bb351e81789494ad12da7ef0',
       artifactSha256: '58b4a58251d365261be9411df711c5f54c7cc758316593fc1c614f418b37f75d',
@@ -80,7 +80,7 @@ export const POOL3_ARTIFACT_MANIFEST = Object.freeze({
       partialOffset: 2624,
       activeAbiFields: Object.freeze([123]),
     }),
-    ftlp_tbc20_locktime: Object.freeze({
+    'tbc20-lp-locktime': Object.freeze({
       sourceSha256: 'ba0a56d68b1c76b8d8db3f8a174cdf8b42a2e15291a01379ed529c49f2a9ed01',
       sourceArtifactSha256: 'ee9ecb880916ff60004a36ab37a412baa5d0e97e78a7a182d00f44d0bf204795',
       artifactSha256: 'd908137b0354f87409ce36a8792f4d74745c6e0f21b673b85e62f304cfd970ec',
@@ -97,8 +97,8 @@ export const POOL3_ARTIFACT_MANIFEST = Object.freeze({
 const ARTIFACTS: Readonly<Record<Pool3ArtifactName, Pool3Artifact>> = Object.freeze({
   pool: require('./artifacts/pool.json') as Pool3Artifact,
   pool_hash_lock: require('./artifacts/pool_hash_lock.json') as Pool3Artifact,
-  ftlp_tbc20: require('./artifacts/ftlp_tbc20.json') as Pool3Artifact,
-  ftlp_tbc20_locktime: require('./artifacts/ftlp_tbc20_locktime.json') as Pool3Artifact,
+  'tbc20-lp': require('./artifacts/tbc20-lp.json') as Pool3Artifact,
+  'tbc20-lp-locktime': require('./artifacts/tbc20-lp-locktime.json') as Pool3Artifact,
 });
 const sha256 = (data: Buffer | string): Buffer => createHash('sha256').update(data).digest();
 const verifiedArtifacts = new Set<Pool3ArtifactName>();

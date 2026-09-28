@@ -13,7 +13,7 @@ import {
 import { OrderBookToken as FT, OrderBookTokenProof, tokenKind, isTokenProof,
   getFTPartialOffset, getFTVersion, isCoinCodeScript, fetchTokenProof, modernCodeOffsets,
 } from "../util/orderbook/token";
-import { CoinTBC20 } from "../util/coin/coinTbc20Code";
+import { TBC20StablecoinCodec } from "../util/tbc20-stablecoin/tbc20-stablecoin-codec";
 const API = require("../api/api");
 const stableCoin = require("./stableCoin");
 const partial_sha256 = require("tbc-lib-js/lib/util/partial-sha256");
@@ -65,8 +65,8 @@ const getCoinInputLockTime = (context: CoinInputLockContext): number => {
       `Missing StableCoin Tape output for input ${context.inputIndex}`,
     );
   }
-  return tokenKind(context.preTX.outputs[context.preTxVout].script.toHex()) === "coinTbc20"
-    ? CoinTBC20.parseTape(tapeOutput.script).lockTime
+  return tokenKind(context.preTX.outputs[context.preTxVout].script.toHex()) === "tbc20-stablecoin"
+    ? TBC20StablecoinCodec.parseTape(tapeOutput.script).lockTime
     : stableCoin.getLockTimeFromTape(tapeOutput.script);
 };
 
@@ -77,7 +77,7 @@ const applyCoinInputLockTimes = (
   const hasModernInput = contexts.some(context =>
     tokenKind(context.preTX.outputs[context.preTxVout].script.toHex()) !== "legacy");
   if (hasModernInput && tx.inputs.length > 6)
-    throw new Error("OrderBook: TBC20 transactions must have at most six inputs to remain spendable");
+    throw new Error("OrderBook: TBC20Standard transactions must have at most six inputs to remain spendable");
   let hasCoinInput = false;
   let lockTimeMax = tx.nLockTime;
   for (const context of contexts) {
