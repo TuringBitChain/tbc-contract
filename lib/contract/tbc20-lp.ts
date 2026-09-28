@@ -1,5 +1,5 @@
 import * as tbc from 'tbc-lib-js';
-import { getPool3Artifact } from '../util/poolnft3/artifacts';
+import { getTbcAmmArtifact } from '../util/tbc-amm/artifacts';
 import { getTbc20StandardPartialScriptData, TBC20_STANDARD_MAX_SLOT_AMOUNT } from '../util/tbc20-standard/tbc20-standard-unlock';
 
 export type TBC20LPScriptLike = tbc.Script | Buffer | string;
@@ -35,8 +35,8 @@ export interface TBC20LPTapeDescriptor {
 
 // Full JSON, ABI and template hashes are checked before either artifact is used.
 const ARTIFACTS = [
-  getPool3Artifact('tbc20-lp'),
-  getPool3Artifact('tbc20-lp-locktime'),
+  getTbcAmmArtifact('tbc20-lp'),
+  getTbcAmmArtifact('tbc20-lp-locktime'),
 ] as const;
 const PLACEHOLDER = /(<self\.(?:PoolCodeHash32|ConstTapeSize1|Controller21)>)/;
 const CODE_MARKER = Buffer.from('LPTBC20CODE2', 'ascii');
@@ -102,7 +102,7 @@ function template(timelocked: boolean): string {
   return artifact.lock.hex;
 }
 
-/** Strict codecs for the two PoolNFT 3.0 LP templates; no network or broadcasts. */
+/** Strict codecs for the two TBC AMM LP templates; no network or broadcasts. */
 export class TBC20LP {
   static readonly codeSatoshis = 500;
   static readonly maxSlotAmount = TBC20_STANDARD_MAX_SLOT_AMOUNT;

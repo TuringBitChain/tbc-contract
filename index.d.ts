@@ -8,7 +8,7 @@ type CodeSize = { readonly codeBytes: number };
 export type PoolVersionInfo = CodeSize & (
   | { readonly family: 'pool'; readonly version: 1; readonly sdk: 'poolNFT' }
   | { readonly family: 'pool'; readonly version: 2; readonly sdk: 'poolNFT2' }
-  | { readonly family: 'pool'; readonly version: 3; readonly sdk: 'PoolNFT3' }
+  | { readonly family: 'pool'; readonly version: 3; readonly sdk: 'TBCAMM' }
 );
 export type FTVersionInfo = CodeSize & (
   | { readonly family: 'ft'; readonly version: 'legacy'; readonly sdk: 'FT'; readonly legacyVersion: 1 | 2 | 3 | 4 }
@@ -31,56 +31,55 @@ export function detectStableCoinVersion(codeScript: ContractCodeScript): StableC
 export function detectNFTVersion(codeScript: ContractCodeScript): NFTVersionInfo | null;
 
 
-// PoolNFT 3.0: offline construction, signing and validation. TBC amounts use
+// TBC AMM: offline construction, signing and validation. TBC amounts use
 // integer satoshis; FT and LP amounts use raw minimum units. Nothing broadcasts.
 
 /** Immutable configuration; each operation consumes an explicit Pool snapshot. */
-export class PoolNFT3 {
-  constructor(options: PoolNFT3Config);
+export class TBCAMM {
+  constructor(options: TBCAMMConfig);
   readonly tapeSize: number;
-  static fromPool(poolTx: Transaction, ftGenesisTx: Transaction): PoolNFT3;
-  readPoolState(poolTx: Transaction): Pool3State;
+  static fromPool(poolTx: Transaction, ftGenesisTx: Transaction): TBCAMM;
+  readPoolState(poolTx: Transaction): TBCAMMState;
   quoteAddLP(
     poolTx: Transaction,
     incrementSat: bigint,
     firstFtAmountRaw?: bigint,
-  ): AddLPQuote & Pick<Pool3State, "outpoint" | "snapshotHash">;
+  ): AddLPQuote & Pick<TBCAMMState, "outpoint" | "snapshotHash">;
   quoteAddLP(
     poolTx: Transaction,
-    amount: Pool3AddLPAmount,
-  ): AddLPQuote & Pick<Pool3State, "outpoint" | "snapshotHash">;
+    amount: TBCAMMAddLPAmount,
+  ): AddLPQuote & Pick<TBCAMMState, "outpoint" | "snapshotHash">;
   quoteRemoveLP(
     poolTx: Transaction,
     burnRaw: bigint,
-  ): RemoveLPQuote & Pick<Pool3State, "outpoint" | "snapshotHash">;
+  ): RemoveLPQuote & Pick<TBCAMMState, "outpoint" | "snapshotHash">;
   quoteSwapFT(
     poolTx: Transaction,
     inputTbcSat: bigint,
     minFtOutRaw?: bigint,
-  ): SwapFTQuote & Pick<Pool3State, "outpoint" | "snapshotHash">;
+  ): SwapFTQuote & Pick<TBCAMMState, "outpoint" | "snapshotHash">;
   quoteSwapTBC(
     poolTx: Transaction,
     inputFtRaw: bigint,
     minTbcOutSat?: bigint,
-  ): SwapTBCQuote & Pick<Pool3State, "outpoint" | "snapshotHash">;
-  /** Uses an already selected mint root; unlike mintPoolNFT, creates no Source. */
-  prepareMintPoolNFT(options: Pool3MintOptions): PreparedPool3Operation;
-  mintPoolNFT(options: Pool3MintOptions): Promise<Pool3MintResult>;
-  prepareAddLP(options: Pool3AddLPOptions): PreparedPool3Operation;
-  addLP(options: Pool3AddLPOptions): Promise<Pool3BuildResult>;
-  prepareRemoveLP(options: Pool3RemoveLPOptions): PreparedPool3Operation;
-  removeLP(options: Pool3RemoveLPOptions): Promise<Pool3BuildResult>;
-  prepareSwapFT(options: Pool3SwapFTOptions): PreparedPool3Operation;
-  swapFT(options: Pool3SwapFTOptions): Promise<Pool3BuildResult>;
-  prepareSwapTBC(options: Pool3SwapTBCOptions): PreparedPool3Operation;
-  swapTBC(options: Pool3SwapTBCOptions): Promise<Pool3BuildResult>;
-  prepareTransferLP(options: Pool3TransferLPOptions): PreparedPool3Operation;
-  transferLP(options: Pool3TransferLPOptions): Promise<Pool3BuildResult>;
-  prepareUnlockLP(options: Pool3UnlockLPOptions): PreparedPool3Operation;
-  unlockLP(options: Pool3UnlockLPOptions): Promise<Pool3BuildResult>;
+  ): SwapTBCQuote & Pick<TBCAMMState, "outpoint" | "snapshotHash">;
+  /** Uses an already selected mint root; unlike mintTbcAmm, creates no Source. */
+  prepareMintTbcAmm(options: TBCAMMMintOptions): PreparedTBCAMMOperation;
+  mintTbcAmm(options: TBCAMMMintOptions): Promise<TBCAMMMintResult>;
+  prepareAddLP(options: TBCAMMAddLPOptions): PreparedTBCAMMOperation;
+  addLP(options: TBCAMMAddLPOptions): Promise<TBCAMMBuildResult>;
+  prepareRemoveLP(options: TBCAMMRemoveLPOptions): PreparedTBCAMMOperation;
+  removeLP(options: TBCAMMRemoveLPOptions): Promise<TBCAMMBuildResult>;
+  prepareSwapFT(options: TBCAMMSwapFTOptions): PreparedTBCAMMOperation;
+  swapFT(options: TBCAMMSwapFTOptions): Promise<TBCAMMBuildResult>;
+  prepareSwapTBC(options: TBCAMMSwapTBCOptions): PreparedTBCAMMOperation;
+  swapTBC(options: TBCAMMSwapTBCOptions): Promise<TBCAMMBuildResult>;
+  prepareTransferLP(options: TBCAMMTransferLPOptions): PreparedTBCAMMOperation;
+  transferLP(options: TBCAMMTransferLPOptions): Promise<TBCAMMBuildResult>;
+  prepareUnlockLP(options: TBCAMMUnlockLPOptions): PreparedTBCAMMOperation;
+  unlockLP(options: TBCAMMUnlockLPOptions): Promise<TBCAMMBuildResult>;
 }
 
-export { PoolNFT3 as poolNFT3 };
 
 export type PoolAuthorization =
   | { readonly kind: "public" }
@@ -89,7 +88,7 @@ export type PoolAuthorization =
       readonly controllerPubKeyHashes: readonly string[];
     };
 
-export interface PoolNFT3Config {
+export interface TBCAMMConfig {
   /** Canonical TBC20 Standard genesis transaction with Code/Tape at vout 0/1. */
   ftGenesisTx: Transaction;
   authorization?: PoolAuthorization;
@@ -100,26 +99,26 @@ export interface PoolNFT3Config {
 
 // Signing and input references.
 
-export type Pool3TransactionResolver =
+export type TBCAMMTransactionResolver =
   | ReadonlyMap<string, Transaction>
   | readonly Transaction[]
   | ((txid: string) => Transaction | undefined);
 
-export type Pool3SignerRole =
+export type TBCAMMSignerRole =
   | "funding"
   | "pool-controller"
   | "pool-ft"
   | "user-ft"
   | "lp-owner";
 
-export interface Pool3InputReference {
+export interface TBCAMMInputReference {
   parentTx: Transaction;
   outputIndex: number;
 }
 
-export interface Pool3SigningRequest {
+export interface TBCAMMSigningRequest {
   inputIndex: number;
-  role: Pool3SignerRole;
+  role: TBCAMMSignerRole;
   outpoint: { txId: string; outputIndex: number };
   amountSat: bigint;
   lockingScriptHex: string;
@@ -130,77 +129,77 @@ export interface Pool3SigningRequest {
   transaction: Transaction;
 }
 
-export interface Pool3SigningIdentity {
+export interface TBCAMMSigningIdentity {
   publicKey: string | Buffer;
   /** Called once per input, after amounts, outputs and miner fee are fixed. */
   sign?: (
-    request: Pool3SigningRequest,
+    request: TBCAMMSigningRequest,
   ) => Buffer | string | Promise<Buffer | string>;
 }
 
-export function privateKeySigner(key: PrivateKey): Pool3SigningIdentity;
+export function privateKeySigner(key: PrivateKey): TBCAMMSigningIdentity;
 
-export interface Pool3SignedInput extends Pool3InputReference {
-  signer: Pool3SigningIdentity;
+export interface TBCAMMSignedInput extends TBCAMMInputReference {
+  signer: TBCAMMSigningIdentity;
 }
 
-export interface Pool3AssetInput extends Pool3SignedInput {
-  ancestors: Pool3TransactionResolver;
+export interface TBCAMMAssetInput extends TBCAMMSignedInput {
+  ancestors: TBCAMMTransactionResolver;
 }
 
-export interface Pool3PoolInput {
+export interface TBCAMMPoolInput {
   parentTx: Transaction;
   /** Transaction spent by parentTx.vin0, including mint Source for first AddLP. */
   ancestorTx: Transaction;
 }
 
-export interface Pool3FeePolicy {
+export interface TBCAMMFeePolicy {
   satoshisPerKb?: bigint;
   minimumFeeSat?: bigint;
   /** Defaults to 10 sat; may be increased, but never lowered below 10 sat. */
   changeDustSat?: bigint;
 }
 
-export interface Pool3Signature {
+export interface TBCAMMSignature {
   inputIndex: number;
   signature: Buffer | string;
   publicKey: Buffer | string;
 }
 
 /** Obtained through prepare* methods, never constructed directly. */
-export interface PreparedPool3Operation {
-  readonly layout: Pool3Layout;
-  readonly quote: Pool3Quote | undefined;
+export interface PreparedTBCAMMOperation {
+  readonly layout: TBCAMMLayout;
+  readonly quote: TBCAMMQuote | undefined;
   readonly transaction: Transaction;
-  readonly signingRequests: readonly Pool3SigningRequest[];
+  readonly signingRequests: readonly TBCAMMSigningRequest[];
   readonly feeSat: bigint;
   readonly changeVout: number | undefined;
-  finalize(signatures: readonly Pool3Signature[]): Pool3BuildResult;
-  sign(): Promise<Pool3BuildResult>;
+  finalize(signatures: readonly TBCAMMSignature[]): TBCAMMBuildResult;
+  sign(): Promise<TBCAMMBuildResult>;
 }
 
 // Operation inputs.
 
-export interface Pool3OperationOptions {
-  pool: Pool3PoolInput;
-  poolFT: Pool3AssetInput;
-  funding: Pool3SignedInput;
-  controllerSigner?: Pool3SigningIdentity;
+export interface TBCAMMOperationOptions {
+  pool: TBCAMMPoolInput;
+  poolFT: TBCAMMAssetInput;
+  funding: TBCAMMSignedInput;
+  controllerSigner?: TBCAMMSigningIdentity;
   /** Residual miner-funding change; defaults to the funding signer's address. */
   changeAddress?: string;
-  feePolicy?: Pool3FeePolicy;
+  feePolicy?: TBCAMMFeePolicy;
   /** Optional optimistic-concurrency guard from an earlier quote. */
   expectedSnapshotHash?: string;
 }
 
-export interface Pool3MintOptions {
-  funding: Pool3SignedInput;
+export interface TBCAMMMintOptions {
+  funding: TBCAMMSignedInput;
   changeAddress?: string;
-  feePolicy?: Pool3FeePolicy;
+  feePolicy?: TBCAMMFeePolicy;
 }
 
 /** Select exactly one asset budget; the other asset is quoted automatically. */
-export type Pool3AddLPAmount =
+export type TBCAMMAddLPAmount =
   | {
       /** Maximum TBC contribution, excluding fees and output funding. First AddLP uses it in full. */
       incrementSat: bigint;
@@ -215,8 +214,8 @@ export type Pool3AddLPAmount =
       firstFtAmountRaw?: never;
     };
 
-export type Pool3AddLPOptions = Pool3OperationOptions & Pool3AddLPAmount & {
-  userFT: Pool3AssetInput;
+export type TBCAMMAddLPOptions = TBCAMMOperationOptions & TBCAMMAddLPAmount & {
+  userFT: TBCAMMAssetInput;
   lpReceiverAddress: string;
   /** Required for timelocked pools, including an explicit zero. */
   lpLockTime?: number;
@@ -226,8 +225,8 @@ export type Pool3AddLPOptions = Pool3OperationOptions & Pool3AddLPAmount & {
   maxTbcInSat?: bigint;
 };
 
-export interface Pool3RemoveLPOptions extends Pool3OperationOptions {
-  userLP: Pool3AssetInput;
+export interface TBCAMMRemoveLPOptions extends TBCAMMOperationOptions {
+  userLP: TBCAMMAssetInput;
   burnAmountRaw: bigint;
   receiverAddress: string;
   minFtOutRaw?: bigint;
@@ -236,34 +235,34 @@ export interface Pool3RemoveLPOptions extends Pool3OperationOptions {
   lockTime?: number;
 }
 
-export interface Pool3SwapFTOptions extends Pool3OperationOptions {
+export interface TBCAMMSwapFTOptions extends TBCAMMOperationOptions {
   inputTbcSat: bigint;
   receiverAddress: string;
   minFtOutRaw: bigint;
 }
 
-export interface Pool3SwapTBCOptions extends Pool3OperationOptions {
-  userFT: Pool3AssetInput;
+export interface TBCAMMSwapTBCOptions extends TBCAMMOperationOptions {
+  userFT: TBCAMMAssetInput;
   inputFtRaw: bigint;
   receiverAddress: string;
   minTbcOutSat: bigint;
 }
 
-export interface Pool3TransferLPOptions {
-  inputs: readonly Pool3AssetInput[];
-  funding: Pool3SignedInput;
+export interface TBCAMMTransferLPOptions {
+  inputs: readonly TBCAMMAssetInput[];
+  funding: TBCAMMSignedInput;
   receiverAddress: string;
   amountRaw: bigint;
   lpChangeAddress?: string;
   changeAddress?: string;
   outputLockTime?: number;
   lockTime?: number;
-  feePolicy?: Pool3FeePolicy;
+  feePolicy?: TBCAMMFeePolicy;
 }
 
-export interface Pool3UnlockLPOptions
+export interface TBCAMMUnlockLPOptions
   extends Omit<
-    Pool3TransferLPOptions,
+    TBCAMMTransferLPOptions,
     "amountRaw" | "receiverAddress" | "lpChangeAddress" | "outputLockTime"
   > {
   /** Every input must belong to this owner; unlocking does not transfer ownership. */
@@ -272,7 +271,7 @@ export interface Pool3UnlockLPOptions
 
 // Transaction results and Pool state.
 
-export interface Pool3TransactionResult {
+export interface TBCAMMTransactionResult {
   transaction: Transaction;
   txraw: string;
   txid: string;
@@ -280,10 +279,10 @@ export interface Pool3TransactionResult {
   reservedBytes: number;
   changeVout?: number;
   consumedOutpoints: readonly { txId: string; outputIndex: number }[];
-  validation: Pool3ValidationReport;
+  validation: TBCAMMValidationReport;
 }
 
-export interface Pool3AssetOutput {
+export interface TBCAMMAssetOutput {
   role:
     | "pool-ft"
     | "user-ft"
@@ -299,7 +298,7 @@ export interface Pool3AssetOutput {
   amountsByInput: readonly bigint[];
 }
 
-export interface Pool3Layout {
+export interface TBCAMMLayout {
   operation:
     | "mint"
     | "addLP"
@@ -309,24 +308,24 @@ export interface Pool3Layout {
     | "transferLP"
     | "unlockLP";
   inputRoles: readonly string[];
-  assetOutputs: readonly Pool3AssetOutput[];
+  assetOutputs: readonly TBCAMMAssetOutput[];
   serviceFeeVout?: number;
   userTbcVout?: number;
   poolCodeVout?: 0;
 }
 
-export interface Pool3BuildResult extends Pool3TransactionResult {
-  layout: Pool3Layout;
-  nextState?: Pool3State;
-  quote?: Pool3Quote;
+export interface TBCAMMBuildResult extends TBCAMMTransactionResult {
+  layout: TBCAMMLayout;
+  nextState?: TBCAMMState;
+  quote?: TBCAMMQuote;
 }
 
-export interface Pool3MintResult extends Pool3BuildResult {
-  source: Pool3TransactionResult;
+export interface TBCAMMMintResult extends TBCAMMBuildResult {
+  source: TBCAMMTransactionResult;
   transactions: readonly Transaction[];
 }
 
-export interface Pool3State extends PoolMathState {
+export interface TBCAMMState extends PoolMathState {
   tape: DecodedPoolTape;
   poolCodeHash: Buffer;
   codeScript: Script;
@@ -376,7 +375,7 @@ export interface SwapTBCQuote {
   readonly fees: SwapFeeBreakdown;
 }
 
-export type Pool3Quote =
+export type TBCAMMQuote =
   | AddLPQuote
   | RemoveLPQuote
   | SwapFTQuote
@@ -417,10 +416,10 @@ export interface DecodedPoolTape extends PoolTapeFields {
 
 export function decodePoolTape(tape: Buffer | Script): DecodedPoolTape;
 
-export type Pool3FeePlan = 1 | 2 | 3 | 4 | 5 | 6;
+export type TBCAMMFeePlan = 1 | 2 | 3 | 4 | 5 | 6;
 
 export interface SwapFeePolicy {
-  readonly lpPlan: Pool3FeePlan;
+  readonly lpPlan: TBCAMMFeePlan;
   readonly totalFeeBps: number;
   readonly lpFeeBps: number;
   readonly serviceFeeAddress: string;
@@ -515,7 +514,7 @@ export class TBC20LP {
   ): void;
 }
 
-export interface Pool3InputValidation {
+export interface TBCAMMInputValidation {
   inputIndex: number;
   success: boolean;
   error: string;
@@ -523,20 +522,108 @@ export interface Pool3InputValidation {
   altStackDepth: number;
 }
 
-export interface Pool3ValidationReport {
+export interface TBCAMMValidationReport {
   success: boolean;
-  inputs: readonly Pool3InputValidation[];
+  inputs: readonly TBCAMMInputValidation[];
   valueConserved: boolean;
   /** Local execution does not establish UTXO availability or node finality. */
   nodeAcceptanceChecked: false;
 }
 
 /** Every input must have its trusted previous output attached. */
-export function validatePool3Transaction(
+export function validateTbcAmmTransaction(
   tx: Transaction,
-): Pool3ValidationReport;
+): TBCAMMValidationReport;
+
+/** Indexed token values use raw minimum units. */
+export interface TBC20StandardInfo extends FtInfo {
+  contractTxid: string;
+  supply: string;
+}
+export interface TBC20StablecoinInfo extends FtInfo {
+  contractTxid: string;
+  issuanceTxid: string;
+}
+export interface TBC20StandardUtxo extends Transaction.IUnspentOutput {
+  ftBalance: bigint;
+  parentTx: Transaction;
+  tapeScript: string;
+}
+export interface TBC20StablecoinUtxo extends TBC20StandardUtxo {
+  lockTime: number;
+}
+export interface TBC20LPUtxo extends TBC20StandardUtxo {
+  timelocked: boolean;
+  lockTime: number;
+}
+export interface TBCAMMInfo {
+  contractTxid: string;
+  parentTx: Transaction;
+  codeScript: string;
+  tapeScript: string;
+  poolCodeHash: Buffer;
+  tape: DecodedPoolTape;
+  authorization: PoolAuthorization;
+  poolVersion: 3;
+  serviceProvider: string;
+  currentContractTxid: string;
+  currentContractVout: 0;
+  currentContractSatoshi: number;
+}
+export interface TBCAMMUtxo extends Transaction.IUnspentOutput {
+  parentTx: Transaction;
+  tapeScript: string;
+}
+export interface TBC721StandardInfo {
+  collectionId: string;
+  collectionIndex: number;
+  collectionName: string;
+  nftName: string;
+  nftSymbol: string;
+  nftAttributes: string;
+  nftDescription: string;
+  nftTransferTimeCount: number;
+  nftIcon: string;
+}
 
 export class API {
+  /** Reads indexed metadata and validates the contract Code/Tape family. */
+  static fetchTbc20StandardInfo(contractTxid: string, network?: string): Promise<TBC20StandardInfo>;
+  /** Returns the indexed balance in raw minimum units. */
+  static getTbc20StandardBalance(contractTxid: string, addressOrHash: string, network?: string): Promise<bigint>;
+  /** Returns indexed outputs with their checked parent transactions and Tape data. */
+  static fetchTbc20StandardUtxoList(contractTxid: string, addressOrHash: string, codeScript: string, network?: string): Promise<TBC20StandardUtxo[]>;
+  /** Selects one token output covering amountRaw. */
+  static fetchTbc20StandardUtxo(contractTxid: string, addressOrHash: string, amountRaw: bigint, codeScript: string, network?: string): Promise<TBC20StandardUtxo>;
+  /** Selects at most maxInputs (1-5); undefined amountRaw selects the largest compatible set. */
+  static fetchTbc20StandardUtxos(contractTxid: string, addressOrHash: string, amountRaw: bigint | undefined, codeScript: string, network?: string, maxInputs?: number): Promise<TBC20StandardUtxo[]>;
+  /** Fetches complete ancestor transactions for the nonzero parent Tape slots. */
+  static fetchTbc20StandardAncestors(parentTx: Transaction, codeVout: number, network?: string): Promise<Transaction[]>;
+  /** Reads indexed metadata and validates the contract Code/Tape family. */
+  static fetchTbc20StablecoinInfo(contractTxid: string, network?: string): Promise<TBC20StablecoinInfo>;
+  /** Returns the indexed balance in raw minimum units. */
+  static getTbc20StablecoinBalance(contractTxid: string, addressOrHash: string, network?: string): Promise<bigint>;
+  /** Returns indexed outputs with their checked parent transactions and Tape data. */
+  static fetchTbc20StablecoinUtxoList(contractTxid: string, addressOrHash: string, codeScript: string, network?: string): Promise<TBC20StablecoinUtxo[]>;
+  /** Selects one token output covering amountRaw. */
+  static fetchTbc20StablecoinUtxo(contractTxid: string, addressOrHash: string, amountRaw: bigint, codeScript: string, network?: string): Promise<TBC20StablecoinUtxo>;
+  /** Selects at most maxInputs (1-5); undefined amountRaw selects the largest compatible set. */
+  static fetchTbc20StablecoinUtxos(contractTxid: string, addressOrHash: string, amountRaw: bigint | undefined, codeScript: string, network?: string, maxInputs?: number): Promise<TBC20StablecoinUtxo[]>;
+  /** Fetches complete ancestor transactions for the nonzero parent Tape slots. */
+  static fetchTbc20StablecoinAncestors(parentTx: Transaction, codeVout: number, network?: string): Promise<Transaction[]>;
+  static fetchTbcAmmInfo(contractTxid: string, network?: string): Promise<TBCAMMInfo>;
+  static fetchTbcAmmUtxo(contractTxid: string, network?: string): Promise<TBCAMMUtxo>;
+  static fetchTbcAmmInput(contractTxid: string, network?: string): Promise<TBCAMMPoolInput>;
+  static getTbc20LpBalance(codeScript: string, network?: string): Promise<bigint>;
+  static fetchTbc20LpUtxoList(codeScript: string, network?: string): Promise<TBC20LPUtxo[]>;
+  static fetchTbc20LpUtxo(codeScript: string, amountRaw: bigint, network?: string): Promise<TBC20LPUtxo>;
+  static fetchTbc20LpUtxos(codeScript: string, amountRaw?: bigint, network?: string, maxInputs?: number): Promise<TBC20LPUtxo[]>;
+  static fetchTbc20LpAncestors(parentTx: Transaction, codeVout: number, network?: string): Promise<Transaction[]>;
+  static fetchTbc721StandardInfo(contractId: string, network?: string): Promise<TBC721StandardInfo>;
+  static fetchTbc721StandardNfts(collectionId: string, address: string, start: number, end: number, network?: string): Promise<string[]>;
+  static fetchTbc721StandardTxo(params: { script: string; txId?: string; network?: string }): Promise<Transaction.IUnspentOutput>;
+  static fetchTbc721StandardTxos(params: { script: string; txId: string; network?: string }): Promise<Transaction.IUnspentOutput[]>;
+
   static getTBCbalance(
     address: string,
     network?: "testnet" | "mainnet" | string,
@@ -869,7 +956,7 @@ export class TBC721Standard {
   contractId: string;
   nftData: NFTData;
   constructor(contractId: string);
-  initialize(nftInfo: NFTInfo): void;
+  initialize(nftInfo: NFTInfo | TBC721StandardInfo): void;
   static createCollection(address: string, privateKey: PrivateKey, data: CollectionData,
     utxos: Transaction.IUnspentOutput[]): string;
   static createNft(collectionId: string, address: string, privateKey: PrivateKey, data: NFTData,
@@ -1808,50 +1895,63 @@ export class MultiSig {
   static getCombineHash(address: string): string;
 }
 
-export class piggyBank {
-  static freezeTBC(
+export class TBCTimelock {
+  static getTimelockCode(address: string, lockTime: number): Script;
+  static freezeTbc(
     address: string,
     tbcNumber: number,
     lockTime: number,
     utxos: Transaction.IUnspentOutput[],
   ): string;
-  static unfreezeTBC(
+  static unfreezeTbc(
     address: string,
     utxos: Transaction.IUnspentOutput[],
     network?: "testnet" | "mainnet" | string,
+  ): Promise<string>;
+  static freezeTbcWithSign(
+    privateKey: PrivateKey,
+    tbcNumber: number,
+    lockTime: number,
+    utxos: Transaction.IUnspentOutput[],
   ): string;
-  static fetchTBCLockTime(utxo: Transaction.IUnspentOutput): number;
+  static unfreezeTbcWithSign(
+    privateKey: PrivateKey,
+    utxos: Transaction.IUnspentOutput[],
+    network?: "testnet" | "mainnet" | string,
+  ): Promise<string>;
+  static fetchTbcLockTime(utxo: Transaction.IUnspentOutput): number;
 }
 
 /** Legacy proof hex, or authenticated ancestor transactions for TBC20 Standard / TBC20 Stablecoin. */
-export type OrderBookTokenProof = string | ReadonlyMap<string, Transaction> | readonly Transaction[] | ((txid: string) => Transaction | undefined);
+export type TBCLOPTokenProof = string | ReadonlyMap<string, Transaction> | readonly Transaction[] | ((txid: string) => Transaction | undefined);
 
-export class orderBook {
+export class TBCLOP {
+  static placeHolderP2pkhOutput(): Script;
   type: "buy" | "sell";
-  hold_address: string;
-  sale_volume: bigint;
-  fee_rate: bigint;
-  unit_price: bigint;
-  sale_volume_number: number;
-  fee_rate_number: number;
-  unit_price_number: number;
-  ft_a_contract_partialhash: string;
-  ft_a_contract_id: string;
-  ft_b_contract_partialhash: string;
-  ft_b_contract_id: string;
-  contract_version: number;
+  holdAddress: string;
+  saleVolume: bigint;
+  feeRate: bigint;
+  unitPrice: bigint;
+  saleVolumeNumber: number;
+  feeRateNumber: number;
+  unitPriceNumber: number;
+  ftAContractPartialHash: string;
+  ftAContractId: string;
+  ftBContractPartialHash: string;
+  ftBContractId: string;
+  contractVersion: number;
 
-  buildSellOrderTX(
+  buildSellOrderTx(
     holdAddress: string,
     taxAddress: string,
     saleVolume: bigint,
     unitPrice: bigint,
     feeRate: bigint,
-    ftID: string,
+    ftId: string,
     ftCodeScript: string,
     utxos: Transaction.IUnspentOutput[],
   ): string;
-  buildCancelSellOrderTX(
+  buildCancelSellOrderTx(
     sellutxo: Transaction.IUnspentOutput,
     utxos: Transaction.IUnspentOutput[],
   ): string;
@@ -1861,18 +1961,18 @@ export class orderBook {
     publicKey: string,
     type: "make" | "cancel",
   ): string;
-  buildBuyOrderTX(
+  buildBuyOrderTx(
     holdAddress: string,
     taxAddress: string,
     saleVolume: bigint,
     unitPrice: bigint,
     feeRate: bigint,
-    ftID: string,
+    ftId: string,
     utxos: Transaction.IUnspentOutput[],
     ftutxos: Transaction.IUnspentOutput[],
     preTXs: Transaction[],
   ): string;
-  buildCancelBuyOrderTX(
+  buildCancelBuyOrderTx(
     buyutxo: Transaction.IUnspentOutput,
     ftutxo: Transaction.IUnspentOutput,
     ftPreTX: Transaction,
@@ -1883,7 +1983,7 @@ export class orderBook {
     sigs: string[],
     publicKey: string,
     preTXs: Transaction[],
-    prepreTxData: OrderBookTokenProof[],
+    prepreTxData: TBCLOPTokenProof[],
   ): string;
   fillSigsCancelBuyOrder(
     buyOrderTxRaw: string,
@@ -1891,7 +1991,7 @@ export class orderBook {
     publicKey: string,
     buyPreTX: Transaction,
     ftPreTX: Transaction,
-    ftPrePreTxData: OrderBookTokenProof,
+    ftPrePreTxData: TBCLOPTokenProof,
   ): string;
   matchOrder(
     privateKey: PrivateKey,
@@ -1899,34 +1999,34 @@ export class orderBook {
     buyPreTX: Transaction,
     ftutxo: Transaction.IUnspentOutput,
     ftPreTX: Transaction,
-    ftPrePreTxData: OrderBookTokenProof,
+    ftPrePreTxData: TBCLOPTokenProof,
     sellutxo: Transaction.IUnspentOutput,
     sellPreTX: Transaction,
     utxos: Transaction.IUnspentOutput[],
     ftFeeAddress: string,
     tbcFeeAddress: string,
   ): string;
-  makeSellOrder_privateKeyOnline(
+  makeSellOrderWithPrivateKeyOnline(
     privateKey: PrivateKey,
     taxAddress: string,
     saleVolume: bigint,
     unitPrice: bigint,
     feeRate: bigint,
-    ftID: string,
+    ftId: string,
   ): Promise<string>;
-  cancelSellOrder_privateKeyOnline(
+  cancelSellOrderWithPrivateKeyOnline(
     privateKey: PrivateKey,
     sellutxo: Transaction.IUnspentOutput,
   ): Promise<string>;
-  makeBuyOrder_privateKeyOnline(
+  makeBuyOrderWithPrivateKeyOnline(
     privateKey: PrivateKey,
     taxAddress: string,
     saleVolume: bigint,
     unitPrice: bigint,
     feeRate: bigint,
-    ftID: string,
+    ftId: string,
   ): Promise<string>;
-  cancelBuyOrder_privateKeyOnline(
+  cancelBuyOrderWithPrivateKeyOnline(
     privateKey: PrivateKey,
     buyutxo: Transaction.IUnspentOutput,
   ): Promise<string>;
@@ -1937,28 +2037,28 @@ export class orderBook {
     ftFeeAddress: string,
     tbcFeeAddress: string,
   ): Promise<string>;
-  buildTokenSellOrderTX(
+  buildTokenSellOrderTx(
     holdAddress: string,
     taxAddress: string,
     saleVolume: bigint,
     unitPrice: bigint,
     feeRate: bigint,
-    ftaID: string,
-    ftbID: string,
+    ftAId: string,
+    ftBId: string,
     ftaCodeScript: string,
     ftbCodeScript: string,
     utxos: Transaction.IUnspentOutput[],
     ftutxos: Transaction.IUnspentOutput[],
     preTXs: Transaction[],
   ): string;
-  buildTokenBuyOrderTX(
+  buildTokenBuyOrderTx(
     holdAddress: string,
     taxAddress: string,
     saleVolume: bigint,
     unitPrice: bigint,
     feeRate: bigint,
-    ftaID: string,
-    ftbID: string,
+    ftAId: string,
+    ftBId: string,
     ftaCodeScript: string,
     ftbCodeScript: string,
     utxos: Transaction.IUnspentOutput[],
@@ -1970,22 +2070,22 @@ export class orderBook {
     sigs: string[],
     publicKey: string,
     preTXs: Transaction[],
-    prepreTxData: OrderBookTokenProof[],
+    prepreTxData: TBCLOPTokenProof[],
   ): string;
   fillSigsMakeTokenBuyOrder(
     buyOrderTxRaw: string,
     sigs: string[],
     publicKey: string,
     preTXs: Transaction[],
-    prepreTxData: OrderBookTokenProof[],
+    prepreTxData: TBCLOPTokenProof[],
   ): string;
-  buildCancelTokenSellOrderTX(
+  buildCancelTokenSellOrderTx(
     sellutxo: Transaction.IUnspentOutput,
     ftutxo: Transaction.IUnspentOutput,
     ftPreTX: Transaction,
     utxos: Transaction.IUnspentOutput[],
   ): string;
-  buildCancelTokenBuyOrderTX(
+  buildCancelTokenBuyOrderTx(
     buyutxo: Transaction.IUnspentOutput,
     ftutxo: Transaction.IUnspentOutput,
     ftPreTX: Transaction,
@@ -1997,7 +2097,7 @@ export class orderBook {
     publicKey: string,
     sellPreTX: Transaction,
     ftPreTX: Transaction,
-    ftPrePreTxData: OrderBookTokenProof,
+    ftPrePreTxData: TBCLOPTokenProof,
   ): string;
   fillSigsCancelTokenBuyOrder(
     cancelBuyOrderTxRaw: string,
@@ -2005,7 +2105,7 @@ export class orderBook {
     publicKey: string,
     buyPreTX: Transaction,
     ftPreTX: Transaction,
-    ftPrePreTxData: OrderBookTokenProof,
+    ftPrePreTxData: TBCLOPTokenProof,
   ): string;
   matchTokenOrder(
     privateKey: PrivateKey,
@@ -2013,39 +2113,39 @@ export class orderBook {
     buyPreTX: Transaction,
     buyFtUtxo: Transaction.IUnspentOutput,
     buyFtPreTX: Transaction,
-    buyFtPrePreTxData: OrderBookTokenProof,
+    buyFtPrePreTxData: TBCLOPTokenProof,
     sellutxo: Transaction.IUnspentOutput,
     sellPreTX: Transaction,
     sellFtUtxo: Transaction.IUnspentOutput,
     sellFtPreTX: Transaction,
-    sellFtPrePreTxData: OrderBookTokenProof,
+    sellFtPrePreTxData: TBCLOPTokenProof,
     utxos: Transaction.IUnspentOutput[],
     ftaFeeAddress: string,
     ftbFeeAddress: string,
   ): string;
-  makeTokenSellOrder_privateKeyOnline(
+  makeTokenSellOrderWithPrivateKeyOnline(
     privateKey: PrivateKey,
     taxAddress: string,
     saleVolume: bigint,
     unitPrice: bigint,
     feeRate: bigint,
-    ftaID: string,
-    ftbID: string,
+    ftAId: string,
+    ftBId: string,
   ): Promise<string>;
-  cancelTokenSellOrder_privateKeyOnline(
+  cancelTokenSellOrderWithPrivateKeyOnline(
     privateKey: PrivateKey,
     sellutxo: Transaction.IUnspentOutput,
   ): Promise<string>;
-  makeTokenBuyOrder_privateKeyOnline(
+  makeTokenBuyOrderWithPrivateKeyOnline(
     privateKey: PrivateKey,
     taxAddress: string,
     saleVolume: bigint,
     unitPrice: bigint,
     feeRate: bigint,
-    ftaID: string,
-    ftbID: string,
+    ftAId: string,
+    ftBId: string,
   ): Promise<string>;
-  cancelTokenBuyOrder_privateKeyOnline(
+  cancelTokenBuyOrderWithPrivateKeyOnline(
     privateKey: PrivateKey,
     buyutxo: Transaction.IUnspentOutput,
   ): Promise<string>;
@@ -2091,25 +2191,25 @@ export class orderBook {
     ftPartialHash: string;
     feeRate: bigint;
     unitPrice: bigint;
-    ftID: string;
+    ftId: string;
   };
   static getTokenOrderData(codeScript: string): {
     holdAddress: string;
     saleVolume: bigint;
-    ftaPartialHash: string;
-    ftbPartialHash: string;
+    ftAPartialHash: string;
+    ftBPartialHash: string;
     feeRate: bigint;
     unitPrice: bigint;
-    ftaID: string;
-    ftbID: string;
+    ftAId: string;
+    ftBId: string;
   };
 }
 
 /** Legacy proof hex or authenticated ancestor transactions for modern tokens. */
-export type HTLCTokenProof = string | TBC20StandardAncestorResolver;
+export type TBCHTLCTokenProof = string | TBC20StandardAncestorResolver;
 
-export namespace HTLC {
-  export function deployHTLC(
+export namespace TBCHTLC {
+  export function deployTbcHtlc(
     sender: string,
     receiver: string,
     hashlock: string,
@@ -2120,17 +2220,17 @@ export namespace HTLC {
 
   export function withdraw(
     receiver: string,
-    htlcutxo: Transaction.IUnspentOutput,
+    htlcUtxo: Transaction.IUnspentOutput,
   ): string;
 
   export function refund(
     sender: string,
-    htlcutxo: Transaction.IUnspentOutput,
+    htlcUtxo: Transaction.IUnspentOutput,
     timelock: number,
   ): string;
 
-  export function fillSigDepoly(
-    deployHTLCTxRaw: string,
+  export function fillSigDeploy(
+    deployTbcHtlcTxRaw: string,
     sig: string,
     publicKey: string,
   ): string;
@@ -2148,7 +2248,7 @@ export namespace HTLC {
     publicKey: string,
   ): string;
 
-  export function deployHTLCWithSign(
+  export function deployTbcHtlcWithSign(
     sender: string,
     receiver: string,
     hashlock: string,
@@ -2161,18 +2261,18 @@ export namespace HTLC {
   export function withdrawWithSign(
     privateKey: string,
     receiver: string,
-    htlcutxo: Transaction.IUnspentOutput,
+    htlcUtxo: Transaction.IUnspentOutput,
     secret: string,
   ): string;
 
   export function refundWithSign(
     sender: string,
-    htlcutxo: Transaction.IUnspentOutput,
+    htlcUtxo: Transaction.IUnspentOutput,
     privateKey: string,
     timelock: number,
   ): string;
 
-  export function deployHTLCToken(
+  export function deployTbcHtlcToken(
     sender: string,
     receiver: string,
     hashlock: string,
@@ -2181,52 +2281,52 @@ export namespace HTLC {
     ftutxos: Transaction.IUnspentOutput[],
     utxo: Transaction.IUnspentOutput,
     preTX: Transaction[],
-    prepreTxData: HTLCTokenProof[],
+    prepreTxData: TBCHTLCTokenProof[],
   ): string;
 
-  export function fillSigDeployHTLCToken(
+  export function fillSigDeployTbcHtlcToken(
     deployRaw: string,
     sigs: string[],
     publicKey: string,
     preTX: Transaction[],
-    prepreTxData: HTLCTokenProof[],
+    prepreTxData: TBCHTLCTokenProof[],
   ): string;
 
-  export function withdrawHTLCToken(
+  export function withdrawTbcHtlcToken(
     receiver: string,
-    htlcutxo: Transaction.IUnspentOutput,
+    htlcUtxo: Transaction.IUnspentOutput,
     ftutxo: Transaction.IUnspentOutput,
     deployTX: Transaction,
     utxo: Transaction.IUnspentOutput,
   ): string;
 
-  export function fillSigWithdrawHTLCToken(
+  export function fillSigWithdrawTbcHtlcToken(
     withdrawRaw: string,
     sigs: string[],
     publicKey: string,
     secret: string,
     deployTX: Transaction,
-    prepreTxData: HTLCTokenProof,
+    prepreTxData: TBCHTLCTokenProof,
   ): string;
 
-  export function refundHTLCToken(
+  export function refundTbcHtlcToken(
     sender: string,
-    htlcutxo: Transaction.IUnspentOutput,
+    htlcUtxo: Transaction.IUnspentOutput,
     ftutxo: Transaction.IUnspentOutput,
     deployTX: Transaction,
     utxo: Transaction.IUnspentOutput,
     timelock: number,
   ): string;
 
-  export function fillSigRefundHTLCToken(
+  export function fillSigRefundTbcHtlcToken(
     refundRaw: string,
     sigs: string[],
     publicKey: string,
     deployTX: Transaction,
-    prepreTxData: HTLCTokenProof,
+    prepreTxData: TBCHTLCTokenProof,
   ): string;
 
-  export function deployHTLCTokenWithSign(
+  export function deployTbcHtlcTokenWithSign(
     sender: string,
     receiver: string,
     hashlock: string,
@@ -2235,28 +2335,28 @@ export namespace HTLC {
     ftutxos: Transaction.IUnspentOutput[],
     utxo: Transaction.IUnspentOutput,
     preTX: Transaction[],
-    prepreTxData: HTLCTokenProof[],
+    prepreTxData: TBCHTLCTokenProof[],
     privateKey: string,
   ): string;
 
-  export function withdrawHTLCTokenWithSign(
+  export function withdrawTbcHtlcTokenWithSign(
     privateKey: string,
     receiver: string,
-    htlcutxo: Transaction.IUnspentOutput,
+    htlcUtxo: Transaction.IUnspentOutput,
     ftutxo: Transaction.IUnspentOutput,
     deployTX: Transaction,
-    prepreTxData: HTLCTokenProof,
+    prepreTxData: TBCHTLCTokenProof,
     utxo: Transaction.IUnspentOutput,
     secret: string,
   ): string;
 
-  export function refundHTLCTokenWithSign(
+  export function refundTbcHtlcTokenWithSign(
     privateKey: string,
     sender: string,
-    htlcutxo: Transaction.IUnspentOutput,
+    htlcUtxo: Transaction.IUnspentOutput,
     ftutxo: Transaction.IUnspentOutput,
     deployTX: Transaction,
-    prepreTxData: HTLCTokenProof,
+    prepreTxData: TBCHTLCTokenProof,
     utxo: Transaction.IUnspentOutput,
     timelock: number,
   ): string;

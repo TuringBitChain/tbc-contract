@@ -175,7 +175,7 @@ export function isLock(length: number): 0 | 1 {
 
 export function fetchTBCLockTime(utxo: tbc.Transaction.IUnspentOutput): number {
     if (utxo.script.length != 106) {
-        throw new Error("Invalid Piggy Bank script");
+        throw new Error("Invalid TBC Timelock script");
     }
     const script = tbc.Script.fromString(utxo.script);
     const lockTimeChunk = script.chunks[script.chunks.length - 8].buf;

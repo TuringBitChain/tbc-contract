@@ -50,7 +50,10 @@ npm i tbc-contract
 2. TBC20 Standard: [docs/tbc20-standard.md](docs/tbc20-standard.md)
 3. TBC20 Stablecoin: [docs/tbc20-stablecoin.md](docs/tbc20-stablecoin.md)
 4. TBC721 Standard: [docs/tbc721-standard.md](docs/tbc721-standard.md)
-5. Pool 3.0 and TBC20 LP: [docs/poolNFT3.0.md](docs/poolNFT3.0.md)
+5. TBC AMM and TBC20 LP: [docs/tbc-amm.md](docs/tbc-amm.md)
+6. Contract API: [docs/contract-api.md](docs/contract-api.md)
+7. TBC HTLC: [docs/tbc-htlc.md](docs/tbc-htlc.md)
+8. TBC LOP: [docs/tbc-lop.md](docs/tbc-lop.md)
 
 ### Security Notes
 

@@ -2,6 +2,7 @@ import * as tbc from 'tbc-lib-js';
 import { buildTbc721StandardCode, buildTbc721StandardUnlockScript, parseTbc721StandardCode } from '../util/tbc721-standard/tbc721-standard-unlock';
 import type { TBC721StandardCodeDescriptor } from '../util/tbc721-standard/tbc721-standard-unlock';
 import { parseDecimalToBigInt } from '../util/common/util';
+import type { TBC721StandardInfo } from '../api/tbc721-api';
 
 const NFT = require('./nft');
 
@@ -53,6 +54,10 @@ function finish(tx: tbc.Transaction, privateKey: tbc.PrivateKey): string {
 /** TBC721 Standard collection, minting and transfer operations with Code/Hold/Tape outputs. */
 class TBC721Standard extends NFT {
   constructor(contractId: string) { super(contractId); }
+
+  initialize(info: TBC721StandardInfo | (Omit<TBC721StandardInfo, 'nftAttributes'> & { nft_attributes: string })): void {
+    super.initialize({ ...info, nft_attributes: 'nftAttributes' in info ? info.nftAttributes : info.nft_attributes });
+  }
 
   get contractId(): string { return this.contract_id; }
   set contractId(value: string) { this.contract_id = value; }

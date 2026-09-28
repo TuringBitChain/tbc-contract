@@ -1,3 +1,11 @@
+import { ContractQuery } from "./contract-query";
+import * as tbc20Api from "./tbc20-api";
+import * as tbc721Api from "./tbc721-api";
+import * as tbcAmmApi from "./tbc-amm-api";
+import type { TBC20StandardInfo, TBC20StablecoinInfo, TBC20StandardUtxo, TBC20StablecoinUtxo } from "./tbc20-api";
+import type { TBC721StandardInfo } from "./tbc721-api";
+import type { TBCAMMInfo, TBCAMMUtxo, TBC20LPUtxo } from "./tbc-amm-api";
+import type { TBCAMMPoolInput } from "../util/tbc-amm/types";
 import * as tbc from "tbc-lib-js";
 import { getPrePreTxdata } from "../util/ft/ftunlock";
 import { findMinFiveSum } from "../util/common/utxoSelect";
@@ -57,6 +65,121 @@ interface FTUnspentOutput {
 }
 
 class API {
+  private static contractQuery(network?: string): ContractQuery {
+    return new ContractQuery(API.getBaseURL(network || "mainnet"));
+  }
+
+  /** Reads indexed metadata and validates the contract Code/Tape family. */
+  static async fetchTbc20StandardInfo(contractTxid: string, network?: string): Promise<TBC20StandardInfo> {
+    return tbc20Api.fetchTbc20StandardInfo(API.contractQuery(network), contractTxid);
+  }
+
+  /** Returns the indexed balance in raw minimum units. */
+  static async getTbc20StandardBalance(contractTxid: string, addressOrHash: string, network?: string): Promise<bigint> {
+    return tbc20Api.getTokenBalance(API.contractQuery(network), "standard", contractTxid, addressOrHash);
+  }
+
+  /** Returns indexed outputs with their checked parent transactions and Tape data. */
+  static async fetchTbc20StandardUtxoList(contractTxid: string, addressOrHash: string, codeScript: string, network?: string): Promise<TBC20StandardUtxo[]> {
+    return tbc20Api.fetchTokenUtxoList(API.contractQuery(network), "standard", contractTxid, addressOrHash, codeScript);
+  }
+
+  /** Selects one token output covering amountRaw. */
+  static async fetchTbc20StandardUtxo(contractTxid: string, addressOrHash: string, amountRaw: bigint, codeScript: string, network?: string): Promise<TBC20StandardUtxo> {
+    if (typeof amountRaw !== "bigint" || amountRaw <= 0n) throw new Error("Contract API: amountRaw must be a positive bigint");
+    return (await tbc20Api.fetchTokenUtxos(API.contractQuery(network), "standard", contractTxid, addressOrHash, amountRaw, codeScript, 1))[0];
+  }
+
+  /** Selects at most maxInputs (1-5); undefined amountRaw selects the largest compatible set. */
+  static async fetchTbc20StandardUtxos(contractTxid: string, addressOrHash: string, amountRaw: bigint | undefined, codeScript: string, network?: string, maxInputs = 5): Promise<TBC20StandardUtxo[]> {
+    return tbc20Api.fetchTokenUtxos(API.contractQuery(network), "standard", contractTxid, addressOrHash, amountRaw, codeScript, maxInputs);
+  }
+
+  /** Fetches complete ancestor transactions for the nonzero parent Tape slots. */
+  static async fetchTbc20StandardAncestors(parentTx: tbc.Transaction, codeVout: number, network?: string): Promise<tbc.Transaction[]> {
+    return tbc20Api.fetchTokenAncestors(API.contractQuery(network), "standard", parentTx, codeVout);
+  }
+
+  /** Reads indexed metadata and validates the contract Code/Tape family. */
+  static async fetchTbc20StablecoinInfo(contractTxid: string, network?: string): Promise<TBC20StablecoinInfo> {
+    return tbc20Api.fetchTbc20StablecoinInfo(API.contractQuery(network), contractTxid);
+  }
+
+  /** Returns the indexed balance in raw minimum units. */
+  static async getTbc20StablecoinBalance(contractTxid: string, addressOrHash: string, network?: string): Promise<bigint> {
+    return tbc20Api.getTokenBalance(API.contractQuery(network), "stablecoin", contractTxid, addressOrHash);
+  }
+
+  /** Returns indexed outputs with their checked parent transactions and Tape data. */
+  static async fetchTbc20StablecoinUtxoList(contractTxid: string, addressOrHash: string, codeScript: string, network?: string): Promise<TBC20StablecoinUtxo[]> {
+    return tbc20Api.fetchTokenUtxoList(API.contractQuery(network), "stablecoin", contractTxid, addressOrHash, codeScript);
+  }
+
+  /** Selects one token output covering amountRaw. */
+  static async fetchTbc20StablecoinUtxo(contractTxid: string, addressOrHash: string, amountRaw: bigint, codeScript: string, network?: string): Promise<TBC20StablecoinUtxo> {
+    if (typeof amountRaw !== "bigint" || amountRaw <= 0n) throw new Error("Contract API: amountRaw must be a positive bigint");
+    return (await tbc20Api.fetchTokenUtxos(API.contractQuery(network), "stablecoin", contractTxid, addressOrHash, amountRaw, codeScript, 1))[0];
+  }
+
+  /** Selects at most maxInputs (1-5); undefined amountRaw selects the largest compatible set. */
+  static async fetchTbc20StablecoinUtxos(contractTxid: string, addressOrHash: string, amountRaw: bigint | undefined, codeScript: string, network?: string, maxInputs = 5): Promise<TBC20StablecoinUtxo[]> {
+    return tbc20Api.fetchTokenUtxos(API.contractQuery(network), "stablecoin", contractTxid, addressOrHash, amountRaw, codeScript, maxInputs);
+  }
+
+  /** Fetches complete ancestor transactions for the nonzero parent Tape slots. */
+  static async fetchTbc20StablecoinAncestors(parentTx: tbc.Transaction, codeVout: number, network?: string): Promise<tbc.Transaction[]> {
+    return tbc20Api.fetchTokenAncestors(API.contractQuery(network), "stablecoin", parentTx, codeVout);
+  }
+
+  static async fetchTbcAmmInfo(contractTxid: string, network?: string): Promise<TBCAMMInfo> {
+    return tbcAmmApi.fetchTbcAmmInfo(API.contractQuery(network), contractTxid);
+  }
+
+  static async fetchTbcAmmUtxo(contractTxid: string, network?: string): Promise<TBCAMMUtxo> {
+    return tbcAmmApi.fetchTbcAmmUtxo(API.contractQuery(network), contractTxid);
+  }
+
+  static async fetchTbcAmmInput(contractTxid: string, network?: string): Promise<TBCAMMPoolInput> {
+    return tbcAmmApi.fetchTbcAmmInput(API.contractQuery(network), contractTxid);
+  }
+
+  static async getTbc20LpBalance(codeScript: string, network?: string): Promise<bigint> {
+    return tbcAmmApi.getTbc20LpBalance(API.contractQuery(network), codeScript);
+  }
+
+  static async fetchTbc20LpUtxoList(codeScript: string, network?: string): Promise<TBC20LPUtxo[]> {
+    return tbcAmmApi.fetchTbc20LpUtxoList(API.contractQuery(network), codeScript);
+  }
+
+  static async fetchTbc20LpUtxo(codeScript: string, amountRaw: bigint, network?: string): Promise<TBC20LPUtxo> {
+    return tbcAmmApi.fetchTbc20LpUtxo(API.contractQuery(network), codeScript, amountRaw);
+  }
+
+  static async fetchTbc20LpUtxos(codeScript: string, amountRaw?: bigint, network?: string, maxInputs = 5): Promise<TBC20LPUtxo[]> {
+    return tbcAmmApi.fetchTbc20LpUtxos(API.contractQuery(network), codeScript, amountRaw, maxInputs);
+  }
+
+  static async fetchTbc20LpAncestors(parentTx: tbc.Transaction, codeVout: number, network?: string): Promise<tbc.Transaction[]> {
+    return tbcAmmApi.fetchTbc20LpAncestors(API.contractQuery(network), parentTx, codeVout);
+  }
+
+  static async fetchTbc721StandardInfo(contractId: string, network?: string): Promise<TBC721StandardInfo> {
+    return tbc721Api.fetchTbc721StandardInfo(API.contractQuery(network), contractId);
+  }
+
+  static async fetchTbc721StandardNfts(collectionId: string, address: string, start: number, end: number, network?: string): Promise<string[]> {
+    return tbc721Api.fetchTbc721StandardNfts(API.contractQuery(network), collectionId, address, start, end);
+  }
+
+  static async fetchTbc721StandardTxo(params: { script: string; txId?: string; network?: string }): Promise<tbc.Transaction.IUnspentOutput> {
+    return tbc721Api.fetchTbc721StandardTxo(API.contractQuery(params?.network), params);
+  }
+
+  static async fetchTbc721StandardTxos(params: { script: string; txId: string; network?: string }): Promise<tbc.Transaction.IUnspentOutput[]> {
+    return tbc721Api.fetchTbc721StandardTxos(API.contractQuery(params?.network), params);
+  }
+
+
   private static mainnetURL: string = "https://api.turingbitchain.io/api/tbc/";
   private static testnetURL: string = "https://api.tbcdev.org/api/tbc/";
 

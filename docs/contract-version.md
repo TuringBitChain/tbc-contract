@@ -42,7 +42,7 @@ import type {
 | --- | --- | --- | --- | --- |
 | Pool 1.0 | `pool` | `1` | 无 | `poolNFT` |
 | Pool 2.0 | `pool` | `2` | 无 | `poolNFT2` |
-| Pool 3.0 | `pool` | `3` | 无 | `PoolNFT3` |
+| TBC AMM | `pool` | `3` | 无 | `TBCAMM` |
 | 旧普通 FT | `ft` | `legacy` | `1 / 2 / 3 / 4` | `FT` |
 | TBC20 Standard | `ft` | `tbc20-standard` | 无 | `TBC20Standard` |
 | 旧稳定币 | `stablecoin` | `legacy` | 已登记模板的内部版本号 | `stableCoin` |
@@ -52,7 +52,7 @@ import type {
 
 `sdk` 是字符串，不是已经初始化的实例。**TBC20 Stablecoin 对应的业务类是 `TBC20Stablecoin`**，文件为 `lib/contract/tbc20-stablecoin`；根导出的 `TBC20StablecoinCodec` 是底层 Code/Tape 编解码器，不能作为发行、转账、冻结等业务类使用。
 
-Pool1 单独返回 `poolNFT`，避免将它误送给 `poolNFT2`。Pool3 的 `PoolNFT3` 也可使用包内别名 `poolNFT3`，识别结果统一返回 `PoolNFT3`。
+Pool1 单独返回 `poolNFT`，避免将它误送给 `poolNFT2`。TBC AMM 的识别结果返回 `TBCAMM`。
 
 ## 2. 一次识别并取得 SDK 类
 
@@ -68,7 +68,7 @@ function resolveContractSdk(codeScript) {
   const classes = {
     poolNFT: sdk.poolNFT,
     poolNFT2: sdk.poolNFT2,
-    PoolNFT3: sdk.PoolNFT3,
+    TBCAMM: sdk.TBCAMM,
     FT: sdk.FT,
     TBC20Standard: sdk.TBC20Standard,
     stableCoin: sdk.stableCoin,
@@ -89,12 +89,12 @@ console.log(SDK === sdk.TBC721Standard); // true
 
 在 TypeScript 中，可以按 `family`、`version` 或 `sdk` 缩小返回类型。例如 `info.family === 'ft' && info.version === 'legacy'` 时才存在 `info.legacyVersion`。
 
-## 3. Pool 2.0 / Pool 3.0
+## 3. Pool 2.0 / TBC AMM
 
 Pool 应传状态锚点的 **Pool Code**，不能传池控 FT 或 LP Code。下面的函数接收真实池交易、可信底层 FT 创世交易和已知池 ID，展示两个版本各自的初始化方式。
 
 ```js
-const { poolNFT, poolNFT2, PoolNFT3, detectPoolVersion } = require('tbc-contract');
+const { poolNFT, poolNFT2, TBCAMM, detectPoolVersion } = require('tbc-contract');
 
 async function openPool(poolTx, ftGenesisTx, poolId, network = 'testnet') {
   const code = poolTx.outputs[0]?.script;
@@ -102,9 +102,9 @@ async function openPool(poolTx, ftGenesisTx, poolId, network = 'testnet') {
   const info = detectPoolVersion(code);
   if (!info) throw new Error('不是受支持的 Pool Code');
 
-  if (info.sdk === 'PoolNFT3') {
+  if (info.sdk === 'TBCAMM') {
     // fromPool 还会检查 Code/Tape 配置与底层 FT 身份。
-    const pool = PoolNFT3.fromPool(poolTx, ftGenesisTx);
+    const pool = TBCAMM.fromPool(poolTx, ftGenesisTx);
     return { info, pool };
   }
   if (info.sdk === 'poolNFT2') {
@@ -112,12 +112,12 @@ async function openPool(poolTx, ftGenesisTx, poolId, network = 'testnet') {
     await pool.initfromContractId(); // 此初始化方法会查询网络。
     return { info, pool };
   }
-  // Pool1 不适用 Pool2/Pool3 接口，由应用选择是否支持。
+  // Pool1 不适用 Pool2/TBC AMM 接口，由应用选择是否支持。
   throw new Error(`检测到 Pool1，请使用 ${poolNFT.name} 的独立接入流程`);
 }
 ```
 
-Pool2 普通版与带公钥前缀授权的版本都返回 `version: 2`；Pool3 普通版与 1–5 人白名单版都返回 `version: 3`。LP 是否锁仓属于配套 Tape/LP 配置，不由这个 Code 版本接口判断。Pool3 可通过 `readPoolState(poolTx).tape.withLpLocktime` 读取该配置。
+Pool2 普通版与带公钥前缀授权的版本都返回 `version: 2`；TBC AMM 普通版与 1–5 人白名单版都返回 `version: 3`。LP 是否锁仓属于配套 Tape/LP 配置，不由这个 Code 版本接口判断。TBC AMM 可通过 `readPoolState(poolTx).tape.withLpLocktime` 读取该配置。
 
 识别或初始化后，应用还应核对自己的业务池 ID、Pool Code hash 和最新 outpoint，不能把“同版本”视为“同一个池”。
 
@@ -221,7 +221,7 @@ async function detectByOutpoint(txid, codeVout, network = 'testnet') {
 工具匹配完整模板及其构造参数边界，不仅比较长度、填充字节或末尾标记：
 
 - 旧 FT / 稳定币复用 SDK 中的已登记模板和规范化摘要，区分同长度的普通 FT 与稳定币。
-- TBC20 Standard、TBC20 Stablecoin、Pool3、TBC721 Standard 复用各自严格的 Code 解析或验证器。
+- TBC20 Standard、TBC20 Stablecoin、TBC AMM、TBC721 Standard 复用各自严格的 Code 解析或验证器。
 - Pool1、Pool2、旧 NFT 按仓库现有构造器生成模板，保留可变参数位置，核对其余固定字节。Pool2 重复的 FT 长度、费用公钥哈希及授权前缀长度必须一致；支持 1–10 个、各 1–65 字节的等长授权公钥前缀。
 
 `null` 表示“不匹配本 SDK 支持的模板”，不等同于链上脚本无效。其他历史编译产物、自定义模板或未登记版本需要单独接入，不能因保留相同 marker 就认为兼容。
@@ -234,4 +234,4 @@ async function detectByOutpoint(txid, codeVout, network = 'testnet') {
 npm run test:versions
 ```
 
-该命令先构建代码，再运行离线版本识别测试，覆盖协议路由、历史 FT、Pool 授权变体、非规范输入、跨类别排除和脚本篡改。包根导出和公开类型的验证还包含在 `npm run test:pool3` 中。
+该命令先构建代码，再运行离线版本识别测试，覆盖协议路由、历史 FT、Pool 授权变体、非规范输入、跨类别排除和脚本篡改。包根导出和公开类型的验证还包含在 `npm run test:tbc-amm` 中。

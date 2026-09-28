@@ -1,5 +1,7 @@
 # TBC20 Standard 使用文档
 
+查询代币信息、UTXO 和交易证明可使用对应的 [合约查询 API](./contract-api.md)。
+
 TBC20 Standard 是同质化 Token 合约。每个 Token UTXO 由两个相邻输出组成：
 
 - Code：固定 `500 satoshis`，负责所有权和状态迁移验证。

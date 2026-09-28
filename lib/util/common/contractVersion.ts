@@ -6,8 +6,8 @@ const PoolNFT = require('../../contract/poolNFT');
 const PoolNFT2 = require('../../contract/poolNFT2.0');
 import { decodePublishedFTCode } from '../../validator/ft-artifacts';
 import { TBC20StablecoinCodec } from '../tbc20-stablecoin/tbc20-stablecoin-codec';
-import { parsePoolCode } from '../poolnft3/artifacts';
-import { resolveSwapFeePolicy } from '../poolnft3/fees';
+import { parsePoolCode } from '../tbc-amm/artifacts';
+import { resolveSwapFeePolicy } from '../tbc-amm/fees';
 import { parseTbc721StandardCode } from '../tbc721-standard/tbc721-standard-unlock';
 import { getOpCode } from './util';
 
@@ -18,7 +18,7 @@ type CodeSize = { readonly codeBytes: number };
 export type PoolVersionInfo = CodeSize & (
   | { readonly family: 'pool'; readonly version: 1; readonly sdk: 'poolNFT' }
   | { readonly family: 'pool'; readonly version: 2; readonly sdk: 'poolNFT2' }
-  | { readonly family: 'pool'; readonly version: 3; readonly sdk: 'PoolNFT3' }
+  | { readonly family: 'pool'; readonly version: 3; readonly sdk: 'TBCAMM' }
 );
 export type FTVersionInfo = CodeSize & (
   | { readonly family: 'ft'; readonly version: 'legacy'; readonly sdk: 'FT'; readonly legacyVersion: 1 | 2 | 3 | 4 }
@@ -163,8 +163,8 @@ function poolVersion(script: tbc.Script): PoolVersionInfo | null {
   const codeBytes = script.toBuffer().length;
   try {
     parsePoolCode(script);
-    return Object.freeze({ family: 'pool', version: 3, sdk: 'PoolNFT3', codeBytes });
-  } catch { /* Not a supported Pool3 template. Try the legacy builders. */ }
+    return Object.freeze({ family: 'pool', version: 3, sdk: 'TBCAMM', codeBytes });
+  } catch { /* Not a supported TBCAMM template. Try the legacy builders. */ }
   if (script.chunks[0]?.opcodenum !== tbc.Opcode.OP_1 && script.chunks[0]?.opcodenum !== tbc.Opcode.OP_4) return null;
   for (const entry of poolPatterns()) {
     if (matches(script, entry.template)) return entry.version === 1
@@ -212,7 +212,7 @@ export function detectContractVersion(codeScript: ContractCodeScript): ContractV
   return script ? poolVersion(script) ?? ftVersion(script) ?? stableCoinVersion(script) ?? nftVersion(script) : null;
 }
 
-/** Recognizes Pool1/Pool2 (including authorization variants) and the supported Pool3 templates. */
+/** Recognizes Pool1/Pool2 (including authorization variants) and the supported TBCAMM templates. */
 export function detectPoolVersion(codeScript: ContractCodeScript): PoolVersionInfo | null {
   const script = readCode(codeScript);
   return script ? poolVersion(script) : null;

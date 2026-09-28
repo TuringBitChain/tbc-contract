@@ -23,24 +23,23 @@ contract.TokenValidationError =
   contract.TokenValidator.TokenValidationError;
 contract.poolNFT = require("./lib/contract/poolNFT.js");
 contract.poolNFT2 = require("./lib/contract/poolNFT2.0.js");
-// Pool3 public API: lifecycle, signing, inspection and swap fees.
-contract.PoolNFT3 = require("./lib/contract/poolNFT3.0.js").PoolNFT3;
-contract.poolNFT3 = contract.PoolNFT3;
+// TBC AMM public API: lifecycle, signing, inspection and swap fees.
+contract.TBCAMM = require("./lib/contract/tbc-amm.js").TBCAMM;
 contract.TBC20LP = require("./lib/contract/tbc20-lp.js").TBC20LP;
-contract.privateKeySigner = require("./lib/util/poolnft3/transaction.js").privateKeySigner;
-contract.decodePoolTape = require("./lib/util/poolnft3/tape.js").decodePoolTape;
-var pool3Fees = require("./lib/util/poolnft3/fees.js");
-contract.resolveSwapFeePolicy = pool3Fees.resolveSwapFeePolicy;
-contract.calculateSwapFees = pool3Fees.calculateSwapFees;
-contract.deriveFeeRecipient = pool3Fees.deriveFeeRecipient;
-contract.validatePool3Transaction = require("./lib/validator/poolnft3.js").validatePool3Transaction;
+contract.privateKeySigner = require("./lib/util/tbc-amm/transaction.js").privateKeySigner;
+contract.decodePoolTape = require("./lib/util/tbc-amm/tape.js").decodePoolTape;
+var tbcAmmFees = require("./lib/util/tbc-amm/fees.js");
+contract.resolveSwapFeePolicy = tbcAmmFees.resolveSwapFeePolicy;
+contract.calculateSwapFees = tbcAmmFees.calculateSwapFees;
+contract.deriveFeeRecipient = tbcAmmFees.deriveFeeRecipient;
+contract.validateTbcAmmTransaction = require("./lib/validator/tbc-amm.js").validateTbcAmmTransaction;
 contract.API = require("./lib/api/api.js");
 contract.NFT = require("./lib/contract/nft.js");
 contract.TBC721Standard = require("./lib/contract/tbc721-standard.js");
 contract.MultiSig = require("./lib/contract/multiSig.js");
-contract.piggyBank = require("./lib/contract/piggyBank.js");
-contract.orderBook = require("./lib/contract/orderBook.js");
-contract.HTLC = require("./lib/contract/htlc.js");
+contract.TBCTimelock = require("./lib/contract/tbc-timelock.js");
+contract.TBCLOP = require("./lib/contract/tbc-lop.js");
+contract.TBCHTLC = require("./lib/contract/tbc-htlc.js");
 contract.stableCoin = require("./lib/contract/stableCoin.js");
 contract.TBC20Stablecoin = require("./lib/contract/tbc20-stablecoin.js");
 contract.TBC20StablecoinCodec = require("./lib/util/tbc20-stablecoin/tbc20-stablecoin-codec.js").TBC20StablecoinCodec;

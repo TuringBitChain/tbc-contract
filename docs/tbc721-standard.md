@@ -1,5 +1,7 @@
 # TBC721 Standard
 
+查询 NFT 元数据、持有列表和铸造槽可使用对应的 [合约查询 API](./contract-api.md)。
+
 TBC721 Standard 的业务类为 `TBC721Standard`，使用 `apc-contract/src/tbc721.ct` 的 `TBC721CODE3` 模板，实现在 `lib/contract/tbc721-standard.ts`，解锁见证位于 `lib/util/tbc721-standard/tbc721-standard-unlock.ts`。随包提供的 `lib/util/tbc721-standard/artifacts/tbc721-standard.json` 对应不带 `--fill` 的编译产物。
 
 ```ts

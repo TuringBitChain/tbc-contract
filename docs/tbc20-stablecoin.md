@@ -1,5 +1,7 @@
 # TBC20 Stablecoin SDK
 
+查询代币信息、UTXO 和交易证明可使用对应的 [合约查询 API](./contract-api.md)。
+
 TBC20 Stablecoin 的业务类为 `TBC20Stablecoin`，支持发行、增发、转账、批量转账、合并、冻结与解冻。旧版 FT 稳定币请使用 [`stableCoin`](./stableCoin.md)。
 
 本文以 **2-of-2 管理员**为例：管理员甲、乙共同签名发行、增发、冻结和解冻；币发给普通持有人，由持有人自行签名转账。SDK 构造交易后，由调用方广播。
@@ -279,7 +281,7 @@ restored.initialize({
 
 ## 接入提示
 
-- **查询接口**：使用 `API.fetchCoinInfo`、`API.getCoinbalance`、`API.fetchCoinUTXOs` 前，先确认所用索引服务支持 TBC20 Stablecoin；也可自行保存交易和币种信息。
+- **查询接口**：使用 `API.fetchTbc20StablecoinInfo`、`API.getTbc20StablecoinBalance`、`API.fetchTbc20StablecoinUtxos` 和 `API.fetchTbc20StablecoinAncestors` 获取初始化数据、余额、输入及祖交易。
 - **附加信息**：`transfer` 的第八参数可附送 TBC，仍传显示单位字符串；`transferWithAdditionalInfo` 的第八参数为 `Buffer`，用于附加备注输出。
 - **金额上限**：首次发行、单次增发及 Tape 单个金额槽上限为 `2^63 - 1` 最小单位；超限须拆分，高层方法不会自动拆分超限槽。
 - **底层扩展**：`TBC20StablecoinCodec` 提供 Code/Tape 编解码；合约控制与外部签名使用 `TBC20Stablecoin.getUnlockScript` / `TBC20Stablecoin.getUnlockScriptWithSignature`，接口见 [类型定义](../index.d.ts)，实现见 [TBC20 Stablecoin SDK](../lib/contract/tbc20-stablecoin.ts)。
