@@ -1579,7 +1579,7 @@ export class poolNFT {
 }
 
 export type PoolLpPlan = 1 | 2 | 3 | 4 | 5 | 6;
-export type PoolServiceFeeRate = 35 | 130 | 135 | 335 | 535;
+export type PoolServiceFeeRate = 35 | 330 | 135 | 335 | 535;
 
 export class poolNFT2 {
   ft_lp_amount: bigint;

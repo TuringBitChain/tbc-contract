@@ -80,7 +80,7 @@ const POOL_LP_PLAN_SERVICE_FEE_RATE: Record<PoolLpPlan, number> = {
   3: 135,
   4: 335,
   5: 535,
-  6: 130,
+  6: 330,
 };
 
 const getServiceFeeAddress = (lpPlan: number): string => {
@@ -97,7 +97,7 @@ const getLpServiceFeeRate = (
   serviceFeeRate: number,
 ): number => {
   if (lpPlan === 1) return serviceFeeRate - 10;
-  if (lpPlan === 6) return 80;
+  if (lpPlan === 6) return 200;
   return 5;
 };
 
