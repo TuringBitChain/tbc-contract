@@ -43,7 +43,7 @@ export const TBC_AMM_SWAP_FEE_POLICIES: Readonly<Record<TBCAMMFeePlan, SwapFeePo
     3: policy(3, 135, 5, '125fTLNsraQxTYqT4EeQNF2ggzcqicveKL'),
     4: policy(4, 335, 5, '19DetoaaohQkjFVJ6oGXd83xhZYQSbpE1g'),
     5: policy(5, 535, 5, '15EKrhuD8Yf3SfhjAgbizYqfnBbKh9ZMZ7'),
-    6: policy(6, 130, 80, '1N7rf2AuAHB2aCrVgnbQhSWhaUVk3rGhjm'),
+    6: policy(6, 330, 200, '1N7rf2AuAHB2aCrVgnbQhSWhaUVk3rGhjm'),
   }
 );
 

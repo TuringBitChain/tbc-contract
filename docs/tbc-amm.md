@@ -627,7 +627,7 @@ Swap 费用与矿工费分别计算。Tape 的 `serviceFeeRate` 表示总 Swap �
 | 3 | 135 | 5 |
 | 4 | 335 | 5 |
 | 5 | 535 | 5 |
-| 6 | 130 | 80 |
+| 6 | 330 | 200 |
 
 ```ts
 function inspectFees(baseTbcSat = 1_000_000n, lpPlan = 1): void {
